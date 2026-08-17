@@ -9,6 +9,15 @@ use Orchestra\Testbench\TestCase as Orchestra;
 
 abstract class TestCase extends Orchestra
 {
+    protected function tearDown(): void
+    {
+        // Real database engines cap connections; leaked PDO handles add up
+        // across a 260-test run, so close them eagerly.
+        $this->app['db']->disconnect();
+
+        parent::tearDown();
+    }
+
     protected function getPackageProviders($app): array
     {
         return [BouncerServiceProvider::class];
