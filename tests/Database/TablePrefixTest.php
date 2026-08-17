@@ -28,6 +28,9 @@ it('works with a global table prefix', function (): void {
 it('works with custom table names on top of the config', function (): void {
     config()->set('bouncer.tables.roles', 'authz_roles');
     app()->forgetInstance(ElPandaPe\Bouncer\Context::class);
+
+    // Children first: assigned_roles holds a foreign key into the custom roles table.
+    ElPandaPe\Bouncer\Tests\Database\dropBouncerTables();
     Schema::dropIfExists('authz_roles');
 
     migrateBouncerTables();
@@ -37,5 +40,6 @@ it('works with custom table names on top of the config', function (): void {
     expect($role->getTable())->toBe('authz_roles')
         ->and(app('db')->table('authz_roles')->count())->toBe(1);
 
+    ElPandaPe\Bouncer\Tests\Database\dropBouncerTables();
     Schema::dropIfExists('authz_roles');
 });
