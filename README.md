@@ -6,21 +6,59 @@
 > Based on [Bouncer](https://github.com/JosephSilber/bouncer) by Joseph Silber — this package
 > is a modernized evolution of his original work (MIT).
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.3-777bb3) ![Laravel](https://img.shields.io/badge/laravel-11%20%7C%2012%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
+![Version](https://img.shields.io/badge/version-0.2.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.3-777bb3) ![Laravel](https://img.shields.io/badge/laravel-11%20%7C%2012%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
 
-> **Status: alpha (v0.1.0).** The public API lands incrementally between v0.3.0 and
+> **Status: alpha (v0.2.0).** The public API lands incrementally between v0.3.0 and
 > v0.9.0 — each tagged release documents what shipped. Do not use in production before v1.0.0.
 
-## What's available (v0.1.0)
+## What's available (v0.2.0)
 
-- Package skeleton: service provider, full config file, translations (en/es).
-- Schema v2 migration (four tables: `permissions`, `roles`, `assigned_roles`, `grants`) —
-  frozen for the whole 0.x cycle, publishable and customizable.
-- `Context`: the instance-based registry that replaces the original's global static state.
-- Quality gates: 100% test coverage, 100% type coverage, PHPStan max, Pint, Rector.
+- Models: `Permission`, `Role`, and real pivot models (`Grant`, `AssignedRole`) you can
+  swap or extend via config. Friendly titles are generated on creation (configurable).
+- `HasRolesAndPermissions` for any authority model (not just users): `roles()`,
+  `permissions()`, `isA()` / `isAn()` / `isNotA()` / `isAll()`.
+- Stable morph aliases (`bouncer.role`, `bouncer.permission`), safe with
+  `Relation::enforceMorphMap()`. UUID/ULID-ready: no hardcoded integer cast on entity
+  ids, and the published migration ships commented column variants to switch to string keys.
+- Schema v2 migration (frozen for 0.x), full config file, en/es translations, `Context`.
 
-The fluent API (`Bouncer::allow($user)->to(...)`, `forbid()`, roles, ownership,
-multi-tenancy, ABAC, `whereCan()`, `explain()`) ships between v0.3.0 and v0.9.0.
+The fluent write/check API (`Bouncer::allow($user)->to(...)`, `forbid()`, `can()`,
+ownership, multi-tenancy, ABAC, `whereCan()`, `explain()`) ships between v0.3.0 and v0.9.0.
+
+## Schema & models
+
+Four tables: `permissions` (the catalog), `roles`, `assigned_roles` (role ↔ authority)
+and `grants` (permission ↔ authority, with a `forbidden` flag — a grant row is exactly
+one concession or one prohibition). Any model can hold roles and permissions:
+
+```php
+use ElPandaPe\Bouncer\Database\Concerns\HasRolesAndPermissions;
+
+class User extends Authenticatable
+{
+    use HasRolesAndPermissions;
+}
+```
+
+Swap models through config — never by extending package internals:
+
+```php
+// ✅ Do — point the config at your model, keep the concern:
+// config/bouncer.php
+'models' => ['role' => App\Models\Role::class],
+
+// app/Models/Role.php
+class Role extends Model
+{
+    use ElPandaPe\Bouncer\Database\Concerns\IsRole;
+}
+```
+
+```php
+// ❌ Don't — don't hardcode package classes in relations or checks;
+// resolve them via config so swapped models keep working everywhere.
+$user->roles()->attach(ElPandaPe\Bouncer\Database\Role::first());
+```
 
 ## Installation
 
