@@ -19,7 +19,7 @@ coverage: ## Tests + 100% coverage gate
 	$(PHP) vendor/bin/pest --coverage --min=100
 
 types: ## 100% type coverage gate
-	$(PHP) vendor/bin/pest --type-coverage --min=100
+	$(PHP) php -d memory_limit=1G vendor/bin/pest --type-coverage --min=100
 
 stan: ## PHPStan (level max)
 	$(PHP) vendor/bin/phpstan analyse --memory-limit=1G

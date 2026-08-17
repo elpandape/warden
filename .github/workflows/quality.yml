@@ -39,4 +39,4 @@ jobs:
         run: vendor/bin/pest --coverage --min=100
 
       - name: 100% type coverage
-        run: vendor/bin/pest --type-coverage --min=100
+        run: php -d memory_limit=1G vendor/bin/pest --type-coverage --min=100
