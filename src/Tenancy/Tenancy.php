@@ -13,11 +13,17 @@ final class Tenancy
 
     private bool $resolved = false;
 
-    private bool $onlyRelations = false;
+    private bool $onlyRelations;
 
-    private bool $scopeRoleGrants = true;
+    private bool $scopeRoleGrants;
 
-    public function __construct(private readonly ?TenantResolver $resolver = null) {}
+    public function __construct(private readonly ?TenantResolver $resolver = null)
+    {
+        // Config-backed defaults: scoped instances are rebuilt per Octane
+        // request, so boot-time runtime calls alone would silently revert.
+        $this->onlyRelations = \ElPandaPe\Bouncer\Support\Config::scopeOnlyRelations();
+        $this->scopeRoleGrants = \ElPandaPe\Bouncer\Support\Config::scopeRoleGrants();
+    }
 
     public function to(int|string $tenant): self
     {

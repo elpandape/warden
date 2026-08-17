@@ -60,6 +60,10 @@ return [
         'column_type' => 'integer',
         // A class implementing Contracts\TenantResolver to detect the active tenant.
         'tenant_resolver' => null,
+        // Keep the role/permission catalog global; scope only the pivots.
+        'only_relations' => false,
+        // Set to false to keep grants held by roles global across tenants.
+        'role_grants' => true,
     ],
 
     'cache' => [
