@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class GrantsPermissions
 {
+    use Concerns\BumpsCacheVersion;
     use ResolvesAuthority;
     use ResolvesPermissions;
 
@@ -85,5 +86,7 @@ class GrantsPermissions
                 'scope' => $scope,
             ]);
         }
+
+        $this->bumpCacheVersion($scope);
     }
 }

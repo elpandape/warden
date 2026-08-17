@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class RetractsRoles
 {
+    use Concerns\BumpsCacheVersion;
     use NormalizesRoles;
 
     /** @var list<string|Model> */
@@ -55,13 +56,17 @@ class RetractsRoles
         $scope = app(Tenancy::class)->writeScope();
 
         foreach ($this->normalizeAuthorities($authorities) as $authority) {
-            $assignedRole::query()
+            $deleted = $assignedRole::query()
                 ->withoutGlobalScope(TenantScope::class)
                 ->whereIn('role_id', $keys)
                 ->where('entity_type', $authority->getMorphClass())
                 ->where('entity_id', $authority->getKey())
                 ->where('scope', $scope)
                 ->delete();
+
+            if ($deleted > 0) {
+                $this->bumpCacheVersion($scope);
+            }
         }
 
         return $this;

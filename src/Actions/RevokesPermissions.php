@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class RevokesPermissions
 {
+    use Concerns\BumpsCacheVersion;
     use ResolvesAuthority;
     use ResolvesPermissions;
 
@@ -79,14 +80,18 @@ class RevokesPermissions
             forRoleGrant: $authority instanceof ($context->roleClass()),
         );
 
-        $context->grantClass()::query()
+        $deleted = $context->grantClass()::query()
             ->withoutGlobalScope(TenantScope::class)
             ->whereIn('permission_id', $keys)
             ->where('forbidden', $this->forbidden)
             ->where('entity_type', $authority?->getMorphClass())
             ->where('entity_id', $authority?->getKey())
             ->where('scope', $scope)
-            ->delete();
+            ->delete() > 0;
+
+        if ($deleted) {
+            $this->bumpCacheVersion($scope);
+        }
 
         return $this;
     }

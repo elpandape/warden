@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class SyncsRolesAndPermissions
 {
+    use Concerns\BumpsCacheVersion;
     use NormalizesRoles;
     use ResolvesAuthority;
     use ResolvesPermissions;
@@ -31,14 +32,18 @@ class SyncsRolesAndPermissions
         $models = $this->resolveRoleModels($this->normalizeRoles($roles));
         $keys = array_map($this->modelKey(...), $models);
 
+        $scope = app(Tenancy::class)->writeScope();
+
         // Sync is per-scope: rows in other tenants and global rows stay untouched.
         $assignedRole::query()
             ->withoutGlobalScope(TenantScope::class)
             ->where('entity_type', $authority->getMorphClass())
             ->where('entity_id', $authority->getKey())
-            ->where('scope', app(Tenancy::class)->writeScope())
+            ->where('scope', $scope)
             ->whereNotIn('role_id', $keys)
             ->delete();
+
+        $this->bumpCacheVersion($scope);
 
         if ($models !== []) {
             new AssignsRoles($models)->to($authority);
@@ -99,6 +104,8 @@ class SyncsRolesAndPermissions
                 'scope' => $scope,
             ]);
         }
+
+        $this->bumpCacheVersion($scope);
 
         return $this;
     }

@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class AssignsRoles
 {
+    use Concerns\BumpsCacheVersion;
     use NormalizesRoles;
 
     /** @var list<string|Model> */
@@ -48,6 +49,8 @@ class AssignsRoles
                 ]);
             }
         }
+
+        $this->bumpCacheVersion($scope);
 
         return $this;
     }
