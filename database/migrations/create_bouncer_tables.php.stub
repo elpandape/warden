@@ -14,8 +14,10 @@ return new class extends Migration
         $connection = config('bouncer.connection');
 
         $schema = Schema::connection(is_string($connection) ? $connection : null);
+        // Explicit index names must carry the prefix: Postgres scopes them per database.
+        $prefix = $schema->getConnection()->getTablePrefix();
 
-        $schema->create($tables['permissions'] ?? 'permissions', function (Blueprint $table): void {
+        $schema->create($tables['permissions'] ?? 'permissions', function (Blueprint $table) use ($prefix): void {
             $table->id();
             $table->string('name')->index();
             $table->string('title')->nullable();
@@ -31,17 +33,17 @@ return new class extends Migration
             $table->index(['entity_id', 'entity_type']);
         });
 
-        $schema->create($tables['roles'] ?? 'roles', function (Blueprint $table): void {
+        $schema->create($tables['roles'] ?? 'roles', function (Blueprint $table) use ($prefix): void {
             $table->id();
             $table->string('name');
             $table->string('title')->nullable();
             $table->integer('scope')->nullable()->index();
             $table->timestamps();
 
-            $table->unique(['name', 'scope'], 'roles_name_scope_unique');
+            $table->unique(['name', 'scope'], $prefix.'roles_name_scope_unique');
         });
 
-        $schema->create($tables['assigned_roles'] ?? 'assigned_roles', function (Blueprint $table) use ($tables): void {
+        $schema->create($tables['assigned_roles'] ?? 'assigned_roles', function (Blueprint $table) use ($tables, $prefix): void {
             $table->id();
             $table->foreignId('role_id')
                 ->constrained($tables['roles'] ?? 'roles')
@@ -57,14 +59,14 @@ return new class extends Migration
 
             $table->unique(
                 ['role_id', 'entity_id', 'entity_type', 'scope'],
-                'assigned_roles_unique',
+                $prefix.'assigned_roles_unique',
             );
-            $table->index(['entity_id', 'entity_type', 'scope'], 'assigned_roles_entity_index');
+            $table->index(['entity_id', 'entity_type', 'scope'], $prefix.'assigned_roles_entity_index');
             // Uncomment (and enable bouncer.pivot_timestamps) to audit assignments:
             // $table->timestamps();
         });
 
-        $schema->create($tables['grants'] ?? 'grants', function (Blueprint $table) use ($tables): void {
+        $schema->create($tables['grants'] ?? 'grants', function (Blueprint $table) use ($tables, $prefix): void {
             $table->id();
             $table->foreignId('permission_id')
                 ->constrained($tables['permissions'] ?? 'permissions')
@@ -79,9 +81,9 @@ return new class extends Migration
 
             $table->unique(
                 ['permission_id', 'entity_id', 'entity_type', 'scope', 'forbidden'],
-                'grants_unique',
+                $prefix.'grants_unique',
             );
-            $table->index(['entity_id', 'entity_type', 'scope'], 'grants_entity_index');
+            $table->index(['entity_id', 'entity_type', 'scope'], $prefix.'grants_entity_index');
             // Uncomment (and enable bouncer.pivot_timestamps) to audit grants:
             // $table->timestamps();
         });
