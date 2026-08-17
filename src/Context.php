@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer;
 
+use Closure;
 use ElPandaPe\Bouncer\Database\AssignedRole;
 use ElPandaPe\Bouncer\Database\Grant;
 use ElPandaPe\Bouncer\Database\Permission;
@@ -21,6 +22,9 @@ final class Context
         'assigned_role' => AssignedRole::class,
         'grant' => Grant::class,
     ];
+
+    /** @var array<string, string|Closure> */
+    private array $ownershipMap = [];
 
     /**
      * @param  array<string, string>  $tables
@@ -84,6 +88,57 @@ final class Context
     public function ownershipAttribute(): string
     {
         return $this->ownershipAttribute;
+    }
+
+    /**
+     * Register how ownership is resolved: globally, per entity class,
+     * by attribute name or with a closure receiving (entity, authority).
+     */
+    public function ownedVia(string|Closure $modelOrAttribute, string|Closure|null $attribute = null): void
+    {
+        if ($attribute === null) {
+            $this->ownershipMap['*'] = $modelOrAttribute;
+
+            return;
+        }
+
+        if (! is_string($modelOrAttribute)) {
+            throw new InvalidArgumentException('Per-model ownership requires the entity class as a string.');
+        }
+
+        $this->ownershipMap[$modelOrAttribute] = $attribute;
+    }
+
+    public function isOwnedBy(Model $authority, Model $entity): bool
+    {
+        $resolver = $this->ownershipMap[$entity::class]
+            ?? $this->ownershipMap['*']
+            ?? $this->ownershipAttribute;
+
+        if ($resolver instanceof Closure) {
+            return (bool) $resolver($entity, $authority);
+        }
+
+        // Strict-mode safe (configurable): a missing attribute means "not owned".
+        if (! array_key_exists($resolver, $entity->getAttributes())) {
+            if (Support\Config::ownershipStrictModeSafe()) {
+                return false;
+            }
+
+            // Opted out: surface whatever the model does, including strict-mode throws.
+            $entity->getAttribute($resolver);
+
+            return false;
+        }
+
+        $value = $entity->getAttributes()[$resolver];
+        $key = $authority->getKey();
+
+        if ($value === null || (! is_int($key) && ! is_string($key))) {
+            return false;
+        }
+
+        return (is_int($value) || is_string($value)) && (string) $value === (string) $key;
     }
 
     /**
