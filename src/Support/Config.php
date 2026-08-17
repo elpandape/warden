@@ -61,4 +61,40 @@ final class Config
     {
         return (bool) config('bouncer.octane.register_reset_listener', true);
     }
+
+    public static function scopeOnlyRelations(): bool
+    {
+        return (bool) config('bouncer.scope.only_relations', false);
+    }
+
+    public static function scopeRoleGrants(): bool
+    {
+        return (bool) config('bouncer.scope.role_grants', true);
+    }
+
+    public static function cacheEnabled(): bool
+    {
+        return (bool) config('bouncer.cache.enabled', true);
+    }
+
+    public static function cacheStore(): ?string
+    {
+        $store = config('bouncer.cache.store', 'default');
+
+        return is_string($store) && $store !== 'default' ? $store : null;
+    }
+
+    public static function cachePrefix(): string
+    {
+        $prefix = config('bouncer.cache.prefix', 'bouncer');
+
+        return is_string($prefix) && $prefix !== '' ? $prefix : 'bouncer';
+    }
+
+    public static function cacheTtl(): \DateInterval|int|null
+    {
+        $ttl = config('bouncer.cache.expiration_time');
+
+        return $ttl instanceof \DateInterval || is_int($ttl) ? $ttl : null;
+    }
 }

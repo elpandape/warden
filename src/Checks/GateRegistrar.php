@@ -13,8 +13,6 @@ use Illuminate\Database\Eloquent\Model;
 
 final readonly class GateRegistrar
 {
-    public function __construct(private Resolver $resolver) {}
-
     public function registerAt(Gate $gate): void
     {
         $gate->before(fn (mixed $user, string $ability, array $arguments = []): Response|bool|null => Config::gateSlot() === GateSlot::Before
@@ -60,7 +58,9 @@ final readonly class GateRegistrar
             return null;
         }
 
-        $verdict = $this->resolver->resolve($user, $ability, $entity);
+        // Resolved per check: scoped bindings hand Octane a fresh resolver
+        // (and its memoization) on every request.
+        $verdict = app(Resolver::class)->resolve($user, $ability, $entity);
 
         return match (true) {
             $verdict->isForbidden() => Response::deny($this->denialMessage()),

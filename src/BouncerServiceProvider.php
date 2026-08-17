@@ -46,12 +46,27 @@ final class BouncerServiceProvider extends ServiceProvider
             $this->app->singleton(Tenancy\Tenancy::class, $tenancy);
         }
 
-        $this->app->singleton(Contracts\Resolver::class, fn (Application $app): Contracts\Resolver => new Checks\Resolvers\DatabaseResolver($app->make(Context::class)));
+        $this->app->singleton(Checks\Resolvers\CacheKeyVersioner::class);
+
+        // The cached resolver decorates the database engine; the enabled flag
+        // is honored live inside resolve(), so toggling needs no rebinding.
+        $resolver = fn (Application $app): Contracts\Resolver => new Checks\Resolvers\CachedResolver(
+            new Checks\Resolvers\DatabaseResolver($app->make(Context::class)),
+            $app->make(Context::class),
+            $app->make(Checks\Resolvers\CacheKeyVersioner::class),
+        );
+
+        // Scoped: per-request memoization resets between Octane requests and jobs.
+        if ((bool) $this->app->make(Repository::class)->get('bouncer.octane.register_reset_listener', true)) {
+            $this->app->scoped(Contracts\Resolver::class, $resolver);
+        } else {
+            $this->app->singleton(Contracts\Resolver::class, $resolver);
+        }
 
         // Lazy: the gate wiring only happens when the app actually authorizes something.
         // The register toggle is evaluated per check inside the callbacks.
-        $this->callAfterResolving(GateContract::class, function (GateContract $gate, Application $app): void {
-            new GateRegistrar($app->make(Contracts\Resolver::class))->registerAt($gate);
+        $this->callAfterResolving(GateContract::class, function (GateContract $gate): void {
+            new GateRegistrar()->registerAt($gate);
         });
     }
 
