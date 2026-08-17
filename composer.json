@@ -1,0 +1,68 @@
+{
+    "name": "elpandape/bouncer",
+    "description": "Roles & permissions for Laravel — instance-level grants, explicit forbids, ownership, multi-tenancy, ABAC. A modernized evolution of Joseph Silber's Bouncer.",
+    "keywords": [
+        "laravel",
+        "permissions",
+        "roles",
+        "abilities",
+        "acl",
+        "rbac",
+        "abac",
+        "authorization"
+    ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "elpandape"
+        },
+        {
+            "name": "Joseph Silber",
+            "role": "Author of the original Bouncer"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "illuminate/auth": "^11.0||^12.0||^13.0",
+        "illuminate/contracts": "^11.0||^12.0||^13.0",
+        "illuminate/database": "^11.0||^12.0||^13.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.9",
+        "laravel/pint": "^1.14",
+        "orchestra/testbench": "^9.0||^10.0||^11.0",
+        "pestphp/pest": "^4.0||^5.0",
+        "pestphp/pest-plugin-type-coverage": "^4.0||^5.0",
+        "phpstan/extension-installer": "^1.4",
+        "rector/rector": "^2.0"
+    },
+    "conflict": {
+        "silber/bouncer": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "ElPandaPe\\Bouncer\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ElPandaPe\\Bouncer\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "ElPandaPe\\Bouncer\\BouncerServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "phpstan/extension-installer": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
