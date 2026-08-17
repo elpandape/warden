@@ -8,6 +8,12 @@ use ElPandaPe\Bouncer\Database\Concerns\IsRole;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property string $name
+ * @property string|null $title
+ * @property int|null $scope
+ */
 class Role extends Model
 {
     /** @use HasFactory<\ElPandaPe\Bouncer\Database\Factories\RoleFactory> */

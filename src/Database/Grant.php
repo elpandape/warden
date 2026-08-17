@@ -8,6 +8,14 @@ use ElPandaPe\Bouncer\Database\Concerns\ResolvesContext;
 use ElPandaPe\Bouncer\Support\Config;
 use Illuminate\Database\Eloquent\Relations\MorphPivot;
 
+/**
+ * @property int $id
+ * @property int|string $permission_id
+ * @property string|null $entity_type
+ * @property int|string|null $entity_id
+ * @property bool $forbidden
+ * @property int|null $scope
+ */
 class Grant extends MorphPivot
 {
     use ResolvesContext;
