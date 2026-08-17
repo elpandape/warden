@@ -11,6 +11,8 @@ services:
 
   mysql:
     image: mysql:9
+    # The suite opens one connection per test: default max_connections falls short.
+    command: --max-connections=500
     environment:
       MYSQL_ROOT_PASSWORD: secret
       MYSQL_DATABASE: bouncer
