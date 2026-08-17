@@ -33,6 +33,8 @@ use Illuminate\Support\Facades\Facade;
  * @method static bool canAny(array<int, string> $permissions, Model|string|null $entity = null)
  * @method static \Illuminate\Auth\Access\Response authorize(string $permission, Model|string|null $entity = null)
  * @method static \ElPandaPe\Bouncer\Bouncer ownedVia(string|\Closure $modelOrAttribute, string|\Closure|null $attribute = null)
+ * @method static \ElPandaPe\Bouncer\Bouncer refresh()
+ * @method static \ElPandaPe\Bouncer\Bouncer refreshFor(\Illuminate\Database\Eloquent\Model $authority)
  * @method static \ElPandaPe\Bouncer\Tenancy\Tenancy tenant()
  * @method static \ElPandaPe\Bouncer\Tenancy\Tenancy scope()
  * @method static Model role(array<string, mixed> $attributes = [])

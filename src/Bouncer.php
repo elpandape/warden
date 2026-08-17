@@ -114,6 +114,30 @@ final class Bouncer
         return $this;
     }
 
+    /**
+     * Invalidate every cached check at once (O(1): a version bump).
+     */
+    public function refresh(): static
+    {
+        app(Checks\Resolvers\CacheKeyVersioner::class)->refreshAll();
+
+        return $this;
+    }
+
+    /**
+     * Drop the cached payload for one authority under the current tenant.
+     */
+    public function refreshFor(Model $authority): static
+    {
+        $resolver = app(Contracts\Resolver::class);
+
+        if ($resolver instanceof Checks\Resolvers\CachedResolver) {
+            $resolver->forgetFor($authority);
+        }
+
+        return $this;
+    }
+
     public function tenant(): Tenancy\Tenancy
     {
         return app(Tenancy\Tenancy::class);
