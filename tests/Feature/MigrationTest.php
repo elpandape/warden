@@ -10,6 +10,14 @@ function bouncerMigration(): Migration
     return require __DIR__.'/../../database/migrations/create_bouncer_tables.php.stub';
 }
 
+beforeEach(function (): void {
+    foreach (['custom_grants', 'custom_assigned_roles', 'custom_roles', 'custom_permissions'] as $table) {
+        Schema::dropIfExists($table);
+    }
+
+    ElPandaPe\Bouncer\Tests\Database\dropBouncerTables();
+});
+
 it('creates and drops the four bouncer tables', function (): void {
     $migration = bouncerMigration();
 

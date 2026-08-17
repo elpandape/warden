@@ -4,5 +4,6 @@ parameters:
         - src
         - config
         - database
+        - tests/Fixtures
     checkOctaneCompatibility: true
     checkModelProperties: true
