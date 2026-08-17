@@ -20,6 +20,7 @@ return new class extends Migration
             $table->string('name')->index();
             $table->string('title')->nullable();
             $table->string('entity_type')->nullable();
+            // For UUID/ULID entity keys, replace with: $table->string('entity_id', 36)->nullable();
             $table->unsignedBigInteger('entity_id')->nullable();
             $table->boolean('only_owned')->default(false);
             // Reserved for ABAC constraints (activates in v0.8.0).
@@ -47,6 +48,7 @@ return new class extends Migration
                 ->cascadeOnUpdate()
                 ->cascadeOnDelete();
             $table->string('entity_type');
+            // For UUID/ULID authorities, replace with: $table->string('entity_id', 36);
             $table->unsignedBigInteger('entity_id');
             // Reserved for model-scoped roles (activates in v0.8.0).
             $table->string('restricted_to_type')->nullable();
@@ -58,6 +60,8 @@ return new class extends Migration
                 'assigned_roles_unique',
             );
             $table->index(['entity_id', 'entity_type', 'scope'], 'assigned_roles_entity_index');
+            // Uncomment (and enable bouncer.pivot_timestamps) to audit assignments:
+            // $table->timestamps();
         });
 
         $schema->create($tables['grants'] ?? 'grants', function (Blueprint $table) use ($tables): void {
@@ -68,6 +72,7 @@ return new class extends Migration
                 ->cascadeOnDelete();
             // Null entity means the grant applies to everyone.
             $table->string('entity_type')->nullable();
+            // For UUID/ULID entity keys, replace with: $table->string('entity_id', 36)->nullable();
             $table->unsignedBigInteger('entity_id')->nullable();
             $table->boolean('forbidden')->default(false);
             $table->integer('scope')->nullable()->index();
@@ -77,6 +82,8 @@ return new class extends Migration
                 'grants_unique',
             );
             $table->index(['entity_id', 'entity_type', 'scope'], 'grants_entity_index');
+            // Uncomment (and enable bouncer.pivot_timestamps) to audit grants:
+            // $table->timestamps();
         });
     }
 
