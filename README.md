@@ -6,17 +6,19 @@
 > Based on [Bouncer](https://github.com/JosephSilber/bouncer) by Joseph Silber — this package
 > is a modernized evolution of his original work (MIT).
 
-![Version](https://img.shields.io/badge/version-0.5.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
+![Version](https://img.shields.io/badge/version-0.6.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
 
-> **Status: alpha (v0.5.0) — full feature parity with the original Bouncer.**
-> Caching, events, ABAC, `whereCan()` and `explain()` complete by v0.9.0.
+> **Status: alpha (v0.6.0) — parity plus a versioned cache the original never had.**
+> Events, ABAC, `whereCan()` and `explain()` complete by v0.9.0.
 > Do not use in production before v1.0.0.
 
-## What's available (v0.5.0)
+## What's available (v0.6.0)
 
 - **Checks through Laravel's Gate**: `can()`, `@can`, `authorize()` and policies work
   out of the box — explicit forbids beat any grant, and Bouncer never overrides your
   policies unless you configure it to run first.
+- **Cached checks** (default on): one minimal versioned payload per authority, O(1)
+  automatic invalidation on every write, anti-stampede locking, Octane-safe.
 - **Ownership**: `toOwn(Post::class)` grants only what the user owns — resolved by
   attribute (configurable globally, per class, or with a closure), strict-mode safe.
 - **Multi-tenancy**: `Bouncer::tenant()->to($id)` isolates the whole system per tenant,
@@ -34,7 +36,7 @@
   ids, and the published migration ships commented column variants to switch to string keys.
 - Schema v2 migration (frozen for 0.x), full config file, en/es translations, `Context`.
 
-Caching, events, ABAC, `whereCan()` and `explain()` complete by v0.9.0.
+Events, ABAC, `whereCan()` and `explain()` complete by v0.9.0.
 
 ## Ownership
 
@@ -86,6 +88,47 @@ Bouncer::tenant()->removeOnce(fn () => Bouncer::unforbid($user)->to('publish'));
 
 ❌ Don't — don't expect `Bouncer::unforbid($user)->to('publish')` under a tenant to
 lift a **global** forbid; global rules are only writable globally, by design.
+
+## Caching
+
+Enabled by default: the cached resolver stores one **minimal payload per authority**
+(every grant tuple that could ever apply to it) and answers checks in memory with the
+exact same semantics as the database engine — the whole test suite runs against both.
+The first check per authority costs three queries; the next thousand cost zero.
+
+Invalidation is automatic and O(1): every write through Bouncer bumps a version
+counter for the exact tenant scope it touched, so stale entries are orphaned, never
+hunted. Cold rebuilds take a lock when the store supports one (anti-stampede), and
+payloads are versioned so future fields never break old entries.
+
+```php
+// config/bouncer.php — a real store with a TTL:
+'cache' => [
+    'enabled' => true,
+    'store' => 'default',
+    'prefix' => 'bouncer',
+    'expiration_time' => DateInterval::createFromDateString('24 hours'),
+],
+```
+
+```php
+Bouncer::refresh();          // invalidate everything: an O(1) version bump
+Bouncer::refreshFor($user);  // drop one authority's payload
+```
+
+✅ Do — write through Bouncer and let invalidation take care of itself:
+
+```php
+Bouncer::disallow($user)->to('publish');   // the next check is already correct
+```
+
+❌ Don't — the "I forgot to refresh the cache in prod" pattern: raw database edits
+(seeders, manual SQL) bypass invalidation by design. After hand-editing rows, call
+`Bouncer::refresh()` — or better, make the edit through the API.
+
+One caveat: the in-memory matcher compares permission names **byte-exactly**, while a
+case-insensitive database collation (MySQL's default) may match `Edit` to `edit`.
+Use exact, consistent permission names — good practice with or without the cache.
 
 ## Checking permissions
 

@@ -3,6 +3,41 @@
 All notable changes to `elpandape/bouncer` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v0.6.0 — Cache v2 + Octane (2026-08-17)
+
+### Breaking
+- **Folder restructure by domain**: every `ElPandaPe\Bouncer\Database\*` class moved.
+  Models live in `Models\*` (internal concerns in `Models\Concerns\*`), the public
+  authority traits in `Concerns\*`, tenancy in `Tenancy\*`, titles in `Support\Titles\*`;
+  `GateRegistrar`, `Verdict` and the resolvers now group under `Checks\`. Factories keep
+  their `Database\Factories` namespace (files now under `database/factories/`).
+  Stored data is unaffected: the default morph aliases never referenced class names.
+
+### Added
+- **`CachedResolver`, enabled by default**: one minimal versioned payload per authority,
+  matched in memory with the database engine's exact semantics — the entire suite runs
+  against both resolvers in CI, so they cannot drift.
+- **O(1) automatic invalidation**: every write action bumps a version counter for the
+  exact tenant scope it touched (global, per-tenant, plus an all-rows counter for
+  unscoped checks); stale entries are orphaned, never scanned. Counters reseed randomly
+  after eviction so old keys cannot resurrect.
+- Anti-stampede locking on cold rebuilds (when the store provides locks), configurable
+  TTL, per-request memoization, and payloads that already carry the v0.8 fields
+  (constraints, role restrictions) so ABAC will not break the format.
+- `Bouncer::refresh()` and `Bouncer::refreshFor($authority)`.
+- Octane: the resolver and tenancy are container-scoped — state resets between
+  requests and queue jobs (opt out via `bouncer.octane.register_reset_listener`).
+
+### Upgrade notes
+- Update imports for the restructure; the public API is otherwise unchanged:
+  - `ElPandaPe\Bouncer\Database\{Permission,Role,Grant,AssignedRole}` → `ElPandaPe\Bouncer\Models\*`
+  - `ElPandaPe\Bouncer\Database\Concerns\{HasPermissions,HasRolesAndPermissions}` → `ElPandaPe\Bouncer\Concerns\*`
+  - `ElPandaPe\Bouncer\Database\Concerns\{IsPermission,IsRole}` → `ElPandaPe\Bouncer\Models\Concerns\*`
+  - `ElPandaPe\Bouncer\Database\Tenancy\*` and the tenant traits → `ElPandaPe\Bouncer\Tenancy\*`
+  - `ElPandaPe\Bouncer\{GateRegistrar,Verdict}` and `Resolvers\*` → `ElPandaPe\Bouncer\Checks\*`
+- With the cache now active by default, raw database edits need `Bouncer::refresh()`
+  afterwards; writes made through the API invalidate on their own.
+
 ## v0.5.0 — Ownership & multi-tenancy: full parity (2026-08-17)
 
 ### Added
