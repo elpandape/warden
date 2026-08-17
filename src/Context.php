@@ -9,6 +9,7 @@ use ElPandaPe\Bouncer\Database\Grant;
 use ElPandaPe\Bouncer\Database\Permission;
 use ElPandaPe\Bouncer\Database\Role;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphPivot;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use InvalidArgumentException;
 
@@ -99,6 +100,8 @@ final class Context
                 );
             }
 
+            $this->assertOverrideContract($key, $override);
+
             return $override;
         }
 
@@ -108,6 +111,42 @@ final class Context
 
         return self::DEFAULT_MODELS[$key]
             ?? throw new InvalidArgumentException("Unknown bouncer model key [{$key}].");
+    }
+
+    /**
+     * @return class-string<Permission>
+     */
+    public function permissionClass(): string
+    {
+        /** @var class-string<Permission> */
+        return $this->modelClass('permission');
+    }
+
+    /**
+     * @return class-string<Role>
+     */
+    public function roleClass(): string
+    {
+        /** @var class-string<Role> */
+        return $this->modelClass('role');
+    }
+
+    /**
+     * @return class-string<Grant>
+     */
+    public function grantClass(): string
+    {
+        /** @var class-string<Grant> */
+        return $this->modelClass('grant');
+    }
+
+    /**
+     * @return class-string<AssignedRole>
+     */
+    public function assignedRoleClass(): string
+    {
+        /** @var class-string<AssignedRole> */
+        return $this->modelClass('assigned_role');
     }
 
     public function setModelClass(string $key, string $class): void
@@ -138,6 +177,29 @@ final class Context
         throw new InvalidArgumentException(
             'Unable to resolve the user model from the default auth guard; set bouncer.models.user explicitly.',
         );
+    }
+
+    /**
+     * Fail at the config boundary, not deep inside a grant path.
+     *
+     * @param  class-string<Model>  $override
+     */
+    private function assertOverrideContract(string $key, string $override): void
+    {
+        $satisfied = match ($key) {
+            'permission' => is_subclass_of($override, Permission::class)
+                || in_array(Database\Concerns\IsPermission::class, class_uses_recursive($override), true),
+            'role' => is_subclass_of($override, Role::class)
+                || in_array(Database\Concerns\IsRole::class, class_uses_recursive($override), true),
+            'grant', 'assigned_role' => is_subclass_of($override, MorphPivot::class),
+            default => true,
+        };
+
+        if (! $satisfied) {
+            throw new InvalidArgumentException(
+                "Configured bouncer model [{$key}] ([{$override}]) does not satisfy the {$key} contract.",
+            );
+        }
     }
 
     /**
