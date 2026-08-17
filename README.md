@@ -6,19 +6,23 @@
 > Based on [Bouncer](https://github.com/JosephSilber/bouncer) by Joseph Silber — this package
 > is a modernized evolution of his original work (MIT).
 
-![Version](https://img.shields.io/badge/version-0.6.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
+![Version](https://img.shields.io/badge/version-0.7.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
 
-> **Status: alpha (v0.6.0) — parity plus a versioned cache the original never had.**
-> Events, ABAC, `whereCan()` and `explain()` complete by v0.9.0.
+> **Status: alpha (v0.7.0) — typed events, typed exceptions, enum-ready API.**
+> ABAC, `whereCan()` and `explain()` complete by v0.9.0.
 > Do not use in production before v1.0.0.
 
-## What's available (v0.6.0)
+## What's available (v0.7.0)
 
 - **Checks through Laravel's Gate**: `can()`, `@can`, `authorize()` and policies work
   out of the box — explicit forbids beat any grant, and Bouncer never overrides your
   policies unless you configure it to run first.
 - **Cached checks** (default on): one minimal versioned payload per authority, O(1)
   automatic invalidation on every write, anti-stampede locking, Octane-safe.
+- **Typed events** for every write — grants, forbids, roles, syncs with a full diff,
+  catalog lifecycle — plus opt-in cancellable pre-action events.
+- **Typed exceptions** (`UnauthorizedException`, `RoleDoesNotExist`, …) with
+  translatable, leak-safe messages; `BackedEnum` accepted wherever a name string is.
 - **Ownership**: `toOwn(Post::class)` grants only what the user owns — resolved by
   attribute (configurable globally, per class, or with a closure), strict-mode safe.
 - **Multi-tenancy**: `Bouncer::tenant()->to($id)` isolates the whole system per tenant,
@@ -36,7 +40,7 @@
   ids, and the published migration ships commented column variants to switch to string keys.
 - Schema v2 migration (frozen for 0.x), full config file, en/es translations, `Context`.
 
-Events, ABAC, `whereCan()` and `explain()` complete by v0.9.0.
+ABAC, `whereCan()` and `explain()` complete by v0.9.0.
 
 ## Ownership
 
@@ -189,6 +193,68 @@ Bouncer::forbid($user)->to('view', $classifiedDocument);
 ❌ Don't — don't model exceptions by scattering conditionals around your
 codebase; an explicit `forbid()` row is queryable, auditable and revocable
 (`Bouncer::unforbid($user)->to('view', $classifiedDocument)`).
+
+## Events
+
+Every write dispatches a typed, `readonly` event with **hydrated models — never raw
+ids** (the payload asymmetry other packages document as a caveat doesn't exist here).
+Disable globally with `bouncer.events_enabled`.
+
+| Event | Fired by | Payload |
+|---|---|---|
+| `PermissionGranted` / `PermissionForbidden` | `allow()`, `forbid()` | `?Model $authority` (null = everyone), `Collection $permissions`, `$scope` |
+| `PermissionRevoked` / `PermissionUnforbidden` | `disallow()`, `unforbid()` — only when rows were removed | same shape |
+| `RoleAssigned` / `RoleRetracted` | `assign()`, `retract()` | `Model $authority`, `Collection $roles`, `$scope`, `?Model $restrictedTo` |
+| `RolesSynced` / `PermissionsSynced` | `sync()` | `SyncResult` diff: `attached` / `detached` / `kept`, all hydrated |
+| `RoleCreated/Deleted`, `PermissionCreated/Deleted` | the model layer — every creation path counts | the model |
+
+```php
+Event::listen(PermissionGranted::class, function (PermissionGranted $event) {
+    audit('granted', $event->authority, $event->permissions->pluck('name'));
+});
+```
+
+Pre-action events (`GrantingPermission`, `ForbiddingPermission`, `AssigningRole`) are
+**opt-in** via `bouncer.cancellable_events`: a listener returning `false` aborts the
+write before anything happens. `sync()` never fires nor honors them — its declarative
+diff events tell the whole story.
+
+✅ Do — audit from events; they fire on every write path, always after cache
+invalidation, with symmetric payloads.
+
+❌ Don't — don't hang business rules off post-action events; if a write must be
+conditional, use the cancellable pre-action events (or just decide before calling).
+
+## Exceptions
+
+All typed, all catchable the Laravel way:
+
+```php
+Bouncer::findRole('ghost');            // RoleDoesNotExist (a ModelNotFoundException)
+Bouncer::findPermission('ghost');      // PermissionDoesNotExist
+Bouncer::authorize('publish', $post);  // UnauthorizedException (an AuthorizationException)
+config(['bouncer.models.role' => Foo::class]); // ConfigurationException, fail-fast
+```
+
+`UnauthorizedException` exposes `getRequiredPermissions()` / `getRequiredRoles()`, and
+its message is translatable (shipped in English and Spanish). Naming the missing
+permission or role in the message is **opt-in** (`bouncer.exceptions.display_*`):
+leaking your authorization model in 403 responses is a footgun, so the default stays
+generic.
+
+## Enums everywhere
+
+Every public signature that takes a permission or role name also takes a
+string-backed enum:
+
+```php
+enum Permission: string { case EditSite = 'edit-site'; }
+
+Bouncer::allow($user)->to(Permission::EditSite);
+Bouncer::assign(Role::Admin)->to($user);
+$user->isAn(Role::Admin);
+Bouncer::authorize(Permission::EditSite);
+```
 
 ## Schema & models
 

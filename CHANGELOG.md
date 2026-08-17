@@ -3,6 +3,35 @@
 All notable changes to `elpandape/bouncer` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v0.7.0 — Events & exceptions (2026-08-17)
+
+### Added
+- **Typed events for every write**, with hydrated models and symmetric payloads:
+  `PermissionGranted/Revoked/Forbidden/Unforbidden`, `RoleAssigned/Retracted`
+  (with the `restrictedTo` slot v0.8 will fill), `RolesSynced`/`PermissionsSynced`
+  carrying a full `SyncResult` diff (attached/detached/kept), and catalog lifecycle
+  events (`RoleCreated/Deleted`, `PermissionCreated/Deleted`) fired at the model layer
+  so every creation path counts. Post-action events always fire after cache
+  invalidation. Disable with `bouncer.events_enabled`.
+- **Cancellable pre-action events** (opt-in via `bouncer.cancellable_events`):
+  `GrantingPermission`, `ForbiddingPermission`, `AssigningRole` — a listener returning
+  `false` aborts the write. `sync()` is declarative and exempt by design.
+- **Typed exceptions**: `UnauthorizedException` (extends `AuthorizationException`;
+  `getRequiredPermissions()`/`getRequiredRoles()`, translatable en/es messages, naming
+  the missing permission/role stays opt-in behind the anti-leak flags),
+  `RoleDoesNotExist` and `PermissionDoesNotExist` (both `ModelNotFoundException`),
+  and `ConfigurationException` for fail-fast misconfiguration.
+- `Bouncer::findRole()` / `Bouncer::findPermission()`: strict, tenant-aware finders.
+- **`BackedEnum` accepted in every public signature** that takes a permission or role
+  name: grants, forbids, revokes, assignments, syncs, role checks, query scopes,
+  `can()`/`canAny()`/`authorize()` and the finders.
+
+### Changed
+- `Bouncer::authorize()` now throws `UnauthorizedException` (policy denial messages
+  are preserved; existing `AuthorizationException` catch blocks keep working).
+- Revoking from a role name that does not exist now throws `RoleDoesNotExist`
+  (previously a generic `ModelNotFoundException` — subclass, still catchable).
+
 ## v0.6.0 — Cache v2 + Octane (2026-08-17)
 
 ### Breaking
