@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Database;
 
+use ElPandaPe\Bouncer\Database\Concerns\BelongsToTenant;
 use ElPandaPe\Bouncer\Database\Concerns\ResolvesContext;
 use ElPandaPe\Bouncer\Support\Config;
 use Illuminate\Database\Eloquent\Relations\MorphPivot;
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\MorphPivot;
  */
 class Grant extends MorphPivot
 {
+    use BelongsToTenant;
     use ResolvesContext;
 
     public $incrementing = true;

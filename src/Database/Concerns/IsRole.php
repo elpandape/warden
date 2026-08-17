@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 
 trait IsRole
 {
+    use BelongsToTenant;
     use HasPermissions;
     use ResolvesContext;
 

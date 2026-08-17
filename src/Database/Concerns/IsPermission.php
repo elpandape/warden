@@ -13,23 +13,26 @@ use Illuminate\Database\Eloquent\Relations\MorphToMany;
 
 trait IsPermission
 {
+    use AppliesPivotTenancy;
+    use BelongsToTenant;
     use ResolvesContext;
 
     /**
-     * @return MorphToMany<Model, $this, Grant>
+     * @return MorphToMany<\ElPandaPe\Bouncer\Database\Role, $this, Grant>
      */
     public function roles(): MorphToMany
     {
         $context = Context::resolve();
 
-        $role = $context->modelClass('role');
-        /** @var class-string<Grant> $grant */
-        $grant = $context->modelClass('grant');
+        $role = $context->roleClass();
+        $grant = $context->grantClass();
 
         $relation = $this
             ->morphedByMany($role, 'entity', $context->table('grants'), 'permission_id')
             ->using($grant)
             ->withPivot(['forbidden', 'scope']);
+
+        $relation = $this->applyPivotTenancy($relation, $context->table('grants'));
 
         return Config::pivotTimestamps() ? $relation->withTimestamps() : $relation;
     }
