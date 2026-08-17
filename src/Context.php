@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElPandaPe\Bouncer;
 
 use Closure;
+use ElPandaPe\Bouncer\Exceptions\ConfigurationException;
 use ElPandaPe\Bouncer\Models\AssignedRole;
 use ElPandaPe\Bouncer\Models\Grant;
 use ElPandaPe\Bouncer\Models\Permission;
@@ -12,7 +13,6 @@ use ElPandaPe\Bouncer\Models\Role;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphPivot;
 use Illuminate\Database\Eloquent\Relations\Relation;
-use InvalidArgumentException;
 
 final class Context
 {
@@ -103,7 +103,7 @@ final class Context
         }
 
         if (! is_string($modelOrAttribute)) {
-            throw new InvalidArgumentException('Per-model ownership requires the entity class as a string.');
+            throw new ConfigurationException('Per-model ownership requires the entity class as a string.');
         }
 
         $this->ownershipMap[$modelOrAttribute] = $attribute;
@@ -150,7 +150,7 @@ final class Context
 
         if ($override !== null) {
             if (! is_subclass_of($override, Model::class)) {
-                throw new InvalidArgumentException(
+                throw new ConfigurationException(
                     "Configured bouncer model [{$key}] must be an Eloquent model class, [{$override}] given.",
                 );
             }
@@ -165,7 +165,7 @@ final class Context
         }
 
         return self::DEFAULT_MODELS[$key]
-            ?? throw new InvalidArgumentException("Unknown bouncer model key [{$key}].");
+            ?? throw new ConfigurationException("Unknown bouncer model key [{$key}].");
     }
 
     /**
@@ -229,7 +229,7 @@ final class Context
             return $model;
         }
 
-        throw new InvalidArgumentException(
+        throw new ConfigurationException(
             'Unable to resolve the user model from the default auth guard; set bouncer.models.user explicitly.',
         );
     }
@@ -251,7 +251,7 @@ final class Context
         };
 
         if (! $satisfied) {
-            throw new InvalidArgumentException(
+            throw new ConfigurationException(
                 "Configured bouncer model [{$key}] ([{$override}]) does not satisfy the {$key} contract.",
             );
         }
