@@ -7,6 +7,8 @@ namespace ElPandaPe\Bouncer\Actions;
 use ElPandaPe\Bouncer\Actions\Concerns\ResolvesAuthority;
 use ElPandaPe\Bouncer\Actions\Concerns\ResolvesPermissions;
 use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Bouncer\Database\Tenancy\Tenancy;
+use ElPandaPe\Bouncer\Database\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 
 class GrantsPermissions
@@ -61,18 +63,26 @@ class GrantsPermissions
      */
     protected function grant(array $permissionKeys): void
     {
-        $grantClass = Context::resolve()->grantClass();
+        $context = Context::resolve();
+        $grantClass = $context->grantClass();
         $authority = $this->authority === null
             ? null
             : $this->resolveAuthority($this->authority, createRole: true);
 
+        // Writes target one exact scope; role grants may stay global by configuration.
+        // The unscoped lookup keeps a same-named row in another scope from absorbing it.
+        $scope = app(Tenancy::class)->writeScope(
+            forRoleGrant: $authority instanceof ($context->roleClass()),
+        );
+
         foreach ($permissionKeys as $key) {
             // firstOrCreate self-heals concurrent races via createOrFirst on Laravel 12+.
-            $grantClass::query()->firstOrCreate([
+            $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
                 'permission_id' => $key,
                 'entity_type' => $authority?->getMorphClass(),
                 'entity_id' => $authority?->getKey(),
                 'forbidden' => $this->forbidding,
+                'scope' => $scope,
             ]);
         }
     }

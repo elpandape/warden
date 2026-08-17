@@ -10,6 +10,7 @@ use InvalidArgumentException;
 
 trait ResolvesPermissions
 {
+    use ConstrainsCatalogLookups;
     use ValidatesModels;
 
     /**
@@ -37,7 +38,9 @@ trait ResolvesPermissions
                 'only_owned' => $onlyOwned,
             ];
 
-            $keys[] = $this->modelKey($model::query()->firstOrCreate($attributes));
+            $keys[] = $this->modelKey(
+                $this->constrainCatalogLookup($model::query())->firstOrCreate($attributes),
+            );
         }
 
         return $keys;

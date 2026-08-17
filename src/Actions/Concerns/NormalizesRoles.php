@@ -10,6 +10,7 @@ use InvalidArgumentException;
 
 trait NormalizesRoles
 {
+    use ConstrainsCatalogLookups;
     use ValidatesModels;
 
     /**
@@ -46,7 +47,7 @@ trait NormalizesRoles
         foreach ($roles as $role) {
             $models[] = $role instanceof Model
                 ? $this->assertModelOf($role, $roleClass, 'role')
-                : $roleClass::query()->firstOrCreate(['name' => $role]);
+                : $this->constrainCatalogLookup($roleClass::query())->firstOrCreate(['name' => $role]);
         }
 
         return $models;

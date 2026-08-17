@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 
 trait ResolvesAuthority
 {
+    use ConstrainsCatalogLookups;
+
     /**
      * A string authority names a role: grant-side calls create it on the fly.
      */
@@ -21,7 +23,7 @@ trait ResolvesAuthority
         $role = Context::resolve()->roleClass();
 
         return $createRole
-            ? $role::query()->firstOrCreate(['name' => $authority])
+            ? $this->constrainCatalogLookup($role::query())->firstOrCreate(['name' => $authority])
             : $role::query()->where('name', $authority)->firstOrFail();
     }
 }

@@ -6,6 +6,8 @@ namespace ElPandaPe\Bouncer\Actions;
 
 use ElPandaPe\Bouncer\Actions\Concerns\NormalizesRoles;
 use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Bouncer\Database\Tenancy\Tenancy;
+use ElPandaPe\Bouncer\Database\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 
 class AssignsRoles
@@ -31,14 +33,18 @@ class AssignsRoles
         $assignedRole = Context::resolve()->assignedRoleClass();
         $targets = $this->normalizeAuthorities($authorities);
 
+        // Assignments live in the exact current scope: lookup and creation agree.
+        $scope = app(Tenancy::class)->writeScope();
+
         foreach ($this->resolveRoleModels($this->roles) as $role) {
             $roleKey = $this->modelKey($role);
 
             foreach ($targets as $authority) {
-                $assignedRole::query()->firstOrCreate([
+                $assignedRole::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
                     'role_id' => $roleKey,
                     'entity_type' => $authority->getMorphClass(),
                     'entity_id' => $authority->getKey(),
+                    'scope' => $scope,
                 ]);
             }
         }

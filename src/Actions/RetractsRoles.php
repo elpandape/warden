@@ -6,6 +6,8 @@ namespace ElPandaPe\Bouncer\Actions;
 
 use ElPandaPe\Bouncer\Actions\Concerns\NormalizesRoles;
 use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Bouncer\Database\Tenancy\Tenancy;
+use ElPandaPe\Bouncer\Database\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 
 class RetractsRoles
@@ -49,11 +51,16 @@ class RetractsRoles
             }
         }
 
+        // Deletes target the exact write scope: global assignments survive tenant retracts.
+        $scope = app(Tenancy::class)->writeScope();
+
         foreach ($this->normalizeAuthorities($authorities) as $authority) {
             $assignedRole::query()
+                ->withoutGlobalScope(TenantScope::class)
                 ->whereIn('role_id', $keys)
                 ->where('entity_type', $authority->getMorphClass())
                 ->where('entity_id', $authority->getKey())
+                ->where('scope', $scope)
                 ->delete();
         }
 

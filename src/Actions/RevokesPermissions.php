@@ -7,6 +7,8 @@ namespace ElPandaPe\Bouncer\Actions;
 use ElPandaPe\Bouncer\Actions\Concerns\ResolvesAuthority;
 use ElPandaPe\Bouncer\Actions\Concerns\ResolvesPermissions;
 use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Bouncer\Database\Tenancy\Tenancy;
+use ElPandaPe\Bouncer\Database\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 
 class RevokesPermissions
@@ -59,6 +61,8 @@ class RevokesPermissions
      */
     private function revoke(string|array|Model $permissions, Model|string|null $entity, bool $onlyOwned): static
     {
+        $context = Context::resolve();
+
         // Resolve first: revoking from a role that does not exist must fail fast.
         $authority = $this->authority === null
             ? null
@@ -70,11 +74,18 @@ class RevokesPermissions
             return $this;
         }
 
-        Context::resolve()->grantClass()::query()
+        // Deletes target the exact write scope: global rows survive tenant-scoped revokes.
+        $scope = app(Tenancy::class)->writeScope(
+            forRoleGrant: $authority instanceof ($context->roleClass()),
+        );
+
+        $context->grantClass()::query()
+            ->withoutGlobalScope(TenantScope::class)
             ->whereIn('permission_id', $keys)
             ->where('forbidden', $this->forbidden)
             ->where('entity_type', $authority?->getMorphClass())
             ->where('entity_id', $authority?->getKey())
+            ->where('scope', $scope)
             ->delete();
 
         return $this;

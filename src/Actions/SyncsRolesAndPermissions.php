@@ -8,6 +8,8 @@ use ElPandaPe\Bouncer\Actions\Concerns\NormalizesRoles;
 use ElPandaPe\Bouncer\Actions\Concerns\ResolvesAuthority;
 use ElPandaPe\Bouncer\Actions\Concerns\ResolvesPermissions;
 use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Bouncer\Database\Tenancy\Tenancy;
+use ElPandaPe\Bouncer\Database\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 
 class SyncsRolesAndPermissions
@@ -29,9 +31,12 @@ class SyncsRolesAndPermissions
         $models = $this->resolveRoleModels($this->normalizeRoles($roles));
         $keys = array_map($this->modelKey(...), $models);
 
+        // Sync is per-scope: rows in other tenants and global rows stay untouched.
         $assignedRole::query()
+            ->withoutGlobalScope(TenantScope::class)
             ->where('entity_type', $authority->getMorphClass())
             ->where('entity_id', $authority->getKey())
+            ->where('scope', app(Tenancy::class)->writeScope())
             ->whereNotIn('role_id', $keys)
             ->delete();
 
@@ -71,19 +76,27 @@ class SyncsRolesAndPermissions
             ? []
             : $this->findOrCreatePermissions($permissions, entity: null);
 
+        // Sync is per-scope; role grants may stay global by configuration.
+        $scope = app(Tenancy::class)->writeScope(
+            forRoleGrant: $authority instanceof ($context->roleClass()),
+        );
+
         $grantClass::query()
+            ->withoutGlobalScope(TenantScope::class)
             ->where('entity_type', $authority->getMorphClass())
             ->where('entity_id', $authority->getKey())
             ->where('forbidden', $forbidden)
+            ->where('scope', $scope)
             ->whereNotIn('permission_id', $keys)
             ->delete();
 
         foreach ($keys as $key) {
-            $grantClass::query()->firstOrCreate([
+            $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
                 'permission_id' => $key,
                 'entity_type' => $authority->getMorphClass(),
                 'entity_id' => $authority->getKey(),
                 'forbidden' => $forbidden,
+                'scope' => $scope,
             ]);
         }
 
