@@ -13,4 +13,13 @@ abstract class TestCase extends Orchestra
     {
         return [BouncerServiceProvider::class];
     }
+
+    protected function defineEnvironment($app): void
+    {
+        $app['config']->set('cache.default', 'array');
+
+        // The default pass runs the database engine; BOUNCER_TEST_RESOLVER=cached
+        // re-runs the whole suite through the cached resolver (parity matrix).
+        $app['config']->set('bouncer.cache.enabled', getenv('BOUNCER_TEST_RESOLVER') === 'cached');
+    }
 }
