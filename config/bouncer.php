@@ -58,6 +58,8 @@ return [
         // 'all': rows without an active scope see every tenant. 'strict': only NULL-scoped rows.
         'null_behavior' => 'all',
         'column_type' => 'integer',
+        // A class implementing Contracts\TenantResolver to detect the active tenant.
+        'tenant_resolver' => null,
     ],
 
     'cache' => [
