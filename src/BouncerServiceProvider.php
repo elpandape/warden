@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer;
 
+use ElPandaPe\Bouncer\Support\Config;
+use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +25,14 @@ final class BouncerServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(Bouncer::class);
+
+        $this->app->singleton(Contracts\Resolver::class, fn (Application $app): Contracts\Resolver => new Resolvers\DatabaseResolver($app->make(Context::class)));
+
+        // Lazy: the gate wiring only happens when the app actually authorizes something.
+        // The register toggle is evaluated per check inside the callbacks.
+        $this->callAfterResolving(GateContract::class, function (GateContract $gate, Application $app): void {
+            new GateRegistrar($app->make(Contracts\Resolver::class))->registerAt($gate);
+        });
     }
 
     public function boot(): void
