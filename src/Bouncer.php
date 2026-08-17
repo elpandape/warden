@@ -107,6 +107,26 @@ final class Bouncer
         return $this->gate()->authorize($permission, $this->arguments($entity));
     }
 
+    public function ownedVia(string|\Closure $modelOrAttribute, string|\Closure|null $attribute = null): static
+    {
+        Context::resolve()->ownedVia($modelOrAttribute, $attribute);
+
+        return $this;
+    }
+
+    public function tenant(): Database\Tenancy\Tenancy
+    {
+        return app(Database\Tenancy\Tenancy::class);
+    }
+
+    /**
+     * Alias kept for familiarity with the original package.
+     */
+    public function scope(): Database\Tenancy\Tenancy
+    {
+        return $this->tenant();
+    }
+
     /**
      * @param  array<string, mixed>  $attributes
      */
