@@ -4,16 +4,22 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Actions;
 
+use BackedEnum;
 use ElPandaPe\Bouncer\Actions\Concerns\ResolvesAuthority;
 use ElPandaPe\Bouncer\Actions\Concerns\ResolvesPermissions;
 use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Bouncer\Events\Concerns\DispatchesEvents;
+use ElPandaPe\Bouncer\Events\PermissionRevoked;
+use ElPandaPe\Bouncer\Events\PermissionUnforbidden;
 use ElPandaPe\Bouncer\Tenancy\Tenancy;
 use ElPandaPe\Bouncer\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 
 class RevokesPermissions
 {
     use Concerns\BumpsCacheVersion;
+    use DispatchesEvents;
     use ResolvesAuthority;
     use ResolvesPermissions;
 
@@ -22,9 +28,9 @@ class RevokesPermissions
     public function __construct(private readonly Model|string|null $authority) {}
 
     /**
-     * @param  string|array<int, mixed>|Model  $permissions
+     * @param  string|array<int, mixed>|Model|BackedEnum  $permissions
      */
-    public function to(string|array|Model $permissions, Model|string|null $entity = null): static
+    public function to(string|array|Model|BackedEnum $permissions, Model|string|null $entity = null): static
     {
         return $this->revoke($permissions, $entity, onlyOwned: false);
     }
@@ -32,17 +38,17 @@ class RevokesPermissions
     /**
      * Revoke ownership-scoped grants only — plain grants stay untouched.
      *
-     * @param  string|array<int, mixed>  $permissions
+     * @param  string|array<int, mixed>|BackedEnum  $permissions
      */
-    public function toOwn(Model|string $entity, string|array $permissions = '*'): static
+    public function toOwn(Model|string $entity, string|array|BackedEnum $permissions = '*'): static
     {
         return $this->revoke($permissions, $entity, onlyOwned: true);
     }
 
     /**
-     * @param  string|array<int, mixed>  $permissions
+     * @param  string|array<int, mixed>|BackedEnum  $permissions
      */
-    public function toOwnEverything(string|array $permissions = '*'): static
+    public function toOwnEverything(string|array|BackedEnum $permissions = '*'): static
     {
         return $this->toOwn('*', $permissions);
     }
@@ -58,9 +64,9 @@ class RevokesPermissions
     }
 
     /**
-     * @param  string|array<int, mixed>|Model  $permissions
+     * @param  string|array<int, mixed>|Model|BackedEnum  $permissions
      */
-    private function revoke(string|array|Model $permissions, Model|string|null $entity, bool $onlyOwned): static
+    private function revoke(string|array|Model|BackedEnum $permissions, Model|string|null $entity, bool $onlyOwned): static
     {
         $context = Context::resolve();
 
@@ -69,9 +75,9 @@ class RevokesPermissions
             ? null
             : $this->resolveAuthority($this->authority, createRole: false);
 
-        $keys = $this->findPermissions($permissions, $entity, $onlyOwned);
+        $permissionModels = $this->findPermissions($permissions, $entity, $onlyOwned);
 
-        if ($keys === []) {
+        if ($permissionModels === []) {
             return $this;
         }
 
@@ -82,7 +88,7 @@ class RevokesPermissions
 
         $deleted = $context->grantClass()::query()
             ->withoutGlobalScope(TenantScope::class)
-            ->whereIn('permission_id', $keys)
+            ->whereIn('permission_id', array_map($this->modelKey(...), $permissionModels))
             ->where('forbidden', $this->forbidden)
             ->where('entity_type', $authority?->getMorphClass())
             ->where('entity_id', $authority?->getKey())
@@ -91,6 +97,10 @@ class RevokesPermissions
 
         if ($deleted) {
             $this->bumpCacheVersion($scope);
+
+            $this->dispatchBouncerEvent($this->forbidden
+                ? new PermissionUnforbidden($authority, new Collection($permissionModels), $scope)
+                : new PermissionRevoked($authority, new Collection($permissionModels), $scope));
         }
 
         return $this;

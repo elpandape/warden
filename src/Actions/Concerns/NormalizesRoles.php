@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Actions\Concerns;
 
+use BackedEnum;
 use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Bouncer\Support\Name;
 use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
 
@@ -14,15 +16,19 @@ trait NormalizesRoles
     use ValidatesModels;
 
     /**
-     * @param  string|array<int, mixed>|Model  $roles
+     * @param  string|array<int, mixed>|Model|BackedEnum  $roles
      * @return list<string|Model>
      */
-    private function normalizeRoles(string|array|Model $roles): array
+    private function normalizeRoles(string|array|Model|BackedEnum $roles): array
     {
         $items = is_array($roles) ? array_values($roles) : [$roles];
         $normalized = [];
 
         foreach ($items as $item) {
+            if ($item instanceof BackedEnum) {
+                $item = Name::of($item);
+            }
+
             if (! is_string($item) && ! $item instanceof Model) {
                 throw new InvalidArgumentException('Roles must be names or role models.');
             }

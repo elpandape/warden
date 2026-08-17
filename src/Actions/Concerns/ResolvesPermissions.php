@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Actions\Concerns;
 
+use BackedEnum;
 use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Bouncer\Support\Name;
 use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
 
@@ -14,20 +16,20 @@ trait ResolvesPermissions
     use ValidatesModels;
 
     /**
-     * @param  string|array<int, mixed>|Model  $permissions
-     * @return list<int|string>
+     * @param  string|array<int, mixed>|Model|BackedEnum  $permissions
+     * @return list<Model>
      */
     protected function findOrCreatePermissions(
-        string|array|Model $permissions,
+        string|array|Model|BackedEnum $permissions,
         Model|string|null $entity,
         bool $onlyOwned = false,
     ): array {
-        $keys = [];
+        $found = [];
         $model = Context::resolve()->permissionClass();
 
         foreach ($this->normalizePermissions($permissions) as $permission) {
             if ($permission instanceof Model) {
-                $keys[] = $this->modelKey($this->assertModelOf($permission, $model, 'permission'));
+                $found[] = $this->assertModelOf($permission, $model, 'permission');
 
                 continue;
             }
@@ -38,30 +40,28 @@ trait ResolvesPermissions
                 'only_owned' => $onlyOwned,
             ];
 
-            $keys[] = $this->modelKey(
-                $this->constrainCatalogLookup($model::query())->firstOrCreate($attributes),
-            );
+            $found[] = $this->constrainCatalogLookup($model::query())->firstOrCreate($attributes);
         }
 
-        return $keys;
+        return $found;
     }
 
     /**
-     * @param  string|array<int, mixed>|Model  $permissions
-     * @return list<int|string>
+     * @param  string|array<int, mixed>|Model|BackedEnum  $permissions
+     * @return list<Model>
      */
     protected function findPermissions(
-        string|array|Model $permissions,
+        string|array|Model|BackedEnum $permissions,
         Model|string|null $entity,
         bool $onlyOwned = false,
     ): array {
-        $keys = [];
+        $found = [];
         $names = [];
         $model = Context::resolve()->permissionClass();
 
         foreach ($this->normalizePermissions($permissions) as $permission) {
             if ($permission instanceof Model) {
-                $keys[] = $this->modelKey($this->assertModelOf($permission, $model, 'permission'));
+                $found[] = $this->assertModelOf($permission, $model, 'permission');
 
                 continue;
             }
@@ -70,7 +70,7 @@ trait ResolvesPermissions
         }
 
         if ($names === []) {
-            return $keys;
+            return $found;
         }
 
         $query = $model::query()
@@ -82,23 +82,27 @@ trait ResolvesPermissions
         }
 
         // Resolve through Eloquent so global scopes on custom models keep applying.
-        foreach ($query->get() as $found) {
-            $keys[] = $this->modelKey($found);
+        foreach ($query->get() as $permission) {
+            $found[] = $permission;
         }
 
-        return $keys;
+        return $found;
     }
 
     /**
-     * @param  string|array<int, mixed>|Model  $permissions
+     * @param  string|array<int, mixed>|Model|BackedEnum  $permissions
      * @return list<string|Model>
      */
-    private function normalizePermissions(string|array|Model $permissions): array
+    private function normalizePermissions(string|array|Model|BackedEnum $permissions): array
     {
         $items = is_array($permissions) ? array_values($permissions) : [$permissions];
         $normalized = [];
 
         foreach ($items as $item) {
+            if ($item instanceof BackedEnum) {
+                $item = Name::of($item);
+            }
+
             if (! is_string($item) && ! $item instanceof Model) {
                 throw new InvalidArgumentException('Permissions must be names or permission models.');
             }

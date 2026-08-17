@@ -75,6 +75,9 @@ return [
 
     'events_enabled' => true,
 
+    // Opt-in: pre-action events where a listener returning false aborts the write.
+    'cancellable_events' => false,
+
     'titles' => [
         'autogenerate' => true,
     ],

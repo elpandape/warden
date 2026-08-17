@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace ElPandaPe\Bouncer\Models\Concerns;
 
 use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Bouncer\Events\PermissionCreated;
+use ElPandaPe\Bouncer\Events\PermissionDeleted;
 use ElPandaPe\Bouncer\Models\Grant;
 use ElPandaPe\Bouncer\Support\Config;
 use ElPandaPe\Bouncer\Support\Titles\PermissionTitle;
@@ -12,6 +14,7 @@ use ElPandaPe\Bouncer\Tenancy\AppliesPivotTenancy;
 use ElPandaPe\Bouncer\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Support\Facades\Event;
 
 trait IsPermission
 {
@@ -53,6 +56,19 @@ trait IsPermission
                     entityId: is_int($entityId) || is_string($entityId) ? $entityId : null,
                     onlyOwned: (bool) $permission->getAttribute('only_owned'),
                 ));
+            }
+        });
+
+        // Lifecycle events fire at the model layer: every creation path counts.
+        static::created(function (Model $permission): void {
+            if (Config::eventsEnabled()) {
+                Event::dispatch(new PermissionCreated($permission));
+            }
+        });
+
+        static::deleted(function (Model $permission): void {
+            if (Config::eventsEnabled()) {
+                Event::dispatch(new PermissionDeleted($permission));
             }
         });
     }

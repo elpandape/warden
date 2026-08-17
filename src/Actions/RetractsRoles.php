@@ -4,24 +4,29 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Actions;
 
+use BackedEnum;
 use ElPandaPe\Bouncer\Actions\Concerns\NormalizesRoles;
 use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Bouncer\Events\Concerns\DispatchesEvents;
+use ElPandaPe\Bouncer\Events\RoleRetracted;
 use ElPandaPe\Bouncer\Tenancy\Tenancy;
 use ElPandaPe\Bouncer\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 
 class RetractsRoles
 {
     use Concerns\BumpsCacheVersion;
+    use DispatchesEvents;
     use NormalizesRoles;
 
     /** @var list<string|Model> */
     private readonly array $roles;
 
     /**
-     * @param  string|array<int, mixed>|Model  $roles
+     * @param  string|array<int, mixed>|Model|BackedEnum  $roles
      */
-    public function __construct(string|array|Model $roles)
+    public function __construct(string|array|Model|BackedEnum $roles)
     {
         $this->roles = $this->normalizeRoles($roles);
     }
@@ -36,11 +41,12 @@ class RetractsRoles
         $assignedRole = $context->assignedRoleClass();
 
         $names = [];
-        $keys = [];
+        /** @var list<Model> $models */
+        $models = [];
 
         foreach ($this->roles as $role) {
             if ($role instanceof Model) {
-                $keys[] = $this->modelKey($this->assertModelOf($role, $roleClass, 'role'));
+                $models[] = $this->assertModelOf($role, $roleClass, 'role');
             } else {
                 $names[] = $role;
             }
@@ -48,9 +54,11 @@ class RetractsRoles
 
         if ($names !== []) {
             foreach ($roleClass::query()->whereIn('name', $names)->get() as $found) {
-                $keys[] = $this->modelKey($found);
+                $models[] = $found;
             }
         }
+
+        $keys = array_map($this->modelKey(...), $models);
 
         // Deletes target the exact write scope: global assignments survive tenant retracts.
         $scope = app(Tenancy::class)->writeScope();
@@ -66,6 +74,7 @@ class RetractsRoles
 
             if ($deleted > 0) {
                 $this->bumpCacheVersion($scope);
+                $this->dispatchBouncerEvent(new RoleRetracted($authority, new Collection($models), $scope));
             }
         }
 

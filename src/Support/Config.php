@@ -13,6 +13,11 @@ final class Config
         return (bool) config('bouncer.events_enabled', true);
     }
 
+    public static function cancellableEvents(): bool
+    {
+        return (bool) config('bouncer.cancellable_events', false);
+    }
+
     public static function gateRegisters(): bool
     {
         return (bool) config('bouncer.gate.register', true);

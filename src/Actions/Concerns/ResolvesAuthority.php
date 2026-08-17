@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElPandaPe\Bouncer\Actions\Concerns;
 
 use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Bouncer\Exceptions\RoleDoesNotExist;
 use Illuminate\Database\Eloquent\Model;
 
 trait ResolvesAuthority
@@ -22,8 +23,11 @@ trait ResolvesAuthority
 
         $role = Context::resolve()->roleClass();
 
-        return $createRole
-            ? $this->constrainCatalogLookup($role::query())->firstOrCreate(['name' => $authority])
-            : $role::query()->where('name', $authority)->firstOrFail();
+        if ($createRole) {
+            return $this->constrainCatalogLookup($role::query())->firstOrCreate(['name' => $authority]);
+        }
+
+        return $role::query()->where('name', $authority)->first()
+            ?? throw RoleDoesNotExist::named($authority);
     }
 }
