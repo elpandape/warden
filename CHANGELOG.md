@@ -3,6 +3,31 @@
 All notable changes to `elpandape/bouncer` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v0.5.0 — Ownership & multi-tenancy: full parity (2026-08-17)
+
+### Added
+- **Ownership resolution**: `toOwn()` grants authorize owned entities only, resolved by
+  attribute — configurable globally, per entity class, or via closure — with a
+  configurable strict-mode safety valve; ownership forbids now apply to owners only.
+- **Multi-tenancy**: instance-based `Tenancy` (`Bouncer::tenant()`, `scope()` alias) with
+  exception-safe `onceTo()/removeOnce()`, injectable `TenantResolver`, configurable
+  null-tenant semantics (`all`/`strict`), and the catalog/role-grant splits
+  (`onlyRelations()`, `dontScopeRoleGrants()`); scoping applies to catalog models,
+  pivot joins and the resolver's grant branches consistently.
+- **Exact-scope writes**: reads fall back to global rows, but every write targets one
+  exact scope — tenant-scoped revokes, retracts and syncs never destroy global rules,
+  and a global write is never absorbed by a same-named row inside some tenant.
+- Authority query scopes: `whereIs()`, `whereIsAll()`, `whereIsNot()` — tenant-aware
+  at query execution time.
+- `Tenancy` is a container-scoped binding: tenant state resets between Octane requests
+  and queue jobs (opt out via `bouncer.octane.register_reset_listener`).
+- The eager-loaded role fast path (`isA()`/`isAll()`) filters by pivot scope, so roles
+  loaded under one tenant never leak into another (fail-closed).
+
+### Milestone
+- Feature parity with silber/bouncer is complete — its whole niche (instance grants,
+  explicit forbids, ownership, tenancy) now runs without the original's defects.
+
 ## v0.4.0 — The check engine (2026-08-17)
 
 ### Added

@@ -6,16 +6,22 @@
 > Based on [Bouncer](https://github.com/JosephSilber/bouncer) by Joseph Silber — this package
 > is a modernized evolution of his original work (MIT).
 
-![Version](https://img.shields.io/badge/version-0.4.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
+![Version](https://img.shields.io/badge/version-0.5.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
 
-> **Status: alpha (v0.4.0).** The core check engine is live; ownership, tenancy, caching,
-> events and ABAC complete by v0.9.0. Do not use in production before v1.0.0.
+> **Status: alpha (v0.5.0) — full feature parity with the original Bouncer.**
+> Caching, events, ABAC, `whereCan()` and `explain()` complete by v0.9.0.
+> Do not use in production before v1.0.0.
 
-## What's available (v0.4.0)
+## What's available (v0.5.0)
 
 - **Checks through Laravel's Gate**: `can()`, `@can`, `authorize()` and policies work
   out of the box — explicit forbids beat any grant, and Bouncer never overrides your
   policies unless you configure it to run first.
+- **Ownership**: `toOwn(Post::class)` grants only what the user owns — resolved by
+  attribute (configurable globally, per class, or with a closure), strict-mode safe.
+- **Multi-tenancy**: `Bouncer::tenant()->to($id)` isolates the whole system per tenant,
+  with global (unscoped) rows visible everywhere, an injectable tenant resolver,
+  exception-safe `onceTo()`, and catalog/role-grant splits.
 - **The fluent write API**: `Bouncer::allow($user)->to(...)`, `forbid()`, `disallow()`,
   `unforbid()`, `assign()`, `retract()`, `sync()`, `is()` — immediate execution, no
   destructor magic, safe under concurrency.
@@ -28,8 +34,58 @@
   ids, and the published migration ships commented column variants to switch to string keys.
 - Schema v2 migration (frozen for 0.x), full config file, en/es translations, `Context`.
 
-Ownership, multi-tenancy, caching, events, ABAC, `whereCan()` and `explain()`
-complete by v0.9.0.
+Caching, events, ABAC, `whereCan()` and `explain()` complete by v0.9.0.
+
+## Ownership
+
+```php
+Bouncer::allow($user)->toOwn(Post::class);            // any action on owned posts
+Bouncer::allow($user)->toOwn(Post::class, ['edit']);  // only these actions
+Bouncer::allow($user)->toOwnEverything();
+
+Bouncer::ownedVia('author_id');                       // global attribute
+Bouncer::ownedVia(Post::class, 'writer_id');          // per class
+Bouncer::ownedVia(fn ($post, $user) => $post->team_id === $user->team_id);
+```
+
+✅ Do — let ownership carry the common case and forbid the exceptions:
+
+```php
+Bouncer::allow($user)->toOwn(Post::class);
+Bouncer::forbid($user)->toOwn(Post::class, 'delete'); // owners still can't delete
+```
+
+❌ Don't — don't reimplement ownership inside policies you'll have to keep in
+sync with your grants; `ownedVia()` is declared once and works everywhere.
+
+## Multi-tenancy
+
+```php
+Bouncer::tenant()->to($tenantId);       // everything now scoped to this tenant
+Bouncer::tenant()->onceTo(9, fn () => ...); // temporary, exception-safe
+Bouncer::tenant()->onlyRelations();     // keep the permission catalog global
+Bouncer::tenant()->dontScopeRoleGrants();
+```
+
+Rows written without an active tenant are global: visible from every tenant. What a
+check sees with **no** active tenant is configurable (`bouncer.scope.null_behavior`:
+`'all'` sees everything, `'strict'` sees only global rows) — the semantic ambiguity
+that plagued the original is now an explicit choice. Wire a
+`Contracts\TenantResolver` in config to detect the tenant from session/JWT automatically.
+
+**Writes always target one exact scope.** Reads fall back to global rows, but a write
+under tenant 5 creates, matches, or deletes tenant-5 rows only — a tenant-scoped
+`disallow()`, `unforbid()`, `retract()` or `sync()` never destroys a global rule, and a
+global write never gets absorbed by a same-named row inside some tenant.
+
+✅ Do — remove a global forbid where it lives: outside any tenant:
+
+```php
+Bouncer::tenant()->removeOnce(fn () => Bouncer::unforbid($user)->to('publish'));
+```
+
+❌ Don't — don't expect `Bouncer::unforbid($user)->to('publish')` under a tenant to
+lift a **global** forbid; global rules are only writable globally, by design.
 
 ## Checking permissions
 
