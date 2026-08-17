@@ -8,8 +8,8 @@
 
 ![Version](https://img.shields.io/badge/version-0.1.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.3-777bb3) ![Laravel](https://img.shields.io/badge/laravel-11%20%7C%2012%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
 
-> **Status: alpha (v0.1.0).** The public API lands incrementally — see the
-> [release plan](docs/01-plan-de-versiones.md). Do not use in production before v1.0.0.
+> **Status: alpha (v0.1.0).** The public API lands incrementally between v0.3.0 and
+> v0.9.0 — each tagged release documents what shipped. Do not use in production before v1.0.0.
 
 ## What's available (v0.1.0)
 

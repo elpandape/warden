@@ -3,3 +3,6 @@
 composer.lock
 .phpunit.result.cache
 .claude/
+/docs/
+/AGENTS.md
+/CLAUDE.md
