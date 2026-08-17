@@ -25,9 +25,15 @@ function migrateBouncerTables(): Migration
     $migration->up();
 
     foreach (['users', 'accounts'] as $table) {
-        Schema::create($table, function (Blueprint $blueprint): void {
+        Schema::create($table, function (Blueprint $blueprint) use ($table): void {
             $blueprint->id();
             $blueprint->string('name')->nullable();
+
+            if ($table === 'accounts') {
+                $blueprint->unsignedBigInteger('user_id')->nullable();
+                $blueprint->unsignedBigInteger('owner_id')->nullable();
+            }
+
             $blueprint->timestamps();
         });
     }

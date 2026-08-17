@@ -85,15 +85,16 @@ it('abstains on extra arguments even when running before policies', function ():
     expect(Gate::forUser($this->user)->allows('transfer', [$account, 500]))->toBeFalse();
 });
 
-it('fails closed on ownership forbids even before ownership resolution', function (): void {
-    $account = Account::query()->create(['name' => 'Acme']);
+it('applies ownership forbids to owners only', function (): void {
+    $owned = Account::query()->create(['name' => 'Mine', 'user_id' => $this->user->getKey()]);
+    $foreign = Account::query()->create(['name' => 'Other']);
 
     $this->bouncer->allow('editor')->to('edit', Account::class);
     $this->bouncer->assign('editor')->to($this->user);
     $this->bouncer->forbid($this->user)->toOwn(Account::class, 'edit');
 
-    // The ownership forbid must deny, never be silently invisible.
-    expect(Gate::forUser($this->user)->allows('edit', $account))->toBeFalse();
+    expect(Gate::forUser($this->user)->allows('edit', $owned))->toBeFalse()
+        ->and(Gate::forUser($this->user)->allows('edit', $foreign))->toBeTrue();
 });
 
 it('denies with a translated message', function (): void {
