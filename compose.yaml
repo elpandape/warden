@@ -1,0 +1,32 @@
+services:
+  php:
+    build:
+      context: docker
+      args:
+        PHP_VERSION: "8.3"
+    volumes:
+      - .:/app
+    environment:
+      COMPOSER_CACHE_DIR: /app/.cache/composer
+
+  mysql:
+    image: mysql:9
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: bouncer
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-psecret"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: bouncer
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
