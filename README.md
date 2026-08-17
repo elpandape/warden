@@ -6,13 +6,16 @@
 > Based on [Bouncer](https://github.com/JosephSilber/bouncer) by Joseph Silber — this package
 > is a modernized evolution of his original work (MIT).
 
-![Version](https://img.shields.io/badge/version-0.3.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
+![Version](https://img.shields.io/badge/version-0.4.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
 
-> **Status: alpha (v0.3.0).** Checks land in v0.4.0; the full API completes by v0.9.0 —
-> each tagged release documents what shipped. Do not use in production before v1.0.0.
+> **Status: alpha (v0.4.0).** The core check engine is live; ownership, tenancy, caching,
+> events and ABAC complete by v0.9.0. Do not use in production before v1.0.0.
 
-## What's available (v0.3.0)
+## What's available (v0.4.0)
 
+- **Checks through Laravel's Gate**: `can()`, `@can`, `authorize()` and policies work
+  out of the box — explicit forbids beat any grant, and Bouncer never overrides your
+  policies unless you configure it to run first.
 - **The fluent write API**: `Bouncer::allow($user)->to(...)`, `forbid()`, `disallow()`,
   `unforbid()`, `assign()`, `retract()`, `sync()`, `is()` — immediate execution, no
   destructor magic, safe under concurrency.
@@ -25,8 +28,40 @@
   ids, and the published migration ships commented column variants to switch to string keys.
 - Schema v2 migration (frozen for 0.x), full config file, en/es translations, `Context`.
 
-Checks through the Gate (`can()`, `@can`, policies) ship in v0.4.0; ownership,
-multi-tenancy, caching, events, ABAC, `whereCan()` and `explain()` complete by v0.9.0.
+Ownership, multi-tenancy, caching, events, ABAC, `whereCan()` and `explain()`
+complete by v0.9.0.
+
+## Checking permissions
+
+Nothing to learn: it is Laravel's Gate.
+
+```php
+$user->can('edit-site');            // simple permission
+$user->can('edit', $post);          // one instance
+$user->can('edit', Post::class);    // the whole class
+Gate::authorize('edit', $post);     // throws on deny
+@can('edit', $post) ... @endcan     // Blade, as always
+```
+
+How grants match checks:
+
+| Grant ↓ / Check → | `can('edit')` | `can('edit', Post::class)` | `can('edit', $post)` |
+|---|---|---|---|
+| `to('edit')` | ✅ | — | — |
+| `to('edit', Post::class)` | — | ✅ | ✅ |
+| `to('edit', $post)` | — | — | ✅ that one |
+| `to('edit', '*')` | — | ✅ | ✅ |
+| `to('*')` | ✅ | — | — |
+| `toManage(Post::class)` | — | ✅ | ✅ |
+| `everything()` | ✅ | ✅ | ✅ |
+
+Rules worth knowing: an explicit `forbid()` beats every **Bouncer** grant; by default
+Bouncer answers **after** your policies and Gate definitions, so those always win over
+both grants and forbids (set `bouncer.gate.run_before_policies` to flip it, making
+forbids veto everything). `Gate::after` fallbacks registered after Bouncer are consulted
+only when Bouncer abstains. Checks with more than one argument are left entirely to your
+policies; guests and non-model arguments are never answered. Denials carry a translatable
+message (`bouncer::bouncer.unauthorized`, shipped in English and Spanish).
 
 ## Granting & forbidding
 

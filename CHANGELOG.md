@@ -3,6 +3,21 @@
 All notable changes to `elpandape/bouncer` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v0.4.0 — The check engine (2026-08-17)
+
+### Added
+- `DatabaseResolver`: the read engine — two queries per check (forbidden first),
+  wildcard matching in three dimensions, role/direct/everyone grant branches, and
+  qualified column references throughout (no MySQL 9 breakage).
+- `GateRegistrar`: wires Bouncer into Laravel's Gate lazily, honoring the configured
+  before/after slot; explicit forbids cut the gate, everything else abstains politely
+  (guests, extra arguments, non-model strings).
+- `Bouncer::can()/cannot()/canAny()/authorize()` passthroughs for the authenticated user.
+- The `Resolver` contract, ready for the cached implementation coming in v0.6.0.
+
+### Notes
+- Ownership-scoped grants (`toOwn`) do not authorize yet — resolution lands in v0.5.0.
+
 ## v0.3.0 — Actions & the PHP 8.4 platform (2026-08-17)
 
 ### Breaking
