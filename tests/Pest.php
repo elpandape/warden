@@ -6,4 +6,4 @@ use ElPandaPe\Bouncer\Tests\TestCase;
 
 require_once __DIR__.'/Database/helpers.php';
 
-uses(TestCase::class)->in(__DIR__);
+pest()->extend(TestCase::class)->in(__DIR__);

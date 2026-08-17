@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Tests\Fixtures;
 
-use ElPandaPe\Bouncer\Database\Concerns\HasRolesAndPermissions;
 use Illuminate\Database\Eloquent\Model;
 
-class Account extends Model
+final class Plain extends Model
 {
-    use HasRolesAndPermissions;
+    protected $table = 'users';
 
     protected $fillable = ['name'];
 }
