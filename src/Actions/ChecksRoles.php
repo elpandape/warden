@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Actions;
 
+use BackedEnum;
 use ElPandaPe\Bouncer\Concerns\HasRolesAndPermissions;
+use ElPandaPe\Bouncer\Exceptions\ConfigurationException;
+use ElPandaPe\Bouncer\Support\Name;
 use Illuminate\Database\Eloquent\Model;
-use InvalidArgumentException;
 
 class ChecksRoles
 {
@@ -14,35 +16,35 @@ class ChecksRoles
     {
         // A same-named method on an unrelated model must not answer authorization checks.
         if (! in_array(HasRolesAndPermissions::class, class_uses_recursive($authority), true)) {
-            throw new InvalidArgumentException(
+            throw new ConfigurationException(
                 'The authority must use the HasRolesAndPermissions concern to check roles.',
             );
         }
     }
 
-    public function a(string ...$roles): bool
+    public function a(string|BackedEnum ...$roles): bool
     {
-        return $this->check('isA', array_values($roles));
+        return $this->check('isA', array_map(Name::of(...), array_values($roles)));
     }
 
-    public function an(string ...$roles): bool
+    public function an(string|BackedEnum ...$roles): bool
     {
         return $this->a(...$roles);
     }
 
-    public function notA(string ...$roles): bool
+    public function notA(string|BackedEnum ...$roles): bool
     {
         return ! $this->a(...$roles);
     }
 
-    public function notAn(string ...$roles): bool
+    public function notAn(string|BackedEnum ...$roles): bool
     {
         return $this->notA(...$roles);
     }
 
-    public function all(string ...$roles): bool
+    public function all(string|BackedEnum ...$roles): bool
     {
-        return $this->check('isAll', array_values($roles));
+        return $this->check('isAll', array_map(Name::of(...), array_values($roles)));
     }
 
     /**
@@ -53,12 +55,14 @@ class ChecksRoles
         if (! method_exists($this->authority, $method)) {
             // @codeCoverageIgnoreStart
             // Unreachable: the constructor already guarantees the concern.
-            throw new InvalidArgumentException(
+            throw new ConfigurationException(
                 'The authority must use the HasRolesAndPermissions concern to check roles.',
             );
             // @codeCoverageIgnoreEnd
         }
 
-        return (bool) $this->authority->{$method}(...$roles);
+        $result = $this->authority->{$method}(...$roles);
+
+        return is_bool($result) && $result;
     }
 }

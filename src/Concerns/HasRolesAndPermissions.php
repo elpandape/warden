@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Concerns;
 
+use BackedEnum;
 use ElPandaPe\Bouncer\Context;
 use ElPandaPe\Bouncer\Models\AssignedRole;
 use ElPandaPe\Bouncer\Support\Config;
+use ElPandaPe\Bouncer\Support\Name;
 use ElPandaPe\Bouncer\Tenancy\Tenancy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -37,33 +39,35 @@ trait HasRolesAndPermissions
         return Config::pivotTimestamps() ? $relation->withTimestamps() : $relation;
     }
 
-    public function isA(string ...$roles): bool
+    public function isA(string|BackedEnum ...$roles): bool
     {
+        $names = array_map(Name::of(...), array_values($roles));
+
         if ($this->relationLoaded('roles')) {
-            return $this->loadedRoleNames()->intersect(array_values($roles))->isNotEmpty();
+            return $this->loadedRoleNames()->intersect($names)->isNotEmpty();
         }
 
-        return $this->roles()->whereIn('name', $roles)->exists();
+        return $this->roles()->whereIn('name', $names)->exists();
     }
 
-    public function isAn(string ...$roles): bool
+    public function isAn(string|BackedEnum ...$roles): bool
     {
         return $this->isA(...$roles);
     }
 
-    public function isNotA(string ...$roles): bool
+    public function isNotA(string|BackedEnum ...$roles): bool
     {
         return ! $this->isA(...$roles);
     }
 
-    public function isNotAn(string ...$roles): bool
+    public function isNotAn(string|BackedEnum ...$roles): bool
     {
         return $this->isNotA(...$roles);
     }
 
-    public function isAll(string ...$roles): bool
+    public function isAll(string|BackedEnum ...$roles): bool
     {
-        $unique = array_values(array_unique($roles));
+        $unique = array_values(array_unique(array_map(Name::of(...), $roles)));
 
         if ($this->relationLoaded('roles')) {
             return $this->loadedRoleNames()->intersect($unique)->count() === count($unique);
@@ -76,9 +80,9 @@ trait HasRolesAndPermissions
      * @param  Builder<static>  $query
      * @return Builder<static>
      */
-    public function scopeWhereIs(Builder $query, string ...$roles): Builder
+    public function scopeWhereIs(Builder $query, string|BackedEnum ...$roles): Builder
     {
-        $names = array_values($roles);
+        $names = array_map(Name::of(...), array_values($roles));
         $column = self::qualifiedRoleName();
 
         return $query->whereHas(
@@ -91,11 +95,11 @@ trait HasRolesAndPermissions
      * @param  Builder<static>  $query
      * @return Builder<static>
      */
-    public function scopeWhereIsAll(Builder $query, string ...$roles): Builder
+    public function scopeWhereIsAll(Builder $query, string|BackedEnum ...$roles): Builder
     {
         $column = self::qualifiedRoleName();
 
-        foreach (array_unique($roles) as $name) {
+        foreach (array_unique(array_map(Name::of(...), $roles)) as $name) {
             $query->whereHas(
                 'roles',
                 fn (Builder $role): Builder => $role->where($column, $name),
@@ -109,9 +113,9 @@ trait HasRolesAndPermissions
      * @param  Builder<static>  $query
      * @return Builder<static>
      */
-    public function scopeWhereIsNot(Builder $query, string ...$roles): Builder
+    public function scopeWhereIsNot(Builder $query, string|BackedEnum ...$roles): Builder
     {
-        $names = array_values($roles);
+        $names = array_map(Name::of(...), array_values($roles));
         $column = self::qualifiedRoleName();
 
         return $query->whereDoesntHave(
