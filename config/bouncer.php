@@ -5,7 +5,7 @@ declare(strict_types=1);
 return [
 
     /*
-     * Model overrides. Null means the package default (shipping in v0.2.0).
+     * Model overrides. Null means the package default.
      */
     'models' => [
         'permission' => null,
@@ -15,6 +15,12 @@ return [
         // Null resolves the user model from the default auth guard.
         'user' => null,
     ],
+
+    /*
+     * Pivot timestamps are opt-in: uncomment the timestamp columns in the
+     * published migration before enabling this.
+     */
+    'pivot_timestamps' => false,
 
     'tables' => [
         'permissions' => 'permissions',

@@ -30,6 +30,11 @@ final class Config
         return (bool) config('bouncer.titles.autogenerate', true);
     }
 
+    public static function pivotTimestamps(): bool
+    {
+        return (bool) config('bouncer.pivot_timestamps', false);
+    }
+
     public static function scopeNullBehavior(): string
     {
         $value = config('bouncer.scope.null_behavior', 'all');
