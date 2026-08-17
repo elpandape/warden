@@ -6,6 +6,7 @@ namespace ElPandaPe\Bouncer;
 
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\ServiceProvider;
 
@@ -20,13 +21,17 @@ final class BouncerServiceProvider extends ServiceProvider
 
             return Context::fromConfig(is_array($config) ? $config : []);
         });
+
+        $this->app->singleton(Bouncer::class);
     }
 
     public function boot(): void
     {
         $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'bouncer');
 
-        // Wait until every provider booted so app-level config overrides land first.
+        // Register aliases now so writes during other providers' boot use them,
+        // and re-sync after boot so app-level config overrides land too.
+        $this->registerMorphAliases();
         $this->app->booted(function (): void {
             $this->registerMorphAliases();
         });
@@ -46,13 +51,24 @@ final class BouncerServiceProvider extends ServiceProvider
 
     private function registerMorphAliases(): void
     {
-        $context = $this->app->make(Context::class);
+        // Read config directly: resolving the Context here would freeze it too early.
+        $config = $this->app->make(Repository::class);
+        $aliases = $config->get('bouncer.morph_aliases');
+        $models = $config->get('bouncer.models');
 
-        foreach (['permission', 'role'] as $key) {
-            $alias = $context->morphAlias($key);
+        $defaults = [
+            'permission' => Database\Permission::class,
+            'role' => Database\Role::class,
+        ];
 
-            if ($alias !== null) {
-                Relation::morphMap([$alias => $context->modelClass($key)]);
+        foreach ($defaults as $key => $default) {
+            $alias = is_array($aliases) ? ($aliases[$key] ?? null) : null;
+            $model = is_array($models) ? ($models[$key] ?? null) : null;
+
+            if (is_string($alias)) {
+                Relation::morphMap([
+                    $alias => is_string($model) && is_subclass_of($model, Model::class) ? $model : $default,
+                ]);
             }
         }
     }
