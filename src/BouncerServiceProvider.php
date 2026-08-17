@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer;
 
+use ElPandaPe\Bouncer\Checks\GateRegistrar;
 use ElPandaPe\Bouncer\Support\Config;
 use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Illuminate\Contracts\Config\Repository;
@@ -26,26 +27,26 @@ final class BouncerServiceProvider extends ServiceProvider
 
         $this->app->singleton(Bouncer::class);
 
-        $tenancy = function (Application $app): Database\Tenancy\Tenancy {
+        $tenancy = function (Application $app): Tenancy\Tenancy {
             $resolver = $app->make(Repository::class)->get('bouncer.scope.tenant_resolver');
 
             $instance = is_string($resolver) && is_subclass_of($resolver, Contracts\TenantResolver::class)
                 ? $app->make($resolver)
                 : null;
 
-            return new Database\Tenancy\Tenancy(
+            return new Tenancy\Tenancy(
                 $instance instanceof Contracts\TenantResolver ? $instance : null,
             );
         };
 
         // Scoped: tenant state resets between Octane requests and queue jobs.
         if ((bool) $this->app->make(Repository::class)->get('bouncer.octane.register_reset_listener', true)) {
-            $this->app->scoped(Database\Tenancy\Tenancy::class, $tenancy);
+            $this->app->scoped(Tenancy\Tenancy::class, $tenancy);
         } else {
-            $this->app->singleton(Database\Tenancy\Tenancy::class, $tenancy);
+            $this->app->singleton(Tenancy\Tenancy::class, $tenancy);
         }
 
-        $this->app->singleton(Contracts\Resolver::class, fn (Application $app): Contracts\Resolver => new Resolvers\DatabaseResolver($app->make(Context::class)));
+        $this->app->singleton(Contracts\Resolver::class, fn (Application $app): Contracts\Resolver => new Checks\Resolvers\DatabaseResolver($app->make(Context::class)));
 
         // Lazy: the gate wiring only happens when the app actually authorizes something.
         // The register toggle is evaluated per check inside the callbacks.
@@ -86,8 +87,8 @@ final class BouncerServiceProvider extends ServiceProvider
         $models = $config->get('bouncer.models');
 
         $defaults = [
-            'permission' => Database\Permission::class,
-            'role' => Database\Role::class,
+            'permission' => Models\Permission::class,
+            'role' => Models\Role::class,
         ];
 
         foreach ($defaults as $key => $default) {

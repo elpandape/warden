@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Database\Tenancy;
+namespace ElPandaPe\Bouncer\Tenancy;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;

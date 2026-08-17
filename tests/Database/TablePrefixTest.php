@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Database\Role;
+use ElPandaPe\Bouncer\Models\Role;
 use ElPandaPe\Bouncer\Tests\Fixtures\User;
 use Illuminate\Support\Facades\Schema;
 

@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use ElPandaPe\Bouncer\Bouncer;
-use ElPandaPe\Bouncer\Database\Grant;
-use ElPandaPe\Bouncer\Database\Permission;
+use ElPandaPe\Bouncer\Models\Grant;
+use ElPandaPe\Bouncer\Models\Permission;
 use ElPandaPe\Bouncer\Tests\Fixtures\User;
 use Illuminate\Support\Facades\Gate;
 
@@ -117,7 +117,7 @@ it('keeps role grants global with dontScopeRoleGrants', function (): void {
 
 it('resolves the initial tenant from the configured resolver', function (): void {
     config()->set('bouncer.scope.tenant_resolver', ElPandaPe\Bouncer\Tests\Fixtures\FixedTenantResolver::class);
-    app()->forgetInstance(ElPandaPe\Bouncer\Database\Tenancy\Tenancy::class);
+    app()->forgetInstance(ElPandaPe\Bouncer\Tenancy\Tenancy::class);
 
     expect($this->bouncer->tenant()->current())->toBe(42)
         ->and($this->bouncer->scope())->toBe($this->bouncer->tenant());

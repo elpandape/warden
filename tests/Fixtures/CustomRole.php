@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Tests\Fixtures;
 
-use ElPandaPe\Bouncer\Database\Concerns\IsRole;
+use ElPandaPe\Bouncer\Models\Concerns\IsRole;
 use Illuminate\Database\Eloquent\Model;
 
 final class CustomRole extends Model

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 use ElPandaPe\Bouncer\Bouncer;
 use ElPandaPe\Bouncer\BouncerServiceProvider;
-use ElPandaPe\Bouncer\Database\AssignedRole;
-use ElPandaPe\Bouncer\Database\Grant;
-use ElPandaPe\Bouncer\Database\Tenancy\Tenancy;
+use ElPandaPe\Bouncer\Models\AssignedRole;
+use ElPandaPe\Bouncer\Models\Grant;
+use ElPandaPe\Bouncer\Tenancy\Tenancy;
 use ElPandaPe\Bouncer\Tests\Fixtures\User;
 use Illuminate\Support\Facades\Gate;
 

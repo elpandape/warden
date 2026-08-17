@@ -4,23 +4,23 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Database\Factories;
 
-use ElPandaPe\Bouncer\Database\Permission;
+use ElPandaPe\Bouncer\Models\Role;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
 /**
- * @extends Factory<Permission>
+ * @extends Factory<Role>
  */
-class PermissionFactory extends Factory
+class RoleFactory extends Factory
 {
     /**
-     * @return array<model-property<Permission>, mixed>
+     * @return array<model-property<Role>, mixed>
      */
     public function definition(): array
     {
-        /** @var array<model-property<Permission>, mixed> $definition */
+        /** @var array<model-property<Role>, mixed> $definition */
         $definition = [
-            'name' => 'permission-'.Str::lower(Str::random(8)),
+            'name' => 'role-'.Str::lower(Str::random(8)),
         ];
 
         return $definition;
@@ -28,6 +28,6 @@ class PermissionFactory extends Factory
 
     public function modelName(): string
     {
-        return Permission::class;
+        return Role::class;
     }
 }

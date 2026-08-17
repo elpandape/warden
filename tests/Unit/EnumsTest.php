@@ -64,9 +64,9 @@ describe('GateSlot', function (): void {
 
 describe('Verdict', function (): void {
     it('models the three outcomes', function (): void {
-        $granted = ElPandaPe\Bouncer\Verdict::granted(7);
-        $forbidden = ElPandaPe\Bouncer\Verdict::forbidden(3);
-        $abstained = ElPandaPe\Bouncer\Verdict::abstained();
+        $granted = ElPandaPe\Bouncer\Checks\Verdict::granted(7);
+        $forbidden = ElPandaPe\Bouncer\Checks\Verdict::forbidden(3);
+        $abstained = ElPandaPe\Bouncer\Checks\Verdict::abstained();
 
         expect($granted->isGranted())->toBeTrue()
             ->and($granted->permissionKey)->toBe(7)

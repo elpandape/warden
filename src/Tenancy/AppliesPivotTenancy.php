@@ -2,9 +2,8 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Database\Concerns;
+namespace ElPandaPe\Bouncer\Tenancy;
 
-use ElPandaPe\Bouncer\Database\Tenancy\Tenancy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Query\Expression;

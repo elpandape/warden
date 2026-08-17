@@ -43,7 +43,8 @@
     },
     "autoload": {
         "psr-4": {
-            "ElPandaPe\\Bouncer\\": "src/"
+            "ElPandaPe\\Bouncer\\": "src/",
+            "ElPandaPe\\Bouncer\\Database\\Factories\\": "database/factories/"
         }
     },
     "autoload-dev": {

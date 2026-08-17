@@ -114,15 +114,15 @@ final class Bouncer
         return $this;
     }
 
-    public function tenant(): Database\Tenancy\Tenancy
+    public function tenant(): Tenancy\Tenancy
     {
-        return app(Database\Tenancy\Tenancy::class);
+        return app(Tenancy\Tenancy::class);
     }
 
     /**
      * Alias kept for familiarity with the original package.
      */
-    public function scope(): Database\Tenancy\Tenancy
+    public function scope(): Tenancy\Tenancy
     {
         return $this->tenant();
     }

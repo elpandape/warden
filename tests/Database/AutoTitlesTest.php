@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Database\Permission;
-use ElPandaPe\Bouncer\Database\Role;
+use ElPandaPe\Bouncer\Models\Permission;
+use ElPandaPe\Bouncer\Models\Role;
 
 use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
 

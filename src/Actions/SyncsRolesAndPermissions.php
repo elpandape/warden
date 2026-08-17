@@ -8,8 +8,8 @@ use ElPandaPe\Bouncer\Actions\Concerns\NormalizesRoles;
 use ElPandaPe\Bouncer\Actions\Concerns\ResolvesAuthority;
 use ElPandaPe\Bouncer\Actions\Concerns\ResolvesPermissions;
 use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Database\Tenancy\Tenancy;
-use ElPandaPe\Bouncer\Database\Tenancy\TenantScope;
+use ElPandaPe\Bouncer\Tenancy\Tenancy;
+use ElPandaPe\Bouncer\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 
 class SyncsRolesAndPermissions

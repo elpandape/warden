@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Tests\Fixtures;
 
-use ElPandaPe\Bouncer\Database\Permission;
+use ElPandaPe\Bouncer\Models\Permission;
 
 final class KeylessPermission extends Permission
 {

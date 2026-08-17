@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Actions;
 
-use ElPandaPe\Bouncer\Database\Concerns\HasRolesAndPermissions;
+use ElPandaPe\Bouncer\Concerns\HasRolesAndPermissions;
 use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
 

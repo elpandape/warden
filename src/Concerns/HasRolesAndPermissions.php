@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Database\Concerns;
+namespace ElPandaPe\Bouncer\Concerns;
 
 use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Database\AssignedRole;
-use ElPandaPe\Bouncer\Database\Tenancy\Tenancy;
+use ElPandaPe\Bouncer\Models\AssignedRole;
 use ElPandaPe\Bouncer\Support\Config;
+use ElPandaPe\Bouncer\Tenancy\Tenancy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -18,7 +18,7 @@ trait HasRolesAndPermissions
     use HasPermissions;
 
     /**
-     * @return MorphToMany<\ElPandaPe\Bouncer\Database\Role, $this, AssignedRole>
+     * @return MorphToMany<\ElPandaPe\Bouncer\Models\Role, $this, AssignedRole>
      */
     public function roles(): MorphToMany
     {

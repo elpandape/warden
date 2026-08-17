@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Database;
+namespace ElPandaPe\Bouncer\Models;
 
-use ElPandaPe\Bouncer\Database\Concerns\IsPermission;
+use ElPandaPe\Bouncer\Database\Factories\PermissionFactory;
+use ElPandaPe\Bouncer\Models\Concerns\IsPermission;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -20,7 +21,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Permission extends Model
 {
-    /** @use HasFactory<\ElPandaPe\Bouncer\Database\Factories\PermissionFactory> */
+    /** @use HasFactory<PermissionFactory> */
     use HasFactory;
 
     use IsPermission;
@@ -35,8 +36,8 @@ class Permission extends Model
         'scope',
     ];
 
-    protected static function newFactory(): Factories\PermissionFactory
+    protected static function newFactory(): PermissionFactory
     {
-        return Factories\PermissionFactory::new();
+        return PermissionFactory::new();
     }
 }

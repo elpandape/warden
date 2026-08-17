@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Database\Concerns;
+namespace ElPandaPe\Bouncer\Models\Concerns;
 
 use ElPandaPe\Bouncer\Context;
 

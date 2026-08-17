@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Bouncer\Contracts;
 
-use ElPandaPe\Bouncer\Verdict;
+use ElPandaPe\Bouncer\Checks\Verdict;
 use Illuminate\Database\Eloquent\Model;
 
 interface Resolver

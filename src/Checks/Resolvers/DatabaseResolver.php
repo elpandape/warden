@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Resolvers;
+namespace ElPandaPe\Bouncer\Checks\Resolvers;
 
+use ElPandaPe\Bouncer\Checks\Verdict;
 use ElPandaPe\Bouncer\Context;
 use ElPandaPe\Bouncer\Contracts\Resolver;
-use ElPandaPe\Bouncer\Database\Permission;
-use ElPandaPe\Bouncer\Verdict;
+use ElPandaPe\Bouncer\Models\Permission;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -149,7 +149,7 @@ final readonly class DatabaseResolver implements Resolver
             ->toBase()
             ->select('role_id');
 
-        $filter = app(\ElPandaPe\Bouncer\Database\Tenancy\Tenancy::class)->readFilter();
+        $filter = app(\ElPandaPe\Bouncer\Tenancy\Tenancy::class)->readFilter();
 
         $builder->from($grants)
             ->whereColumn("{$grants}.permission_id", $permissionKey)

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer;
+namespace ElPandaPe\Bouncer\Checks;
 
 final readonly class Verdict
 {

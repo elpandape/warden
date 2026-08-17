@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Database\Concerns;
+namespace ElPandaPe\Bouncer\Models\Concerns;
 
-use ElPandaPe\Bouncer\Database\Titles\RoleTitle;
+use ElPandaPe\Bouncer\Concerns\HasPermissions;
 use ElPandaPe\Bouncer\Support\Config;
+use ElPandaPe\Bouncer\Support\Titles\RoleTitle;
+use ElPandaPe\Bouncer\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 
 trait IsRole

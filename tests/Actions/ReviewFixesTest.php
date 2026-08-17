@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 use ElPandaPe\Bouncer\Bouncer;
 use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Database\Grant;
-use ElPandaPe\Bouncer\Database\Permission;
-use ElPandaPe\Bouncer\Database\Role;
+use ElPandaPe\Bouncer\Models\Grant;
+use ElPandaPe\Bouncer\Models\Permission;
+use ElPandaPe\Bouncer\Models\Role;
 use ElPandaPe\Bouncer\Tests\Fixtures\Account;
 use ElPandaPe\Bouncer\Tests\Fixtures\KeylessAccount;
 use ElPandaPe\Bouncer\Tests\Fixtures\User;

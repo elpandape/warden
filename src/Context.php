@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace ElPandaPe\Bouncer;
 
 use Closure;
-use ElPandaPe\Bouncer\Database\AssignedRole;
-use ElPandaPe\Bouncer\Database\Grant;
-use ElPandaPe\Bouncer\Database\Permission;
-use ElPandaPe\Bouncer\Database\Role;
+use ElPandaPe\Bouncer\Models\AssignedRole;
+use ElPandaPe\Bouncer\Models\Grant;
+use ElPandaPe\Bouncer\Models\Permission;
+use ElPandaPe\Bouncer\Models\Role;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphPivot;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -243,9 +243,9 @@ final class Context
     {
         $satisfied = match ($key) {
             'permission' => is_subclass_of($override, Permission::class)
-                || in_array(Database\Concerns\IsPermission::class, class_uses_recursive($override), true),
+                || in_array(Models\Concerns\IsPermission::class, class_uses_recursive($override), true),
             'role' => is_subclass_of($override, Role::class)
-                || in_array(Database\Concerns\IsRole::class, class_uses_recursive($override), true),
+                || in_array(Models\Concerns\IsRole::class, class_uses_recursive($override), true),
             'grant', 'assigned_role' => is_subclass_of($override, MorphPivot::class),
             default => true,
         };

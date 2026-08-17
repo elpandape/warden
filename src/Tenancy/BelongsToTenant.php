@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Database\Concerns;
+namespace ElPandaPe\Bouncer\Tenancy;
 
-use ElPandaPe\Bouncer\Database\Tenancy\Tenancy;
-use ElPandaPe\Bouncer\Database\Tenancy\TenantScope;
+use ElPandaPe\Bouncer\Models\Concerns\IsPermission;
+use ElPandaPe\Bouncer\Models\Concerns\IsRole;
 use Illuminate\Database\Eloquent\Model;
 
 trait BelongsToTenant

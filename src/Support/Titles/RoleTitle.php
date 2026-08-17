@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Database\Titles;
+namespace ElPandaPe\Bouncer\Support\Titles;
 
 use Illuminate\Support\Str;
 

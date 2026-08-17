@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Database\Tenancy;
+namespace ElPandaPe\Bouncer\Tenancy;
 
 use Closure;
 use ElPandaPe\Bouncer\Contracts\TenantResolver;

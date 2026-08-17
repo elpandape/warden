@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use ElPandaPe\Bouncer\Bouncer;
-use ElPandaPe\Bouncer\Database\Grant;
+use ElPandaPe\Bouncer\Models\Grant;
 use ElPandaPe\Bouncer\Tests\Fixtures\Account;
 use ElPandaPe\Bouncer\Tests\Fixtures\User;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -77,7 +77,7 @@ it('fails fast when revoking from a role that does not exist', function (): void
 
 it('revokes permissions given as models', function (): void {
     $this->bouncer->allow($this->user)->to('edit-site');
-    $permission = ElPandaPe\Bouncer\Database\Permission::query()->where('name', 'edit-site')->sole();
+    $permission = ElPandaPe\Bouncer\Models\Permission::query()->where('name', 'edit-site')->sole();
 
     $this->bouncer->disallow($this->user)->to([$permission]);
 

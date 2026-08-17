@@ -154,7 +154,7 @@ and `grants` (permission ↔ authority, with a `forbidden` flag — a grant row 
 one concession or one prohibition). Any model can hold roles and permissions:
 
 ```php
-use ElPandaPe\Bouncer\Database\Concerns\HasRolesAndPermissions;
+use ElPandaPe\Bouncer\Concerns\HasRolesAndPermissions;
 
 class User extends Authenticatable
 {
@@ -172,14 +172,14 @@ Swap models through config — never by extending package internals:
 // app/Models/Role.php
 class Role extends Model
 {
-    use ElPandaPe\Bouncer\Database\Concerns\IsRole;
+    use ElPandaPe\Bouncer\Models\Concerns\IsRole;
 }
 ```
 
 ```php
 // ❌ Don't — don't hardcode package classes in relations or checks;
 // resolve them via config so swapped models keep working everywhere.
-$user->roles()->attach(ElPandaPe\Bouncer\Database\Role::first());
+$user->roles()->attach(ElPandaPe\Bouncer\Models\Role::first());
 ```
 
 ## Installation

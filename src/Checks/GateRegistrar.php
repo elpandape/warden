@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer;
+namespace ElPandaPe\Bouncer\Checks;
 
 use ElPandaPe\Bouncer\Contracts\Resolver;
 use ElPandaPe\Bouncer\Enums\GateSlot;
