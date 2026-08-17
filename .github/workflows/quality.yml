@@ -1,0 +1,42 @@
+name: quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: dom, curl, libxml, mbstring, zip, pdo, sqlite3
+          coverage: pcov
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction
+
+      - name: Pint
+        run: vendor/bin/pint --test
+
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --error-format=github --memory-limit=1G
+
+      - name: Rector (dry-run)
+        run: vendor/bin/rector process --dry-run
+
+      - name: Tests with 100% coverage
+        run: vendor/bin/pest --coverage --min=100
+
+      - name: 100% type coverage
+        run: vendor/bin/pest --type-coverage --min=100
