@@ -1,4 +1,4 @@
-ARG PHP_VERSION=8.3
+ARG PHP_VERSION=8.4
 FROM php:${PHP_VERSION}-cli-alpine
 RUN apk add --no-cache git unzip linux-headers postgresql-dev $PHPIZE_DEPS \
  && pecl install pcov && docker-php-ext-enable pcov \

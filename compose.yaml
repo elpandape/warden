@@ -3,7 +3,7 @@ services:
     build:
       context: docker
       args:
-        PHP_VERSION: "8.3"
+        PHP_VERSION: "8.4"
     volumes:
       - .:/app
     environment:
