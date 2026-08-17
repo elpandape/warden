@@ -61,3 +61,20 @@ describe('GateSlot', function (): void {
             ->and(GateSlot::After->value)->toBe('after');
     });
 });
+
+describe('Verdict', function (): void {
+    it('models the three outcomes', function (): void {
+        $granted = ElPandaPe\Bouncer\Verdict::granted(7);
+        $forbidden = ElPandaPe\Bouncer\Verdict::forbidden(3);
+        $abstained = ElPandaPe\Bouncer\Verdict::abstained();
+
+        expect($granted->isGranted())->toBeTrue()
+            ->and($granted->permissionKey)->toBe(7)
+            ->and($granted->isForbidden())->toBeFalse()
+            ->and($forbidden->isForbidden())->toBeTrue()
+            ->and($forbidden->permissionKey)->toBe(3)
+            ->and($forbidden->isAbstained())->toBeFalse()
+            ->and($abstained->isAbstained())->toBeTrue()
+            ->and($abstained->permissionKey)->toBeNull();
+    });
+});

@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace ElPandaPe\Bouncer\Tests\Fixtures;
 
 use ElPandaPe\Bouncer\Database\Concerns\HasRolesAndPermissions;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 
-final class User extends Model
+class User extends Authenticatable
 {
     use HasRolesAndPermissions;
 
