@@ -28,6 +28,10 @@ use Illuminate\Support\Facades\Facade;
  * @method static RetractsRoles retract(string|array<int, mixed>|Model $roles)
  * @method static SyncsRolesAndPermissions sync(Model|string $authority)
  * @method static ChecksRoles is(Model $authority)
+ * @method static bool can(string $permission, Model|string|null $entity = null)
+ * @method static bool cannot(string $permission, Model|string|null $entity = null)
+ * @method static bool canAny(array<int, string> $permissions, Model|string|null $entity = null)
+ * @method static \Illuminate\Auth\Access\Response authorize(string $permission, Model|string|null $entity = null)
  * @method static Model role(array<string, mixed> $attributes = [])
  * @method static Model permission(array<string, mixed> $attributes = [])
  *

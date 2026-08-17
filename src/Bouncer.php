@@ -12,6 +12,8 @@ use ElPandaPe\Bouncer\Actions\RetractsRoles;
 use ElPandaPe\Bouncer\Actions\RevokesPermissions;
 use ElPandaPe\Bouncer\Actions\SyncsRolesAndPermissions;
 use ElPandaPe\Bouncer\Actions\UnforbidsPermissions;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Database\Eloquent\Model;
 
 final class Bouncer
@@ -82,6 +84,29 @@ final class Bouncer
         return new ChecksRoles($authority);
     }
 
+    public function can(string $permission, Model|string|null $entity = null): bool
+    {
+        return $this->gate()->allows($permission, $this->arguments($entity));
+    }
+
+    public function cannot(string $permission, Model|string|null $entity = null): bool
+    {
+        return ! $this->can($permission, $entity);
+    }
+
+    /**
+     * @param  array<int, string>  $permissions
+     */
+    public function canAny(array $permissions, Model|string|null $entity = null): bool
+    {
+        return $this->gate()->any($permissions, $this->arguments($entity));
+    }
+
+    public function authorize(string $permission, Model|string|null $entity = null): Response
+    {
+        return $this->gate()->authorize($permission, $this->arguments($entity));
+    }
+
     /**
      * @param  array<string, mixed>  $attributes
      */
@@ -100,5 +125,18 @@ final class Bouncer
         $permission = Context::resolve()->permissionClass();
 
         return new $permission($attributes);
+    }
+
+    /**
+     * @return list<Model|string>
+     */
+    private function arguments(Model|string|null $entity): array
+    {
+        return $entity === null ? [] : [$entity];
+    }
+
+    private function gate(): Gate
+    {
+        return app(Gate::class);
     }
 }
