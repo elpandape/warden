@@ -7,7 +7,7 @@ use Rector\Config\RectorConfig;
 use Rector\Php83\Rector\ClassMethod\AddOverrideAttributeToOverriddenMethodsRector;
 
 return RectorConfig::configure()
-    ->withPaths([__DIR__.'/src', __DIR__.'/tests'])
+    ->withPaths([__DIR__.'/src', __DIR__.'/database', __DIR__.'/tests'])
     ->withPhpSets(php84: true)
     ->withPreparedSets(deadCode: true, codeQuality: true)
     ->withSets([

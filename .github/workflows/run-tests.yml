@@ -44,6 +44,11 @@ jobs:
       - name: Run tests
         run: vendor/bin/pest --ci
 
+      - name: Run tests (cached resolver)
+        run: vendor/bin/pest --ci
+        env:
+          BOUNCER_TEST_RESOLVER: cached
+
   test-databases:
     runs-on: ubuntu-latest
     timeout-minutes: 10

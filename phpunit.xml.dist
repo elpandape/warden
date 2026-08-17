@@ -13,6 +13,7 @@
     <source>
         <include>
             <directory>src</directory>
+            <directory>database/factories</directory>
         </include>
     </source>
     <php>
