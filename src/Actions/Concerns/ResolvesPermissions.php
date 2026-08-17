@@ -78,12 +78,9 @@ trait ResolvesPermissions
             $query->where($column, $value);
         }
 
-        $keyName = $query->getModel()->getKeyName();
-
-        foreach ($query->getQuery()->pluck($keyName) as $key) {
-            if (is_int($key) || is_string($key)) {
-                $keys[] = $key;
-            }
+        // Resolve through Eloquent so global scopes on custom models keep applying.
+        foreach ($query->get() as $found) {
+            $keys[] = $this->modelKey($found);
         }
 
         return $keys;

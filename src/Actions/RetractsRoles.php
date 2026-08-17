@@ -44,13 +44,8 @@ class RetractsRoles
         }
 
         if ($names !== []) {
-            $query = $roleClass::query()->whereIn('name', $names);
-            $keyName = $query->getModel()->getKeyName();
-
-            foreach ($query->getQuery()->pluck($keyName) as $key) {
-                if (is_int($key) || is_string($key)) {
-                    $keys[] = $key;
-                }
+            foreach ($roleClass::query()->whereIn('name', $names)->get() as $found) {
+                $keys[] = $this->modelKey($found);
             }
         }
 
