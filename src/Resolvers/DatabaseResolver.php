@@ -26,14 +26,17 @@ final readonly class DatabaseResolver implements Resolver
             return Verdict::abstained();
         }
 
+        // Ownership resolves once per check: user closures may hit the database.
+        $owned = $entity instanceof Model && $this->context->isOwnedBy($authority, $entity);
+
         // Forbidden always wins: check it before any grant.
-        $forbiddenBy = $this->firstMatch($authority, $permission, $entity, forbidden: true);
+        $forbiddenBy = $this->firstMatch($authority, $permission, $entity, $owned, forbidden: true);
 
         if ($forbiddenBy !== null) {
             return Verdict::forbidden($forbiddenBy);
         }
 
-        $grantedBy = $this->firstMatch($authority, $permission, $entity, forbidden: false);
+        $grantedBy = $this->firstMatch($authority, $permission, $entity, $owned, forbidden: false);
 
         return $grantedBy === null ? Verdict::abstained() : Verdict::granted($grantedBy);
     }
@@ -42,6 +45,7 @@ final readonly class DatabaseResolver implements Resolver
         Model $authority,
         string $permission,
         Model|string|null $entity,
+        bool $owned,
         bool $forbidden,
     ): int|string|null {
         $permissionClass = $this->context->permissionClass();
@@ -49,9 +53,7 @@ final readonly class DatabaseResolver implements Resolver
 
         $query = $permissionClass::query()
             ->whereIn('name', [$permission, '*'])
-            // Ownership resolution lands in v0.5: grants stay hidden until then,
-            // but an ownership forbid must fail closed, never open.
-            ->when(! $forbidden, function (Builder $builder): void {
+            ->when(! $owned, function (Builder $builder): void {
                 $builder->where('only_owned', false);
             })
             ->where(
@@ -140,15 +142,31 @@ final readonly class DatabaseResolver implements Resolver
         $permissionKey = $permissionModel->getQualifiedKeyName();
         $roleMorph = (new ($this->context->roleClass()))->getMorphClass();
 
+        // toBase() keeps the tenant global scope applied on the subquery.
         $roleKeys = $this->context->assignedRoleClass()::query()
             ->where('entity_type', $authority->getMorphClass())
             ->where('entity_id', $authority->getKey())
-            ->getQuery()
+            ->toBase()
             ->select('role_id');
+
+        $filter = app(\ElPandaPe\Bouncer\Database\Tenancy\Tenancy::class)->readFilter();
 
         $builder->from($grants)
             ->whereColumn("{$grants}.permission_id", $permissionKey)
-            ->where("{$grants}.forbidden", $forbidden)
+            ->where("{$grants}.forbidden", $forbidden);
+
+        // The same read filter that scopes catalog and pivots, applied to raw grants.
+        if ($filter !== null && $filter[0] === 'both') {
+            $tenant = $filter[1];
+
+            $builder->where(function (QueryBuilder $q) use ($grants, $tenant): void {
+                $q->whereNull("{$grants}.scope")->orWhere("{$grants}.scope", $tenant);
+            });
+        } elseif ($filter !== null) {
+            $builder->whereNull("{$grants}.scope");
+        }
+
+        $builder
             ->where(function (QueryBuilder $grant) use ($authority, $grants, $roleMorph, $roleKeys): void {
                 $grant
                     ->where(function (QueryBuilder $direct) use ($authority, $grants): void {
