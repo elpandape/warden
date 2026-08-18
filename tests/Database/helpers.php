@@ -31,6 +31,7 @@ function migrateBouncerTables(): Migration
 
             if ($table === 'accounts') {
                 $blueprint->unsignedBigInteger('user_id')->nullable();
+                $blueprint->unsignedBigInteger('account_id')->nullable();
                 $blueprint->unsignedBigInteger('owner_id')->nullable();
             }
 

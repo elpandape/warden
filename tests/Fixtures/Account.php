@@ -11,5 +11,5 @@ class Account extends Model
 {
     use HasRolesAndPermissions;
 
-    protected $fillable = ['name', 'user_id', 'owner_id'];
+    protected $fillable = ['name', 'user_id', 'owner_id', 'account_id'];
 }
