@@ -34,10 +34,13 @@ trait ResolvesPermissions
                 continue;
             }
 
+            // Plain by construction: a constrained twin must never absorb
+            // an unconstrained grant, nor lend it its conditions.
             $attributes = [
                 'name' => $permission,
                 ...$this->entityAttributes($entity),
                 'only_owned' => $onlyOwned,
+                'options' => null,
             ];
 
             $found[] = $this->constrainCatalogLookup($model::query())->firstOrCreate($attributes);

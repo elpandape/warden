@@ -41,11 +41,15 @@ class SyncsRolesAndPermissions
 
         $scope = app(Tenancy::class)->writeScope();
 
+        // Sync declares the unrestricted set: context-scoped assignments are
+        // orthogonal and stay untouched — manage them with assign()/retract()->on().
         $beforeKeys = $assignedRole::query()
             ->withoutGlobalScope(TenantScope::class)
             ->where('entity_type', $authority->getMorphClass())
             ->where('entity_id', $authority->getKey())
             ->where('scope', $scope)
+            ->whereNull('restricted_to_type')
+            ->whereNull('restricted_to_id')
             ->toBase()
             ->pluck('role_id')
             ->all();
@@ -56,6 +60,8 @@ class SyncsRolesAndPermissions
             ->where('entity_type', $authority->getMorphClass())
             ->where('entity_id', $authority->getKey())
             ->where('scope', $scope)
+            ->whereNull('restricted_to_type')
+            ->whereNull('restricted_to_id')
             ->whereNotIn('role_id', $keys)
             ->delete();
 
