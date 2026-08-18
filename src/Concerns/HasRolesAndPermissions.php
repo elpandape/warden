@@ -125,11 +125,79 @@ trait HasRolesAndPermissions
     }
 
     /**
+     * Every permission granted to this authority — directly, through an
+     * unrestricted role, or to everyone — under the current filters.
+     * The silber/bouncer getAbilities() equivalent, for migrators.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, Model>
+     */
+    public function getPermissions(): \Illuminate\Database\Eloquent\Collection
+    {
+        return $this->resolveGrantedPermissions(forbidden: false);
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Collection<int, Model>
+     */
+    public function getForbiddenPermissions(): \Illuminate\Database\Eloquent\Collection
+    {
+        return $this->resolveGrantedPermissions(forbidden: true);
+    }
+
+    /**
      * Qualified outside the whereHas closures: the role table may be renamed.
      */
     private static function qualifiedRoleName(): string
     {
         return (new (Context::resolve()->roleClass()))->qualifyColumn('name');
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Collection<int, Model>
+     */
+    private function resolveGrantedPermissions(bool $forbidden): \Illuminate\Database\Eloquent\Collection
+    {
+        $context = Context::resolve();
+        $roleMorph = (new ($context->roleClass()))->getMorphClass();
+
+        $roleKeys = $context->assignedRoleClass()::query()
+            ->where('entity_type', $this->getMorphClass())
+            ->where('entity_id', $this->getKey())
+            ->whereNull('restricted_to_type')
+            ->whereNull('restricted_to_id')
+            ->toBase()
+            ->pluck('role_id')
+            ->all();
+
+        $permissionKeys = $context->grantClass()::query()
+            ->where('forbidden', $forbidden)
+            ->where(
+                /** @param Builder<\ElPandaPe\Bouncer\Models\Grant> $query */
+                function (Builder $query) use ($roleMorph, $roleKeys): void {
+                    $query
+                        ->where(
+                            /** @param Builder<\ElPandaPe\Bouncer\Models\Grant> $direct */
+                            function (Builder $direct): void {
+                                $direct->where('entity_type', $this->getMorphClass())
+                                    ->where('entity_id', $this->getKey());
+                            },
+                        )
+                        ->orWhere(
+                            /** @param Builder<\ElPandaPe\Bouncer\Models\Grant> $viaRole */
+                            function (Builder $viaRole) use ($roleMorph, $roleKeys): void {
+                                $viaRole->where('entity_type', $roleMorph)
+                                    ->whereIn('entity_id', $roleKeys);
+                            },
+                        )
+                        ->orWhereNull('entity_id');
+                },
+            )
+            ->toBase()
+            ->pluck('permission_id')
+            ->all();
+
+        /** @var \Illuminate\Database\Eloquent\Collection<int, Model> */
+        return $context->permissionClass()::query()->whereKey($permissionKeys)->get();
     }
 
     /**

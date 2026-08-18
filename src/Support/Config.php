@@ -62,6 +62,16 @@ final class Config
         return (bool) config('bouncer.exceptions.display_role_in_exception', false);
     }
 
+    public static function registersMiddlewareAliases(): bool
+    {
+        return (bool) config('bouncer.register_middleware_aliases', false);
+    }
+
+    public static function registersBladeDirectives(): bool
+    {
+        return (bool) config('bouncer.register_blade_directives', false);
+    }
+
     public static function registersOctaneResetListener(): bool
     {
         return (bool) config('bouncer.octane.register_reset_listener', true);

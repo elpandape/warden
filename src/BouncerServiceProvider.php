@@ -74,6 +74,31 @@ final class BouncerServiceProvider extends ServiceProvider
     {
         $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'bouncer');
 
+        // Optional borrowings, off by default: identity stays fluent-first.
+        if (Config::registersMiddlewareAliases()) {
+            $router = $this->app->make(\Illuminate\Routing\Router::class);
+            $router->aliasMiddleware('bouncer.role', Http\Middleware\RequiresRole::class);
+            $router->aliasMiddleware('bouncer.permission', Http\Middleware\RequiresPermission::class);
+        }
+
+        if (Config::registersBladeDirectives()) {
+            // @forbidden('publish') — the answer only this data model has:
+            // an explicit denial, distinct from a plain lack of permission.
+            \Illuminate\Support\Facades\Blade::if('forbidden', function (string|\BackedEnum $permission, mixed $entity = null): bool {
+                $user = auth()->user();
+
+                if (! $user instanceof Model) {
+                    return false;
+                }
+
+                $target = $entity instanceof Model || is_string($entity) ? $entity : null;
+
+                return $this->app->make(Contracts\Resolver::class)
+                    ->resolve($user, Support\Name::of($permission), $target)
+                    ->isForbidden();
+            });
+        }
+
         // Register aliases now so writes during other providers' boot use them,
         // and re-sync after boot so app-level config overrides land too.
         $this->registerMorphAliases();
@@ -87,6 +112,7 @@ final class BouncerServiceProvider extends ServiceProvider
                 Console\ShowCommand::class,
                 Console\CacheResetCommand::class,
                 Console\CleanCommand::class,
+                Console\UpgradeCommand::class,
             ]);
 
             \Illuminate\Foundation\Console\AboutCommand::add('Bouncer', fn (): array => [
