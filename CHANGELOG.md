@@ -3,6 +3,73 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v1.0.0 — Warden - 2026-08-18
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/elpandape/warden/main/art/cover.jpg" alt="Warden — authorization that explains itself" width="100%">
+</p>
+The first release under this name.
+
+Authorization that answers three questions no other Laravel package answers
+together: **can this user do X?**, **over which rows?**, and **why?**
+
+Instance-level grants, explicit forbids with absolute precedence, ownership,
+multi-tenancy and evaluated ABAC constraints — plus `whereCan()`, `explain()`,
+typed events and exceptions, a versioned cache with automatic invalidation, and
+testing helpers. Checks run through the Gate, so your policies and `@can`
+keep working untouched.
+
+```bash
+composer require elpandape/warden
+php artisan warden:install --migrate
+
+```
+Requires PHP 8.4+ and Laravel 13+.
+
+### About the name
+
+This is `elpandape/bouncer` v1.0.0 under a new name. Nothing about the behaviour,
+the schema or the API changed — "Bouncer" is the name of the package this one
+succeeds, and sharing it made the project read as a perpetual fork. The old
+package is abandoned and declared in `conflict`; the two cannot coexist.
+
+It was published for a single day, so if you installed it in that window, this
+table is the whole upgrade:
+
+| Was | Is |
+|---|---|
+| `elpandape/bouncer` | `elpandape/warden` |
+| `ElPandaPe\Bouncer\*` | `ElPandaPe\Warden\*` |
+| `ElPandaPe\Bouncer\Bouncer` | `ElPandaPe\Warden\Warden` |
+| `BouncerServiceProvider` | `WardenServiceProvider` |
+| `Bouncer` facade / root alias | `Warden` |
+| `BouncerFake` | `WardenFake` |
+| `php artisan bouncer:*` | `php artisan warden:*` |
+| `config/bouncer.php`, `config('bouncer.*')` | `config/warden.php`, `config('warden.*')` |
+| `--tag=bouncer-config` / `bouncer-migrations` | `warden-config` / `warden-migrations` |
+| `*_create_bouncer_tables.php` | `*_create_warden_tables.php` |
+| morph aliases `bouncer.role` / `bouncer.permission` | `warden.role` / `warden.permission` |
+| middleware `bouncer.role` / `bouncer.permission` | `warden.role` / `warden.permission` |
+| translations `bouncer::bouncer.*` | `warden::warden.*` |
+| cache prefix `bouncer` | `warden` |
+
+The morph aliases are the only entry that touches data already written: they live
+in `entity_type` and `restricted_to_type`, and a stale value makes a grant stop
+matching instead of raising.
+
+### Coming from silber/bouncer
+
+Unaffected by the rename. `php artisan warden:upgrade` transforms the legacy
+schema in place — the original's `permissions` pivot becomes `grants`, its
+`abilities` becomes `permissions`, role morphs are rewritten — and the Rector set
+at `stubs/rector-silber-upgrade.php` renames imports, calls, and the root facade
+alias. Step by step in [UPGRADE.md](https://github.com/elpandape/warden/blob/main/UPGRADE.md).
+
+### Credits
+
+Original concept and API design: [Joseph Silber](https://github.com/JosephSilber).
+This project started as an evolution of his Bouncer and keeps his copyright notice.
+
 ## v1.0.0 — Renamed to Warden (2026-08-18)
 
 The package is now `elpandape/warden`. Nothing about the behaviour changed: this
@@ -39,6 +106,7 @@ Migrating from `silber/bouncer` is unaffected: `warden:upgrade` and
 `stubs/rector-silber-upgrade.php` target `elpandape/warden` directly — see
 [UPGRADE.md](UPGRADE.md).
 
+
 ---
 
 ## Released as `elpandape/bouncer`
@@ -59,12 +127,14 @@ upgrade from the original.
 **From here on, strict semver**: breaking changes wait for 2.0.
 
 ### Added
+
 - `CONTRIBUTING.md`, and a README rebuilt for readers rather than for the order
   features happened to be written in: install and a quickstart first, everyday
   usage next, advanced capabilities after, reference last. Badges now report live
   CI, Packagist and license state instead of hardcoded claims.
 
 ### Notes
+
 - Audited against all 45 open issues of silber/bouncer: 20 resolved, 19 partially
   addressed, 4 open by decision or deferred to 1.1, 2 not applicable.
 - Verified on PHP 8.4 and 8.5, Laravel 13, SQLite, MySQL 9 and Postgres 16, against
@@ -73,12 +143,14 @@ upgrade from the original.
 ## v1.0.0-rc.3 — Upstream issue audit (2026-08-18)
 
 ### Fixed
+
 - `Context::table()` fails fast with a `ConfigurationException` when a configured
   table name is empty — previously the misconfiguration surfaced much later as
   broken SQL with an empty identifier, the same failure family as the upstream
   MySQL 9 report (#667).
 
 ### Docs
+
 - **Recipes** section in the README: seven patterns for the questions the original
   package's tracker kept receiving — authorizing another user, pivot-table
   ownership, a default role per new user, landlord/tenant databases, roles grouped
@@ -87,6 +159,7 @@ upgrade from the original.
   ancient pre-1.0 rc schemas must migrate to upstream 1.0 first.
 
 ### Audit
+
 - All 45 open issues of silber/bouncer were audited against this codebase, each
   claim adversarially verified (several by execution): **20 resolved, 19 partially
   addressed, 4 not resolved, 2 not applicable**. The four open ones are recorded
@@ -96,6 +169,7 @@ upgrade from the original.
 ## v1.0.0-rc.2 — Supported versions (2026-08-18)
 
 ### Breaking
+
 - **Minimum Laravel is now 13** (`illuminate/* ^13.0`). Laravel 12 could not be
   tested with this package's toolchain — `pestphp/pest ^5` requires
   `symfony/process ^8` while `orchestra/testbench 10` (Laravel 12) requires `^7`,
@@ -104,6 +178,7 @@ upgrade from the original.
   Laravel 12 and accept untested support.
 
 ### Fixed
+
 - CI runs assertions enabled (`zend.assertions=1`), matching the local Docker image,
   so `assert()` guards count as covered and the 100% gate is meaningful in both places.
 - Workflows moved to `actions/checkout@v7`.
@@ -111,10 +186,12 @@ upgrade from the original.
 ## v1.0.0-rc.1 — API freeze (2026-08-18)
 
 ### Frozen
+
 - **The public API is frozen**: every class, method and config key documented in the
   README is a 1.0 contract. Only fixes land between this candidate and 1.0.0.
 
 ### Hardened
+
 - Mutation testing over the core (resolvers, constraints, tenancy, actions): surviving
   mutants that pointed at real assertion gaps were killed with targeted tests.
 - Release checklist: `composer validate --strict` clean, `composer audit` clean,
@@ -127,6 +204,7 @@ upgrade from the original.
 ## v0.10.0 — Migration & polish (2026-08-18)
 
 ### Added
+
 - **`bouncer:upgrade`**: transforms a silber/bouncer database in place — the pivot
   crossing in the only safe order (`permissions`→`grants` with `ability_id`→
   `permission_id`, then `abilities`→`permissions`), legacy role morphs rewritten
@@ -144,6 +222,7 @@ upgrade from the original.
   Off unless `register_blade_directives`.
 
 ### Decisions (recorded)
+
 - Forbid precedence stays absolute, documented as the model's security contract,
   with `explain()` as the diagnostic; forbid-with-exceptions is a post-1.0 candidate.
 - Multi-guard support is formally deferred to the post-1.0 backlog.
@@ -151,6 +230,7 @@ upgrade from the original.
 ## v0.9.0 — Queries & diagnosis (2026-08-17)
 
 ### Added
+
 - **`whereCan()`** (`QueriesByPermission` concern): `Post::whereCan($user, 'view')` —
   grant existence resolves once at build time; shapes, ownership (attribute-resolved),
   tenancy and **ABAC constraints compile into row conditions** with SQL precedence.
@@ -162,8 +242,7 @@ upgrade from the original.
   decisive permission row and the carrying role — always from the database engine, so
   it diagnoses stale-cache gotchas; readable via `(string)`.
 - **Testing tools**: `Bouncer::fake()` — a scriptable resolver that records checks
-  (`allow`/`forbid` rules, forbidden-first) with `assertChecked/NotChecked/
-  NothingChecked/Granted/Forbidden`; plus the `WithPermissions` trait for terse
+  (`allow`/`forbid` rules, forbidden-first) with `assertChecked/NotChecked/ NothingChecked/Granted/Forbidden`; plus the `WithPermissions` trait for terse
   arrange steps against real rows.
 - **Artisan commands**: `bouncer:install [--migrate]`, `bouncer:show [Class:id]`,
   `bouncer:cache-reset`, `bouncer:clean [--dry-run]` (chunked, event-firing), and a
@@ -172,11 +251,13 @@ upgrade from the original.
 ## v0.8.0 — ABAC & scoped roles (2026-08-17)
 
 ### Breaking
+
 - The `assigned_roles` unique index now includes `restricted_to_type/id`, so the same
   role can repeat across contexts. Re-publish and re-run the package migration if you
   are on an earlier 0.x (the one planned exception to the 0.x schema freeze).
 
 ### Added
+
 - **ABAC constraints, actually evaluated** (the original shipped the infrastructure and
   never ran it): `allow()->to()->where()/orWhere()/whereColumn()` with Eloquent-shaped
   grammar, SQL precedence (AND over OR, closures group), strict comparisons, and
@@ -198,6 +279,7 @@ upgrade from the original.
 ## v0.7.0 — Events & exceptions (2026-08-17)
 
 ### Added
+
 - **Typed events for every write**, with hydrated models and symmetric payloads:
   `PermissionGranted/Revoked/Forbidden/Unforbidden`, `RoleAssigned/Retracted`
   (with the `restrictedTo` slot v0.8 will fill), `RolesSynced`/`PermissionsSynced`
@@ -219,6 +301,7 @@ upgrade from the original.
   `can()`/`canAny()`/`authorize()` and the finders.
 
 ### Changed
+
 - `Bouncer::authorize()` now throws `UnauthorizedException` (policy denial messages
   are preserved; existing `AuthorizationException` catch blocks keep working).
 - Revoking from a role name that does not exist now throws `RoleDoesNotExist`
@@ -227,6 +310,7 @@ upgrade from the original.
 ## v0.6.0 — Cache v2 + Octane (2026-08-17)
 
 ### Breaking
+
 - **Folder restructure by domain**: every `ElPandaPe\Bouncer\Database\*` class moved.
   Models live in `Models\*` (internal concerns in `Models\Concerns\*`), the public
   authority traits in `Concerns\*`, tenancy in `Tenancy\*`, titles in `Support\Titles\*`;
@@ -235,6 +319,7 @@ upgrade from the original.
   Stored data is unaffected: the default morph aliases never referenced class names.
 
 ### Added
+
 - **`CachedResolver`, enabled by default**: one minimal versioned payload per authority,
   matched in memory with the database engine's exact semantics — the entire suite runs
   against both resolvers in CI, so they cannot drift.
@@ -250,18 +335,21 @@ upgrade from the original.
   requests and queue jobs (opt out via `bouncer.octane.register_reset_listener`).
 
 ### Upgrade notes
+
 - Update imports for the restructure; the public API is otherwise unchanged:
   - `ElPandaPe\Bouncer\Database\{Permission,Role,Grant,AssignedRole}` → `ElPandaPe\Bouncer\Models\*`
   - `ElPandaPe\Bouncer\Database\Concerns\{HasPermissions,HasRolesAndPermissions}` → `ElPandaPe\Bouncer\Concerns\*`
   - `ElPandaPe\Bouncer\Database\Concerns\{IsPermission,IsRole}` → `ElPandaPe\Bouncer\Models\Concerns\*`
   - `ElPandaPe\Bouncer\Database\Tenancy\*` and the tenant traits → `ElPandaPe\Bouncer\Tenancy\*`
   - `ElPandaPe\Bouncer\{GateRegistrar,Verdict}` and `Resolvers\*` → `ElPandaPe\Bouncer\Checks\*`
+  
 - With the cache now active by default, raw database edits need `Bouncer::refresh()`
   afterwards; writes made through the API invalidate on their own.
 
 ## v0.5.0 — Ownership & multi-tenancy: full parity (2026-08-17)
 
 ### Added
+
 - **Ownership resolution**: `toOwn()` grants authorize owned entities only, resolved by
   attribute — configurable globally, per entity class, or via closure — with a
   configurable strict-mode safety valve; ownership forbids now apply to owners only.
@@ -281,12 +369,14 @@ upgrade from the original.
   loaded under one tenant never leak into another (fail-closed).
 
 ### Milestone
+
 - Feature parity with silber/bouncer is complete — its whole niche (instance grants,
   explicit forbids, ownership, tenancy) now runs without the original's defects.
 
 ## v0.4.0 — The check engine (2026-08-17)
 
 ### Added
+
 - `DatabaseResolver`: the read engine — two queries per check (forbidden first),
   wildcard matching in three dimensions, role/direct/everyone grant branches, and
   qualified column references throughout (no MySQL 9 breakage).
@@ -297,15 +387,18 @@ upgrade from the original.
 - The `Resolver` contract, ready for the cached implementation coming in v0.6.0.
 
 ### Notes
+
 - Ownership-scoped grants (`toOwn`) do not authorize yet — resolution lands in v0.5.0.
 
 ## v0.3.0 — Actions & the PHP 8.4 platform (2026-08-17)
 
 ### Breaking
+
 - Minimum PHP is now **8.4** and minimum Laravel is now **12** (Laravel 11 is EOL and
   blocked by Composer security advisories; the Pest 5 toolchain requires PHPUnit 13).
 
 ### Added
+
 - The fluent write API, executing immediately (no destructor magic): `allow()/allowEveryone()`,
   `forbid()/forbidEveryone()`, `disallow()`, `unforbid()`, `assign()`, `retract()`,
   `sync()->roles()/permissions()/forbiddenPermissions()` and the `is()` role checks —
@@ -316,12 +409,14 @@ upgrade from the original.
   and `pest-plugin-rector` (`PestSetList::CODING_STYLE`); Rector now runs the PHP 8.4 sets.
 
 ### Upgrade notes
+
 - Require PHP >= 8.4 and Laravel >= 12 before updating.
 - No schema changes: the 0.x migration stays frozen.
 
 ## v0.2.0 — Models & schema (2026-08-17)
 
 ### Added
+
 - `Permission` and `Role` models plus real pivot models (`Grant`, `AssignedRole`),
   all swappable via `config('bouncer.models')` and resolved through the `Context`.
 - `HasRolesAndPermissions` concern for any authority model: `roles()`, `permissions()`
@@ -334,6 +429,7 @@ upgrade from the original.
 - Opt-in pivot timestamps (`bouncer.pivot_timestamps` + commented columns in the migration stub).
 
 ### Fixed (by design, vs the original package)
+
 - UUID/ULID entity keys are never mangled by the models: no hardcoded integer cast on
   entity ids (the original's #626), and the editable migration stub documents the
   string-column variant required to store them on real databases.
@@ -344,6 +440,7 @@ upgrade from the original.
 ## v0.1.0 — Foundations (2026-08-17)
 
 ### Added
+
 - Package skeleton: manual service provider, `config/bouncer.php` with every key documented.
 - `Context` — instance-based registry (tables, connection, morph aliases, ownership attribute)
   replacing the original's global static `Models::` state.
