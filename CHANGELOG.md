@@ -3,6 +3,21 @@
 All notable changes to `elpandape/bouncer` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v1.0.0-rc.2 — Supported versions (2026-08-18)
+
+### Breaking
+- **Minimum Laravel is now 13** (`illuminate/* ^13.0`). Laravel 12 could not be
+  tested with this package's toolchain — `pestphp/pest ^5` requires
+  `symfony/process ^8` while `orchestra/testbench 10` (Laravel 12) requires `^7`,
+  an unsatisfiable pair. Rather than ship compatibility nobody verifies, Laravel 12
+  is dropped, exactly as Laravel 11 was in v0.3.0. Stay on v1.0.0-rc.1 if you need
+  Laravel 12 and accept untested support.
+
+### Fixed
+- CI runs assertions enabled (`zend.assertions=1`), matching the local Docker image,
+  so `assert()` guards count as covered and the 100% gate is meaningful in both places.
+- Workflows moved to `actions/checkout@v7`.
+
 ## v1.0.0-rc.1 — API freeze (2026-08-18)
 
 ### Frozen

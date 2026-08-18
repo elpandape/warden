@@ -1,18 +1,18 @@
 # Bouncer
 
 > Roles & permissions for Laravel — instance-level grants, explicit forbids, ownership,
-> multi-tenancy, ABAC. PHP 8.4+ · Laravel 12+.
+> multi-tenancy, ABAC. PHP 8.4+ · Laravel 13+.
 >
 > Based on [Bouncer](https://github.com/JosephSilber/bouncer) by Joseph Silber — this package
 > is a modernized evolution of his original work (MIT).
 
-![Version](https://img.shields.io/badge/version-1.0.0--rc.1-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
+![Version](https://img.shields.io/badge/version-1.0.0--rc.2-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-13-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
 
-> **Status: release candidate (v1.0.0-rc.1) — the API is frozen.**
+> **Status: release candidate (v1.0.0-rc.2) — the API is frozen.**
 > Only fixes land between here and 1.0.0. Mutation testing hardens the core suite.
 > Do not use in production before v1.0.0.
 
-## What's available (v1.0.0-rc.1)
+## What's available (v1.0.0-rc.2)
 
 - **Checks through Laravel's Gate**: `can()`, `@can`, `authorize()` and policies work
   out of the box — explicit forbids beat any grant, and Bouncer never overrides your
