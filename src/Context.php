@@ -169,9 +169,7 @@ final class Context
 
     public function isOwnedBy(Model $authority, Model $entity): bool
     {
-        $resolver = $this->ownershipMap[$entity::class]
-            ?? $this->ownershipMap['*']
-            ?? $this->ownershipAttribute;
+        $resolver = $this->ownershipResolverFor($entity);
 
         if ($resolver instanceof Closure) {
             return (bool) $resolver($entity, $authority);
@@ -275,9 +273,20 @@ final class Context
     }
 
     /**
+     * How ownership resolves for this entity's class: an attribute name, or
+     * a closure that SQL compilation cannot express.
+     */
+    public function ownershipResolverFor(Model $entity): string|Closure
+    {
+        return $this->ownershipMap[$entity::class]
+            ?? $this->ownershipMap['*']
+            ?? $this->ownershipAttribute;
+    }
+
+    /**
      * Strict-mode safe attribute read (configurable): missing means null.
      */
-    private function attributeValue(Model $model, string $attribute): mixed
+    public function attributeValue(Model $model, string $attribute): mixed
     {
         if (! array_key_exists($attribute, $model->getAttributes())) {
             if (Support\Config::ownershipStrictModeSafe()) {
