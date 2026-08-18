@@ -6,13 +6,41 @@
 > Based on [Bouncer](https://github.com/JosephSilber/bouncer) by Joseph Silber — this package
 > is a modernized evolution of his original work (MIT).
 
-![Version](https://img.shields.io/badge/version-1.0.0--rc.3-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-13-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
+[![Tests](https://github.com/elpandape/bouncer/actions/workflows/run-tests.yml/badge.svg)](https://github.com/elpandape/bouncer/actions/workflows/run-tests.yml)
+[![Quality](https://github.com/elpandape/bouncer/actions/workflows/quality.yml/badge.svg)](https://github.com/elpandape/bouncer/actions/workflows/quality.yml)
+[![Latest version](https://img.shields.io/packagist/v/elpandape/bouncer.svg)](https://packagist.org/packages/elpandape/bouncer)
+[![Downloads](https://img.shields.io/packagist/dt/elpandape/bouncer.svg)](https://packagist.org/packages/elpandape/bouncer)
+[![PHP](https://img.shields.io/packagist/dependency-v/elpandape/bouncer/php.svg)](composer.json)
+[![License](https://img.shields.io/packagist/l/elpandape/bouncer.svg)](LICENSE.md)
 
-> **Status: release candidate (v1.0.0-rc.3) — the API is frozen.**
-> Only fixes land between here and 1.0.0. Mutation testing hardens the core suite.
-> Do not use in production before v1.0.0.
+Authorization that answers three questions no other Laravel package answers together:
+**can this user do X?**, **over which rows?**, and **why?**
 
-## What's available (v1.0.0-rc.3)
+```bash
+composer require elpandape/bouncer
+php artisan bouncer:install --migrate
+```
+
+```php
+use ElPandaPe\Bouncer\Concerns\HasRolesAndPermissions;
+
+class User extends Authenticatable
+{
+    use HasRolesAndPermissions;
+}
+```
+
+```php
+Bouncer::allow($user)->to('edit', Post::class);     // grant, at any granularity
+Bouncer::forbid($user)->to('edit', $secretPost);    // an explicit denial always wins
+Bouncer::assign('editor')->on($org)->to($user);     // a role, scoped to one model
+
+$user->can('edit', $post);                          // it is Laravel's Gate
+Post::whereCan($user, 'edit')->paginate();          // which rows, as a query scope
+Bouncer::explain($user, 'edit', $post);             // why, row by row
+```
+
+## What's available
 
 - **Checks through Laravel's Gate**: `can()`, `@can`, `authorize()` and policies work
   out of the box — explicit forbids beat any grant, and Bouncer never overrides your
@@ -52,6 +80,82 @@
   ids, and the published migration ships commented column variants to switch to string keys.
 - Schema v2 migration (frozen for 0.x), full config file, en/es translations, `Context`.
 
+## Installation
+
+```bash
+composer require elpandape/bouncer
+php artisan bouncer:install --migrate
+```
+
+`bouncer:install` publishes the config and the migration (and runs it with `--migrate`);
+publishing by tag works too (`vendor:publish --tag=bouncer-config` / `bouncer-migrations`).
+Then add the `HasRolesAndPermissions` concern to every model that should hold roles or
+permissions — users, teams, API clients, anything Eloquent.
+
+This package **conflicts with `silber/bouncer`** by design: same facade alias, same default
+tables. Coming from it? `php artisan bouncer:upgrade` migrates the schema in place —
+see [UPGRADE.md](UPGRADE.md).
+
+## Checking permissions
+
+Nothing to learn: it is Laravel's Gate.
+
+```php
+$user->can('edit-site');            // simple permission
+$user->can('edit', $post);          // one instance
+$user->can('edit', Post::class);    // the whole class
+Gate::authorize('edit', $post);     // throws on deny
+@can('edit', $post) ... @endcan     // Blade, as always
+```
+
+How grants match checks:
+
+| Grant ↓ / Check → | `can('edit')` | `can('edit', Post::class)` | `can('edit', $post)` |
+|---|---|---|---|
+| `to('edit')` | ✅ | — | — |
+| `to('edit', Post::class)` | — | ✅ | ✅ |
+| `to('edit', $post)` | — | — | ✅ that one |
+| `to('edit', '*')` | — | ✅ | ✅ |
+| `to('*')` | ✅ | — | — |
+| `toManage(Post::class)` | — | ✅ | ✅ |
+| `everything()` | ✅ | ✅ | ✅ |
+
+Rules worth knowing: an explicit `forbid()` beats every **Bouncer** grant; by default
+Bouncer answers **after** your policies and Gate definitions, so those always win over
+both grants and forbids (set `bouncer.gate.run_before_policies` to flip it, making
+forbids veto everything). `Gate::after` fallbacks registered after Bouncer are consulted
+only when Bouncer abstains. Checks with more than one argument are left entirely to your
+policies; guests and non-model arguments are never answered. Denials carry a translatable
+message (`bouncer::bouncer.unauthorized`, shipped in English and Spanish).
+
+## Granting & forbidding
+
+```php
+use ElPandaPe\Bouncer\Facades\Bouncer;
+
+Bouncer::allow($user)->to('ban-users');            // simple permission
+Bouncer::allow($user)->to('edit', Post::class);    // every post
+Bouncer::allow($user)->to('edit', $post);          // one post
+Bouncer::allow($user)->everything();               // wildcard
+Bouncer::allow($user)->toOwn(Post::class);         // only what they own
+Bouncer::allowEveryone()->to('browse');            // everyone
+
+Bouncer::assign('admin')->to($user);               // roles, created on the fly
+Bouncer::allow('admin')->to('audit');              // grant to a role by name
+Bouncer::sync($user)->roles(['editor', 'writer']); // declarative sync
+```
+
+✅ Do — forbid beats everything, use it for exceptions:
+
+```php
+Bouncer::allow($user)->to('view', Document::class);
+Bouncer::forbid($user)->to('view', $classifiedDocument);
+```
+
+❌ Don't — don't model exceptions by scattering conditionals around your
+codebase; an explicit `forbid()` row is queryable, auditable and revocable
+(`Bouncer::unforbid($user)->to('view', $classifiedDocument)`).
+
 ## Ownership
 
 ```php
@@ -73,6 +177,37 @@ Bouncer::forbid($user)->toOwn(Post::class, 'delete'); // owners still can't dele
 
 ❌ Don't — don't reimplement ownership inside policies you'll have to keep in
 sync with your grants; `ownedVia()` is declared once and works everywhere.
+
+## Scoped roles
+
+The columns other packages left dead for years, alive: restrict a role to any model —
+no global `team_id` required, the context is whatever model you choose.
+
+```php
+Bouncer::assign('editor')->on($orgOne)->to($user);   // editor only inside orgOne
+Bouncer::assign('editor')->on($orgTwo)->to($user);   // same role, second context
+Bouncer::retract('editor')->on($orgOne)->from($user); // leave one; without on(), all
+
+Bouncer::restrictedVia(Post::class, 'organization_id');           // membership by FK
+Bouncer::restrictedVia(fn ($entity, $context) => ...);            // or a closure
+```
+
+A restricted role's grants apply when the checked entity **belongs to the context**:
+it is the context itself, or its `{context}_id` attribute points at it (convention,
+configurable per class or globally). Checks without an instance fail closed — a
+restricted editor is not a global editor. `on()` goes **before** `to()`: writes are
+immediate. Role membership checks (`isAn('editor')`) ignore restrictions by design.
+
+✅ Do — model teams with the models you already have:
+
+```php
+Bouncer::assign('admin')->on($project)->to($user);
+$user->can('manage', $project);          // true: the entity IS the context
+$user->can('edit', $taskInProject);      // true: task->project_id points at it
+```
+
+❌ Don't — don't fall back to one global role plus scattered `if ($user->org_id === …)`
+checks; the assignment carries its context, queryable and revocable per context.
 
 ## Multi-tenancy
 
@@ -134,37 +269,6 @@ Bouncer::forbid($user)->to('view', Document::class)->where('classified', true);
 ❌ Don't — don't encode workflow logic as constraints (drafts visible on Tuesdays);
 constraints compare attributes. Complex rules belong in policies, which always win.
 
-## Scoped roles
-
-The columns other packages left dead for years, alive: restrict a role to any model —
-no global `team_id` required, the context is whatever model you choose.
-
-```php
-Bouncer::assign('editor')->on($orgOne)->to($user);   // editor only inside orgOne
-Bouncer::assign('editor')->on($orgTwo)->to($user);   // same role, second context
-Bouncer::retract('editor')->on($orgOne)->from($user); // leave one; without on(), all
-
-Bouncer::restrictedVia(Post::class, 'organization_id');           // membership by FK
-Bouncer::restrictedVia(fn ($entity, $context) => ...);            // or a closure
-```
-
-A restricted role's grants apply when the checked entity **belongs to the context**:
-it is the context itself, or its `{context}_id` attribute points at it (convention,
-configurable per class or globally). Checks without an instance fail closed — a
-restricted editor is not a global editor. `on()` goes **before** `to()`: writes are
-immediate. Role membership checks (`isAn('editor')`) ignore restrictions by design.
-
-✅ Do — model teams with the models you already have:
-
-```php
-Bouncer::assign('admin')->on($project)->to($user);
-$user->can('manage', $project);          // true: the entity IS the context
-$user->can('edit', $taskInProject);      // true: task->project_id points at it
-```
-
-❌ Don't — don't fall back to one global role plus scattered `if ($user->org_id === …)`
-checks; the assignment carries its context, queryable and revocable per context.
-
 ## Querying by permission
 
 Checks answer "can X do Y?"; the data model can also answer **"over which rows?"** —
@@ -206,172 +310,6 @@ $why->role;           // the role that carried it, when one did
 Always answered by the database engine — never from cache — so it diagnoses stale-cache
 gotchas too. Forbid precedence is absolute by contract; when it surprises someone,
 `explain()` names the exact row and role to fix.
-
-## Testing your app
-
-```php
-// Script verdicts without touching tables; unscripted checks fall to your policies.
-$fake = Bouncer::fake();
-$fake->allow('edit-site')->forbid('delete');
-
-$fake->assertChecked('edit-site');
-$fake->assertGranted('edit-site');
-$fake->assertForbidden('delete');
-$fake->assertNothingChecked();
-
-// Or arrange real rows tersely with the trait:
-use ElPandaPe\Bouncer\Testing\WithPermissions;
-
-$this->allowUser($user, 'view', Document::class);
-$this->assignRoles($user, 'admin');
-```
-
-Artisan ships too: `bouncer:install`, `bouncer:show [Class:id]`, `bouncer:cache-reset`,
-`bouncer:clean --dry-run`, and a `php artisan about` section.
-
-## Migrating from silber/bouncer
-
-```bash
-composer require elpandape/bouncer        # replaces silber/bouncer (conflict enforced)
-php artisan bouncer:upgrade --dry-run     # report
-php artisan bouncer:upgrade               # in-place schema transform
-vendor/bin/rector process app --config vendor/elpandape/bouncer/stubs/rector-silber-upgrade.php
-```
-
-The fluent API is intentionally compatible, the schema upgrades in place (the
-original's `permissions` pivot becomes `grants`, its `abilities` becomes
-`permissions`, role morphs are rewritten), and the Rector set renames imports and
-calls. Full table of equivalences and caveats: **[UPGRADE.md](UPGRADE.md)**.
-
-## Optional middleware & Blade
-
-Off by default — flip `bouncer.register_middleware_aliases` /
-`bouncer.register_blade_directives`:
-
-```php
-Route::get('/admin', ...)->middleware('bouncer.role:admin,editor');      // any of
-Route::put('/site', ...)->middleware('bouncer.permission:edit-site');    // all of
-```
-
-```blade
-@forbidden('publish')  {{-- explicit denial — not the same as lacking it --}}
-    You are explicitly banned from publishing.
-@endforbidden
-```
-
-Both throw/render through the same typed, translatable machinery as everything else.
-
-## Contracts & deferred decisions
-
-- **Forbid precedence is absolute.** A matching `forbid()` beats every grant from any
-  role, always — that is the model's security guarantee, not a missing feature. Forbid
-  narrowly (specific roles, entities or constraints), never on broad global roles you
-  then need exceptions to; `explain()` names the exact row and role when a denial
-  surprises you. A forbid-with-exceptions mechanism is a candidate for post-1.0.
-- **Multi-guard support** is formally deferred to the post-1.0 backlog: Bouncer
-  authorizes *models*, and any authenticatable model already works. If your guards
-  resolve different user models, each gets its own grants naturally.
-
-## Caching
-
-Enabled by default: the cached resolver stores one **minimal payload per authority**
-(every grant tuple that could ever apply to it) and answers checks in memory with the
-exact same semantics as the database engine — the whole test suite runs against both.
-The first check per authority costs three queries; the next thousand cost zero.
-
-Invalidation is automatic and O(1): every write through Bouncer bumps a version
-counter for the exact tenant scope it touched, so stale entries are orphaned, never
-hunted. Cold rebuilds take a lock when the store supports one (anti-stampede), and
-payloads are versioned so future fields never break old entries.
-
-```php
-// config/bouncer.php — a real store with a TTL:
-'cache' => [
-    'enabled' => true,
-    'store' => 'default',
-    'prefix' => 'bouncer',
-    'expiration_time' => DateInterval::createFromDateString('24 hours'),
-],
-```
-
-```php
-Bouncer::refresh();          // invalidate everything: an O(1) version bump
-Bouncer::refreshFor($user);  // drop one authority's payload
-```
-
-✅ Do — write through Bouncer and let invalidation take care of itself:
-
-```php
-Bouncer::disallow($user)->to('publish');   // the next check is already correct
-```
-
-❌ Don't — the "I forgot to refresh the cache in prod" pattern: raw database edits
-(seeders, manual SQL) bypass invalidation by design. After hand-editing rows, call
-`Bouncer::refresh()` — or better, make the edit through the API.
-
-One caveat: the in-memory matcher compares permission names **byte-exactly**, while a
-case-insensitive database collation (MySQL's default) may match `Edit` to `edit`.
-Use exact, consistent permission names — good practice with or without the cache.
-
-## Checking permissions
-
-Nothing to learn: it is Laravel's Gate.
-
-```php
-$user->can('edit-site');            // simple permission
-$user->can('edit', $post);          // one instance
-$user->can('edit', Post::class);    // the whole class
-Gate::authorize('edit', $post);     // throws on deny
-@can('edit', $post) ... @endcan     // Blade, as always
-```
-
-How grants match checks:
-
-| Grant ↓ / Check → | `can('edit')` | `can('edit', Post::class)` | `can('edit', $post)` |
-|---|---|---|---|
-| `to('edit')` | ✅ | — | — |
-| `to('edit', Post::class)` | — | ✅ | ✅ |
-| `to('edit', $post)` | — | — | ✅ that one |
-| `to('edit', '*')` | — | ✅ | ✅ |
-| `to('*')` | ✅ | — | — |
-| `toManage(Post::class)` | — | ✅ | ✅ |
-| `everything()` | ✅ | ✅ | ✅ |
-
-Rules worth knowing: an explicit `forbid()` beats every **Bouncer** grant; by default
-Bouncer answers **after** your policies and Gate definitions, so those always win over
-both grants and forbids (set `bouncer.gate.run_before_policies` to flip it, making
-forbids veto everything). `Gate::after` fallbacks registered after Bouncer are consulted
-only when Bouncer abstains. Checks with more than one argument are left entirely to your
-policies; guests and non-model arguments are never answered. Denials carry a translatable
-message (`bouncer::bouncer.unauthorized`, shipped in English and Spanish).
-
-## Granting & forbidding
-
-```php
-use ElPandaPe\Bouncer\Facades\Bouncer;
-
-Bouncer::allow($user)->to('ban-users');            // simple permission
-Bouncer::allow($user)->to('edit', Post::class);    // every post
-Bouncer::allow($user)->to('edit', $post);          // one post
-Bouncer::allow($user)->everything();               // wildcard
-Bouncer::allow($user)->toOwn(Post::class);         // only what they own
-Bouncer::allowEveryone()->to('browse');            // everyone
-
-Bouncer::assign('admin')->to($user);               // roles, created on the fly
-Bouncer::allow('admin')->to('audit');              // grant to a role by name
-Bouncer::sync($user)->roles(['editor', 'writer']); // declarative sync
-```
-
-✅ Do — forbid beats everything, use it for exceptions:
-
-```php
-Bouncer::allow($user)->to('view', Document::class);
-Bouncer::forbid($user)->to('view', $classifiedDocument);
-```
-
-❌ Don't — don't model exceptions by scattering conditionals around your
-codebase; an explicit `forbid()` row is queryable, auditable and revocable
-(`Bouncer::unforbid($user)->to('view', $classifiedDocument)`).
 
 ## Events
 
@@ -435,6 +373,87 @@ $user->isAn(Role::Admin);
 Bouncer::authorize(Permission::EditSite);
 ```
 
+## Caching
+
+Enabled by default: the cached resolver stores one **minimal payload per authority**
+(every grant tuple that could ever apply to it) and answers checks in memory with the
+exact same semantics as the database engine — the whole test suite runs against both.
+The first check per authority costs three queries; the next thousand cost zero.
+
+Invalidation is automatic and O(1): every write through Bouncer bumps a version
+counter for the exact tenant scope it touched, so stale entries are orphaned, never
+hunted. Cold rebuilds take a lock when the store supports one (anti-stampede), and
+payloads are versioned so future fields never break old entries.
+
+```php
+// config/bouncer.php — a real store with a TTL:
+'cache' => [
+    'enabled' => true,
+    'store' => 'default',
+    'prefix' => 'bouncer',
+    'expiration_time' => DateInterval::createFromDateString('24 hours'),
+],
+```
+
+```php
+Bouncer::refresh();          // invalidate everything: an O(1) version bump
+Bouncer::refreshFor($user);  // drop one authority's payload
+```
+
+✅ Do — write through Bouncer and let invalidation take care of itself:
+
+```php
+Bouncer::disallow($user)->to('publish');   // the next check is already correct
+```
+
+❌ Don't — the "I forgot to refresh the cache in prod" pattern: raw database edits
+(seeders, manual SQL) bypass invalidation by design. After hand-editing rows, call
+`Bouncer::refresh()` — or better, make the edit through the API.
+
+One caveat: the in-memory matcher compares permission names **byte-exactly**, while a
+case-insensitive database collation (MySQL's default) may match `Edit` to `edit`.
+Use exact, consistent permission names — good practice with or without the cache.
+
+## Testing your app
+
+```php
+// Script verdicts without touching tables; unscripted checks fall to your policies.
+$fake = Bouncer::fake();
+$fake->allow('edit-site')->forbid('delete');
+
+$fake->assertChecked('edit-site');
+$fake->assertGranted('edit-site');
+$fake->assertForbidden('delete');
+$fake->assertNothingChecked();
+
+// Or arrange real rows tersely with the trait:
+use ElPandaPe\Bouncer\Testing\WithPermissions;
+
+$this->allowUser($user, 'view', Document::class);
+$this->assignRoles($user, 'admin');
+```
+
+Artisan ships too: `bouncer:install`, `bouncer:show [Class:id]`, `bouncer:cache-reset`,
+`bouncer:clean --dry-run`, and a `php artisan about` section.
+
+## Optional middleware & Blade
+
+Off by default — flip `bouncer.register_middleware_aliases` /
+`bouncer.register_blade_directives`:
+
+```php
+Route::get('/admin', ...)->middleware('bouncer.role:admin,editor');      // any of
+Route::put('/site', ...)->middleware('bouncer.permission:edit-site');    // all of
+```
+
+```blade
+@forbidden('publish')  {{-- explicit denial — not the same as lacking it --}}
+    You are explicitly banned from publishing.
+@endforbidden
+```
+
+Both throw/render through the same typed, translatable machinery as everything else.
+
 ## Schema & models
 
 Four tables: `permissions` (the catalog), `roles`, `assigned_roles` (role ↔ authority)
@@ -469,18 +488,6 @@ class Role extends Model
 // resolve them via config so swapped models keep working everywhere.
 $user->roles()->attach(ElPandaPe\Bouncer\Models\Role::first());
 ```
-
-## Installation
-
-```bash
-composer require elpandape/bouncer
-php artisan vendor:publish --tag=bouncer-config
-php artisan vendor:publish --tag=bouncer-migrations
-php artisan migrate
-```
-
-This package **conflicts with `silber/bouncer`** by design: same facade alias, same default
-tables. Migrating from it will be a one-command upgrade (`bouncer:upgrade`, ships in v0.10.0).
 
 ## Configuration
 
@@ -552,6 +559,31 @@ the API invalidate caches on their own. Only raw database edits need a manual
 container-scoped bindings, so Octane requests and queue jobs reset themselves;
 a long tinker session is one lifecycle — call `Bouncer::tenant()->remove()` or
 `refresh()` yourself if you switch contexts mid-session.
+
+## Migrating from silber/bouncer
+
+```bash
+composer require elpandape/bouncer        # replaces silber/bouncer (conflict enforced)
+php artisan bouncer:upgrade --dry-run     # report
+php artisan bouncer:upgrade               # in-place schema transform
+vendor/bin/rector process app --config vendor/elpandape/bouncer/stubs/rector-silber-upgrade.php
+```
+
+The fluent API is intentionally compatible, the schema upgrades in place (the
+original's `permissions` pivot becomes `grants`, its `abilities` becomes
+`permissions`, role morphs are rewritten), and the Rector set renames imports and
+calls. Full table of equivalences and caveats: **[UPGRADE.md](UPGRADE.md)**.
+
+## Contracts & deferred decisions
+
+- **Forbid precedence is absolute.** A matching `forbid()` beats every grant from any
+  role, always — that is the model's security guarantee, not a missing feature. Forbid
+  narrowly (specific roles, entities or constraints), never on broad global roles you
+  then need exceptions to; `explain()` names the exact row and role when a denial
+  surprises you. A forbid-with-exceptions mechanism is a candidate for post-1.0.
+- **Multi-guard support** is formally deferred to the post-1.0 backlog: Bouncer
+  authorizes *models*, and any authenticatable model already works. If your guards
+  resolve different user models, each gets its own grants naturally.
 
 ## Development
 

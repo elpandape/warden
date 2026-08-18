@@ -3,6 +3,29 @@
 All notable changes to `elpandape/bouncer` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v1.0.0 — The package, finished (2026-08-18)
+
+The successor to silber/bouncer is done: its whole niche (instance-level grants,
+explicit forbids, ownership, multi-tenancy) reimplemented without the original's
+defects, plus the features its tracker asked for and never got — evaluated ABAC
+constraints, model-scoped roles, `whereCan()`, `explain()`, typed events and
+exceptions, a versioned cache with automatic invalidation, and a one-command
+upgrade from the original.
+
+**From here on, strict semver**: breaking changes wait for 2.0.
+
+### Added
+- `CONTRIBUTING.md`, and a README rebuilt for readers rather than for the order
+  features happened to be written in: install and a quickstart first, everyday
+  usage next, advanced capabilities after, reference last. Badges now report live
+  CI, Packagist and license state instead of hardcoded claims.
+
+### Notes
+- Audited against all 45 open issues of silber/bouncer: 20 resolved, 19 partially
+  addressed, 4 open by decision or deferred to 1.1, 2 not applicable.
+- Verified on PHP 8.4 and 8.5, Laravel 13, SQLite, MySQL 9 and Postgres 16, against
+  both the database and cached resolvers, at 100% coverage and type coverage.
+
 ## v1.0.0-rc.3 — Upstream issue audit (2026-08-18)
 
 ### Fixed
