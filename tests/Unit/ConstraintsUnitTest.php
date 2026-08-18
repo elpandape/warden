@@ -25,6 +25,13 @@ it('compares only compatible types in relational operators', function (): void {
         ->and(ComparisonOperator::GreaterThan->compare(null, 1))->toBeFalse();
 });
 
+it('never short-circuits a group that opens with or-where', function (): void {
+    $group = new ElPandaPe\Bouncer\Constraints\Builder()->orWhere('name', 'X')->group();
+
+    // The leading OR must not read a stale true clause: nothing matched yet.
+    expect($group->passes(new Plain, null))->toBeFalse();
+});
+
 it('fails every operator closed on null and undecidable pairs', function (): void {
     expect(ComparisonOperator::Equal->compare(null, null))->toBeFalse()
         ->and(ComparisonOperator::NotEqual->compare(null, 'closed'))->toBeFalse()

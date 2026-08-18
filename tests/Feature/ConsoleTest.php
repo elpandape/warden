@@ -11,6 +11,22 @@ use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
 
+/**
+ * Point config/database publish targets at a throwaway directory.
+ */
+function privateInstallPath(Illuminate\Foundation\Application $app): string
+{
+    $dir = sys_get_temp_dir().'/bouncer-install-'.getmypid().'-'.uniqid();
+    mkdir($dir.'/migrations', recursive: true);
+    $app->useConfigPath($dir);
+    $app->useDatabasePath($dir);
+
+    // publishes() resolved absolute targets at boot: re-register them.
+    new ElPandaPe\Bouncer\BouncerServiceProvider($app)->boot();
+
+    return $dir;
+}
+
 beforeEach(function (): void {
     migrateBouncerTables();
 
@@ -19,18 +35,17 @@ beforeEach(function (): void {
 });
 
 it('publishes config and migrations with bouncer:install', function (): void {
+    // A private target keeps the shared skeleton untouched: parallel-safe.
+    $dir = privateInstallPath($this->app);
+
     $this->artisan('bouncer:install')
         ->expectsOutputToContain('Bouncer is ready')
         ->assertExitCode(0);
 
-    // Leave the shared skeleton clean for every other test run.
-    foreach (glob(database_path('migrations/*create_bouncer_tables.php')) ?: [] as $published) {
-        unlink($published);
-    }
+    expect(file_exists($dir.'/bouncer.php'))->toBeTrue()
+        ->and(glob($dir.'/migrations/*_create_bouncer_tables.php') ?: [])->toHaveCount(1);
 
-    if (file_exists(config_path('bouncer.php'))) {
-        unlink(config_path('bouncer.php'));
-    }
+    Illuminate\Support\Facades\File::deleteDirectory($dir);
 });
 
 it('resets the cache with bouncer:cache-reset', function (): void {
@@ -97,18 +112,14 @@ it('rejects malformed authority references', function (): void {
 });
 
 it('never publishes a duplicate migration on reinstall', function (): void {
+    $dir = privateInstallPath($this->app);
+
     $this->artisan('bouncer:install')->assertExitCode(0);
     $this->artisan('bouncer:install')
         ->expectsOutputToContain('already published')
         ->assertExitCode(0);
 
-    expect(glob(database_path('migrations/*_create_bouncer_tables.php')) ?: [])->toHaveCount(1);
+    expect(glob($dir.'/migrations/*_create_bouncer_tables.php') ?: [])->toHaveCount(1);
 
-    foreach (glob(database_path('migrations/*create_bouncer_tables.php')) ?: [] as $published) {
-        unlink($published);
-    }
-
-    if (file_exists(config_path('bouncer.php'))) {
-        unlink(config_path('bouncer.php'));
-    }
+    Illuminate\Support\Facades\File::deleteDirectory($dir);
 });

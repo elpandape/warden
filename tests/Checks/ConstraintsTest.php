@@ -165,7 +165,9 @@ it('rejects constraints without a grant and unknown operators', function (): voi
     expect(fn () => $this->bouncer->allow($this->user)->where('name', 'x'))
         ->toThrow(ConfigurationException::class, 'call to() or toOwn() first')
         ->and(fn () => $this->bouncer->allow($this->user)->to('view')->where('name', 'like', 'x'))
-        ->toThrow(ConfigurationException::class, 'Unsupported constraint operator');
+        ->toThrow(ConfigurationException::class, 'Unsupported constraint operator [like].')
+        ->and(fn () => $this->bouncer->allow($this->user)->to('tag')->where('name', 1.5, 'x'))
+        ->toThrow(ConfigurationException::class, 'Unsupported constraint operator type.');
 });
 
 it('round-trips serialization strictly', function (): void {
@@ -186,6 +188,13 @@ it('round-trips serialization strictly', function (): void {
 
 it('rejects structurally invalid persisted shapes', function (): void {
     $group = fn (mixed $items): array => ['v' => 1, 'g' => ['t' => 'group', 'i' => $items]];
+
+    $validGroup = ['t' => 'group', 'i' => [['and', ['t' => 'value', 'c' => 'x', 'o' => '=', 'v' => 1]]]];
+
+    // A wrong version must reject even a perfectly valid group shape.
+    expect(ConstraintSerializer::deserialize(['v' => 99, 'g' => $validGroup]))->toBeNull()
+        ->and(ConstraintSerializer::deserialize(['v' => 1, 'g' => 'junk']))->toBeNull()
+        ->and(ConstraintSerializer::deserialize(['v' => 1, 'g' => ['t' => 'value', 'c' => 'x', 'o' => '=', 'v' => 1]]))->toBeNull();
 
     expect(ConstraintSerializer::deserialize($group([['and', 'junk']])))->toBeNull()
         ->and(ConstraintSerializer::deserialize($group([['and', ['t' => 'value', 'c' => 'x', 'o' => '=']]])))->toBeNull()
