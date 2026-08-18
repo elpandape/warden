@@ -24,4 +24,10 @@ jobs:
         run: composer update --prefer-dist --no-interaction
 
       - name: Mutation testing
-        run: vendor/bin/pest --mutate --covered-only
+        # Mirrors `make mutation`: pest does not accumulate repeated --path flags.
+        run: |
+          for path in src/Constraints src/Tenancy src/Checks src/Actions; do
+            echo "== $path"
+            php -d pcov.directory=$GITHUB_WORKSPACE -d 'pcov.exclude=~/(vendor|tests)/~' -d memory_limit=2G \
+              vendor/bin/pest --mutate --covered-only --path=$path
+          done

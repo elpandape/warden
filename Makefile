@@ -1,7 +1,7 @@
 DC = docker compose
 PHP = $(DC) run --rm php
 
-.PHONY: build install update test test-cached coverage types stan lint lint-fix rector rector-fix ci shell test-dbs
+.PHONY: build install update test test-cached coverage types stan lint lint-fix rector rector-fix mutation ci shell test-dbs
 
 build: ## Build the dev image
 	$(DC) build php
@@ -13,13 +13,13 @@ update: ## composer update
 	$(PHP) composer update
 
 test: ## Run the test suite
-	$(PHP) vendor/bin/pest --ci
+	$(PHP) vendor/bin/pest --parallel
 
 test-cached: ## Full suite again through the cached resolver (parity matrix)
 	$(DC) run --rm -e BOUNCER_TEST_RESOLVER=cached php vendor/bin/pest --ci
 
 coverage: ## Tests + 100% coverage gate
-	$(PHP) php -d pcov.directory=/app -d 'pcov.exclude=~/(vendor|tests|\.cache)/~' vendor/bin/pest --coverage --min=100
+	$(PHP) php -d memory_limit=1G -d pcov.directory=/app -d 'pcov.exclude=~/(vendor|tests|\.cache)/~' vendor/bin/pest --ci --coverage --min=100
 
 types: ## 100% type coverage gate
 	$(PHP) php -d memory_limit=1G vendor/bin/pest --type-coverage --min=100
@@ -43,6 +43,16 @@ ci: lint stan rector coverage types test-cached ## Everything CI runs
 
 shell: ## Shell inside the container
 	$(PHP) sh
+
+# pest --mutate does not accumulate repeated --path flags: one pass per path.
+MUTATION_PATHS = src/Constraints src/Tenancy src/Checks src/Actions
+
+mutation: ## Mutation testing over the core, one pass per path
+	@for path in $(MUTATION_PATHS); do \
+		echo "== $$path"; \
+		$(PHP) php -d pcov.directory=/app -d 'pcov.exclude=~/(vendor|tests|\.cache)/~' -d memory_limit=2G \
+			vendor/bin/pest --mutate --parallel --covered-only --path=$$path || exit 1; \
+	done
 
 test-dbs: ## Suite against MySQL & Postgres (waits for healthchecks)
 	$(DC) up -d --wait mysql postgres
