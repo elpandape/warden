@@ -3,6 +3,30 @@
 All notable changes to `elpandape/bouncer` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v0.10.0 — Migration & polish (2026-08-18)
+
+### Added
+- **`bouncer:upgrade`**: transforms a silber/bouncer database in place — the pivot
+  crossing in the only safe order (`permissions`→`grants` with `ability_id`→
+  `permission_id`, then `abilities`→`permissions`), legacy role morphs rewritten
+  (custom classes via `--role-morph`), never-evaluated legacy constraint blobs
+  cleared to preserve real prior behavior, `--dry-run` report, atomic on
+  Postgres/SQLite.
+- **[UPGRADE.md](UPGRADE.md)**: the full migration guide, equivalence tables, and a
+  ready-made Rector set (`stubs/rector-silber-upgrade.php`) that renames imports and
+  calls in app code.
+- **Optional route middleware** (`bouncer.role:admin,editor` any-of,
+  `bouncer.permission:edit-site` all-of) throwing the typed `UnauthorizedException`
+  with the required roles/permissions — off unless `register_middleware_aliases`.
+- **`@forbidden` Blade directive**: renders only on an explicit denial — distinct
+  from merely lacking a permission, the distinction only this data model can make.
+  Off unless `register_blade_directives`.
+
+### Decisions (recorded)
+- Forbid precedence stays absolute, documented as the model's security contract,
+  with `explain()` as the diagnostic; forbid-with-exceptions is a post-1.0 candidate.
+- Multi-guard support is formally deferred to the post-1.0 backlog.
+
 ## v0.9.0 — Queries & diagnosis (2026-08-17)
 
 ### Added

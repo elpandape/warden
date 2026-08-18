@@ -6,13 +6,13 @@
 > Based on [Bouncer](https://github.com/JosephSilber/bouncer) by Joseph Silber — this package
 > is a modernized evolution of his original work (MIT).
 
-![Version](https://img.shields.io/badge/version-0.9.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
+![Version](https://img.shields.io/badge/version-0.10.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
 
-> **Status: alpha (v0.9.0) — feature-complete. Queries, diagnosis and testing tools in.**
-> v0.10.0 brings the migration path from silber/bouncer; then the 1.0 freeze.
+> **Status: beta (v0.10.0) — feature-complete, with the migration path from
+> silber/bouncer in.** Next: the 1.0.0-rc freeze with mutation testing, then 1.0.0.
 > Do not use in production before v1.0.0.
 
-## What's available (v0.9.0)
+## What's available (v0.10.0)
 
 - **Checks through Laravel's Gate**: `can()`, `@can`, `authorize()` and policies work
   out of the box — explicit forbids beat any grant, and Bouncer never overrides your
@@ -32,6 +32,9 @@
 - **`explain()`**: why a check resolves the way it does — including "you are
   explicitly forbidden", which nobody else can say. Plus `Bouncer::fake()`,
   testing helpers and artisan commands.
+- **A real migration path**: `bouncer:upgrade` transforms a silber/bouncer database
+  in place, and a Rector set renames your code. See [UPGRADE.md](UPGRADE.md).
+- Optional route middleware and a `@forbidden` Blade directive, off by default.
 - **Ownership**: `toOwn(Post::class)` grants only what the user owns — resolved by
   attribute (configurable globally, per class, or with a closure), strict-mode safe.
 - **Multi-tenancy**: `Bouncer::tenant()->to($id)` isolates the whole system per tenant,
@@ -225,6 +228,49 @@ $this->assignRoles($user, 'admin');
 
 Artisan ships too: `bouncer:install`, `bouncer:show [Class:id]`, `bouncer:cache-reset`,
 `bouncer:clean --dry-run`, and a `php artisan about` section.
+
+## Migrating from silber/bouncer
+
+```bash
+composer require elpandape/bouncer        # replaces silber/bouncer (conflict enforced)
+php artisan bouncer:upgrade --dry-run     # report
+php artisan bouncer:upgrade               # in-place schema transform
+vendor/bin/rector process app --config vendor/elpandape/bouncer/stubs/rector-silber-upgrade.php
+```
+
+The fluent API is intentionally compatible, the schema upgrades in place (the
+original's `permissions` pivot becomes `grants`, its `abilities` becomes
+`permissions`, role morphs are rewritten), and the Rector set renames imports and
+calls. Full table of equivalences and caveats: **[UPGRADE.md](UPGRADE.md)**.
+
+## Optional middleware & Blade
+
+Off by default — flip `bouncer.register_middleware_aliases` /
+`bouncer.register_blade_directives`:
+
+```php
+Route::get('/admin', ...)->middleware('bouncer.role:admin,editor');      // any of
+Route::put('/site', ...)->middleware('bouncer.permission:edit-site');    // all of
+```
+
+```blade
+@forbidden('publish')  {{-- explicit denial — not the same as lacking it --}}
+    You are explicitly banned from publishing.
+@endforbidden
+```
+
+Both throw/render through the same typed, translatable machinery as everything else.
+
+## Contracts & deferred decisions
+
+- **Forbid precedence is absolute.** A matching `forbid()` beats every grant from any
+  role, always — that is the model's security guarantee, not a missing feature. Forbid
+  narrowly (specific roles, entities or constraints), never on broad global roles you
+  then need exceptions to; `explain()` names the exact row and role when a denial
+  surprises you. A forbid-with-exceptions mechanism is a candidate for post-1.0.
+- **Multi-guard support** is formally deferred to the post-1.0 backlog: Bouncer
+  authorizes *models*, and any authenticatable model already works. If your guards
+  resolve different user models, each gets its own grants naturally.
 
 ## Caching
 
