@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/elpandape/warden/main/art/cover.jpg" alt="Warden — authorization that explains itself" width="100%">
+</p>
+
 # Warden
 
 > Roles & permissions for Laravel — instance-level grants, explicit forbids, ownership,
