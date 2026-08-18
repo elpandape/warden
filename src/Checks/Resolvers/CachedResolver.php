@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace ElPandaPe\Bouncer\Checks\Resolvers;
 
 use ElPandaPe\Bouncer\Checks\Verdict;
+use ElPandaPe\Bouncer\Constraints\ConstraintSerializer;
+use ElPandaPe\Bouncer\Constraints\Group;
 use ElPandaPe\Bouncer\Context;
 use ElPandaPe\Bouncer\Contracts\Resolver;
 use ElPandaPe\Bouncer\Models\Grant;
@@ -25,7 +27,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 final class CachedResolver implements Resolver
 {
-    private const int PAYLOAD_VERSION = 1;
+    private const int PAYLOAD_VERSION = 2;
 
     private const int LOCK_SECONDS = 10;
 
@@ -61,13 +63,13 @@ final class CachedResolver implements Resolver
         $tuples = $this->payload($authority);
 
         // Forbidden always wins: check it before any grant.
-        $forbiddenBy = $this->firstMatch($tuples, $permission, $entity, $owned, forbidden: true);
+        $forbiddenBy = $this->firstMatch($tuples, $authority, $permission, $entity, $owned, forbidden: true);
 
         if ($forbiddenBy !== null) {
             return Verdict::forbidden($forbiddenBy);
         }
 
-        $grantedBy = $this->firstMatch($tuples, $permission, $entity, $owned, forbidden: false);
+        $grantedBy = $this->firstMatch($tuples, $authority, $permission, $entity, $owned, forbidden: false);
 
         return $grantedBy === null ? Verdict::abstained() : Verdict::granted($grantedBy);
     }
@@ -163,13 +165,36 @@ final class CachedResolver implements Resolver
         $authorityMorph = $authority->getMorphClass();
         $authorityKey = $authority->getKey();
 
-        // toBase() keeps the tenant global scope applied on the subquery.
-        $roleKeys = $this->context->assignedRoleClass()::query()
+        // Every assignment, restrictions included: a role granted through a
+        // restricted assignment carries that context into its tuples.
+        /** @var array<int|string, list<array{string|null, int|string|null}>> $restrictionsByRole */
+        $restrictionsByRole = [];
+
+        foreach ($this->context->assignedRoleClass()::query()
             ->where('entity_type', $authorityMorph)
             ->where('entity_id', $authorityKey)
-            ->toBase()
-            ->pluck('role_id')
-            ->all();
+            ->get() as $assignment) {
+            $roleKey = $assignment->getAttribute('role_id');
+
+            if (! is_int($roleKey) && ! is_string($roleKey)) {
+                continue; // @codeCoverageIgnore
+            }
+
+            $contextType = $assignment->getAttribute('restricted_to_type');
+            $contextId = $assignment->getAttribute('restricted_to_id');
+
+            $type = is_string($contextType) ? $contextType : null;
+            $id = is_int($contextId) || is_string($contextId) ? $contextId : null;
+
+            // A half-written restriction is not "unrestricted": fail closed.
+            if (($type === null) !== ($id === null)) {
+                continue;
+            }
+
+            $restrictionsByRole[$roleKey][] = [$type, $id];
+        }
+
+        $roleKeys = array_keys($restrictionsByRole);
 
         // The grant model's global scope applies the same read filter the
         // database engine uses on its raw subquery.
@@ -197,14 +222,28 @@ final class CachedResolver implements Resolver
             )
             ->get();
 
-        // Deduplicate (permission, forbidden) pairs: minimal payload by design.
+        // Deduplicate (permission, forbidden, restriction) triples: role
+        // grants expand once per assignment so restrictions ride along.
+        /** @var array<string, array{int|string, bool, string|null, int|string|null}> $pairs */
         $pairs = [];
 
         foreach ($grantRows as $grant) {
-            $pairs[$grant->permission_id.':'.($grant->forbidden ? '1' : '0')] = [
-                $grant->permission_id,
-                $grant->forbidden,
-            ];
+            $viaRole = $grant->entity_type === $roleMorph
+                && $grant->entity_id !== null
+                && isset($restrictionsByRole[$grant->entity_id]);
+
+            $restrictions = $viaRole ? $restrictionsByRole[$grant->entity_id] : [[null, null]];
+
+            foreach ($restrictions as [$contextType, $contextId]) {
+                $key = implode(':', [
+                    (string) $grant->permission_id,
+                    $grant->forbidden ? '1' : '0',
+                    $contextType ?? '',
+                    $contextId === null ? '' : (string) $contextId,
+                ]);
+
+                $pairs[$key] = [$grant->permission_id, $grant->forbidden, $contextType, $contextId];
+            }
         }
 
         $permissionKeys = array_values(array_unique(array_column($pairs, 0)));
@@ -222,7 +261,7 @@ final class CachedResolver implements Resolver
 
         $tuples = [];
 
-        foreach ($pairs as [$permissionKey, $forbidden]) {
+        foreach ($pairs as [$permissionKey, $forbidden, $contextType, $contextId]) {
             $permission = $permissions[$permissionKey] ?? null;
 
             if ($permission === null) {
@@ -236,11 +275,9 @@ final class CachedResolver implements Resolver
                 'entity_id' => $permission->entity_id,
                 'only_owned' => $permission->only_owned,
                 'forbidden' => $forbidden,
-                // Reserved for v0.8: constraints and role restrictions ride
-                // along so ABAC never has to break the payload format.
                 'options' => $permission->options,
-                'restricted_to_type' => null,
-                'restricted_to_id' => null,
+                'restricted_to_type' => $contextType,
+                'restricted_to_id' => $contextId,
             ];
         }
 
@@ -274,6 +311,7 @@ final class CachedResolver implements Resolver
      */
     private function firstMatch(
         array $tuples,
+        Model $authority,
         string $permission,
         Model|string|null $entity,
         bool $owned,
@@ -295,6 +333,20 @@ final class CachedResolver implements Resolver
                 continue;
             }
 
+            // A restricted assignment only counts in its context (fail-closed
+            // without an instance, unless the entity IS the context).
+            if ($tuple['restricted_to_type'] !== null && $tuple['restricted_to_id'] !== null) {
+                $inContext = $entity instanceof Model && $this->context->belongsToContext(
+                    $entity,
+                    $tuple['restricted_to_type'],
+                    $tuple['restricted_to_id'],
+                );
+
+                if (! $inContext) {
+                    continue;
+                }
+            }
+
             if ($this->matchesEntity($tuple, $entity)) {
                 $candidates[] = $tuple;
             }
@@ -303,7 +355,40 @@ final class CachedResolver implements Resolver
         usort($candidates, fn (array $a, array $b): int => (($b['entity_id'] !== null) <=> ($a['entity_id'] !== null))
             ?: (($b['entity_type'] !== null) <=> ($a['entity_type'] !== null)));
 
-        return $candidates[0]['key'] ?? null;
+        foreach ($candidates as $candidate) {
+            if ($this->passesConstraints($candidate, $entity, $authority, $forbidden)) {
+                return $candidate['key'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Constraints condition the instance: tuples carrying them never match
+     * instance-less checks, and corrupt shapes fail closed.
+     *
+     * @param  GrantTuple  $tuple
+     */
+    private function passesConstraints(array $tuple, Model|string|null $entity, Model $authority, bool $forbidden): bool
+    {
+        if ($tuple['options'] === null) {
+            return true;
+        }
+
+        $group = ConstraintSerializer::deserialize($tuple['options']);
+
+        if (! $group instanceof Group) {
+            // Undecidable constraints fail closed in each pass's safe
+            // direction: a grant must not widen, a forbid must not lift.
+            return $forbidden;
+        }
+
+        if (! $entity instanceof Model) {
+            return false;
+        }
+
+        return $group->passes($entity, $authority);
     }
 
     /**

@@ -29,23 +29,31 @@ final readonly class DatabaseResolver implements Resolver
         // Ownership resolves once per check: user closures may hit the database.
         $owned = $entity instanceof Model && $this->context->isOwnedBy($authority, $entity);
 
+        // Restricted assignments only count when the entity belongs to their
+        // context, so the effective role set depends on the check itself.
+        $roleKeys = $this->effectiveRoleKeys($authority, $entity);
+
         // Forbidden always wins: check it before any grant.
-        $forbiddenBy = $this->firstMatch($authority, $permission, $entity, $owned, forbidden: true);
+        $forbiddenBy = $this->firstMatch($authority, $permission, $entity, $owned, $roleKeys, forbidden: true);
 
         if ($forbiddenBy !== null) {
             return Verdict::forbidden($forbiddenBy);
         }
 
-        $grantedBy = $this->firstMatch($authority, $permission, $entity, $owned, forbidden: false);
+        $grantedBy = $this->firstMatch($authority, $permission, $entity, $owned, $roleKeys, forbidden: false);
 
         return $grantedBy === null ? Verdict::abstained() : Verdict::granted($grantedBy);
     }
 
+    /**
+     * @param  list<int|string>  $roleKeys
+     */
     private function firstMatch(
         Model $authority,
         string $permission,
         Model|string|null $entity,
         bool $owned,
+        array $roleKeys,
         bool $forbidden,
     ): int|string|null {
         $permissionClass = $this->context->permissionClass();
@@ -61,14 +69,99 @@ final readonly class DatabaseResolver implements Resolver
                 fn (Builder $builder) => $this->applyEntityPredicates($builder, $entity),
             )
             ->whereExists(
-                fn (QueryBuilder $builder) => $this->applyGrantPredicates($builder, $authority, $permissionModel, $forbidden),
+                fn (QueryBuilder $builder) => $this->applyGrantPredicates($builder, $authority, $permissionModel, $roleKeys, $forbidden),
             )
             ->orderByRaw('entity_id is not null desc, entity_type is not null desc');
 
-        // Resolve through Eloquent so global scopes on custom models keep applying.
-        $key = $query->first()?->getKey();
+        // Resolve through Eloquent so global scopes on custom models keep
+        // applying; constraints evaluate per candidate, in specificity order.
+        foreach ($query->get() as $candidate) {
+            if (! $this->passesConstraints($candidate, $entity, $authority, $forbidden)) {
+                continue;
+            }
 
-        return is_int($key) || is_string($key) ? $key : null;
+            $key = $candidate->getKey();
+
+            return is_int($key) || is_string($key) ? $key : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Constraints condition the instance: rows carrying them never match
+     * instance-less checks, and corrupt shapes fail closed.
+     */
+    private function passesConstraints(Model $permission, Model|string|null $entity, Model $authority, bool $forbidden): bool
+    {
+        $options = $permission->getAttribute('options');
+
+        if ($options === null) {
+            return true;
+        }
+
+        $group = \ElPandaPe\Bouncer\Constraints\ConstraintSerializer::deserialize($options);
+
+        if (! $group instanceof \ElPandaPe\Bouncer\Constraints\Group) {
+            // Undecidable constraints fail closed in each pass's safe
+            // direction: a grant must not widen, a forbid must not lift.
+            return $forbidden;
+        }
+
+        if (! $entity instanceof Model) {
+            return false;
+        }
+
+        return $group->passes($entity, $authority);
+    }
+
+    /**
+     * The authority's usable role keys for this check: unrestricted ones
+     * always count; restricted ones only when the entity belongs to their
+     * context (fail-closed without an instance, unless the entity IS it).
+     *
+     * @return list<int|string>
+     */
+    private function effectiveRoleKeys(Model $authority, Model|string|null $entity): array
+    {
+        $assignments = $this->context->assignedRoleClass()::query()
+            ->where('entity_type', $authority->getMorphClass())
+            ->where('entity_id', $authority->getKey())
+            ->get();
+
+        $keys = [];
+
+        foreach ($assignments as $assignment) {
+            $contextType = $assignment->getAttribute('restricted_to_type');
+            $contextId = $assignment->getAttribute('restricted_to_id');
+            $roleKey = $assignment->getAttribute('role_id');
+
+            if (! is_int($roleKey) && ! is_string($roleKey)) {
+                continue; // @codeCoverageIgnore
+            }
+
+            if ($contextType === null && $contextId === null) {
+                $keys[] = $roleKey;
+
+                continue;
+            }
+
+            // A half-written restriction is not "unrestricted": fail closed.
+            if ($contextType === null || $contextId === null) {
+                continue;
+            }
+
+            $usable = $entity instanceof Model
+                && is_string($contextType)
+                && (is_int($contextId) || is_string($contextId))
+                && $this->context->belongsToContext($entity, $contextType, $contextId);
+
+            if ($usable) {
+                $keys[] = $roleKey;
+            }
+        }
+
+        return array_values(array_unique($keys));
     }
 
     /**
@@ -131,23 +224,20 @@ final readonly class DatabaseResolver implements Resolver
             );
     }
 
+    /**
+     * @param  list<int|string>  $roleKeys
+     */
     private function applyGrantPredicates(
         QueryBuilder $builder,
         Model $authority,
         Model $permissionModel,
+        array $roleKeys,
         bool $forbidden,
     ): void {
         // Derive every reference from the actual models so overrides stay in sync.
         $grants = (new ($this->context->grantClass()))->getTable();
         $permissionKey = $permissionModel->getQualifiedKeyName();
         $roleMorph = (new ($this->context->roleClass()))->getMorphClass();
-
-        // toBase() keeps the tenant global scope applied on the subquery.
-        $roleKeys = $this->context->assignedRoleClass()::query()
-            ->where('entity_type', $authority->getMorphClass())
-            ->where('entity_id', $authority->getKey())
-            ->toBase()
-            ->select('role_id');
 
         $filter = app(\ElPandaPe\Bouncer\Tenancy\Tenancy::class)->readFilter();
 
