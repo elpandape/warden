@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Models\Permission;
-use ElPandaPe\Bouncer\Models\Role;
+use ElPandaPe\Warden\Models\Permission;
+use ElPandaPe\Warden\Models\Role;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 beforeEach(function (): void {
-    migrateBouncerTables();
+    migrateWardenTables();
 });
 
 it('generates a title for roles from their name', function (): void {
@@ -33,7 +33,7 @@ it('generates permission titles for every shape', function (array $attributes, s
     'action everything' => [['name' => 'edit', 'entity_type' => '*'], 'Edit everything'],
     'blanket manage' => [['name' => '*', 'entity_type' => 'App\\Models\\Post'], 'Manage posts'],
     'blanket action' => [['name' => 'edit', 'entity_type' => 'App\\Models\\Post'], 'Edit posts'],
-    'morph alias entity' => [['name' => 'view', 'entity_type' => 'bouncer.role'], 'View roles'],
+    'morph alias entity' => [['name' => 'view', 'entity_type' => 'warden.role'], 'View roles'],
     'instance' => [['name' => 'edit', 'entity_type' => 'App\\Models\\Post', 'entity_id' => 7], 'Edit post #7'],
     'manage instance' => [['name' => '*', 'entity_type' => 'App\\Models\\Post', 'entity_id' => 7], 'Manage post #7'],
 ]);
@@ -45,7 +45,7 @@ it('keeps an explicit permission title', function (): void {
 });
 
 it('skips title generation when disabled by config', function (): void {
-    config()->set('bouncer.titles.autogenerate', false);
+    config()->set('warden.titles.autogenerate', false);
 
     expect(Role::query()->create(['name' => 'site-admin'])->title)->toBeNull()
         ->and(Permission::query()->create(['name' => 'edit'])->title)->toBeNull();

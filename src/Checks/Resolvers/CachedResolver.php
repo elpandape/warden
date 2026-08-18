@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Checks\Resolvers;
+namespace ElPandaPe\Warden\Checks\Resolvers;
 
-use ElPandaPe\Bouncer\Checks\Verdict;
-use ElPandaPe\Bouncer\Constraints\ConstraintSerializer;
-use ElPandaPe\Bouncer\Constraints\Group;
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Contracts\Resolver;
-use ElPandaPe\Bouncer\Models\Grant;
-use ElPandaPe\Bouncer\Support\Config;
+use ElPandaPe\Warden\Checks\Verdict;
+use ElPandaPe\Warden\Constraints\ConstraintSerializer;
+use ElPandaPe\Warden\Constraints\Group;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Contracts\Resolver;
+use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Support\Config;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\Repository;

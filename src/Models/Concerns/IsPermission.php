@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Models\Concerns;
+namespace ElPandaPe\Warden\Models\Concerns;
 
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Events\PermissionCreated;
-use ElPandaPe\Bouncer\Events\PermissionDeleted;
-use ElPandaPe\Bouncer\Models\Grant;
-use ElPandaPe\Bouncer\Support\Config;
-use ElPandaPe\Bouncer\Support\Titles\PermissionTitle;
-use ElPandaPe\Bouncer\Tenancy\AppliesPivotTenancy;
-use ElPandaPe\Bouncer\Tenancy\BelongsToTenant;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\PermissionCreated;
+use ElPandaPe\Warden\Events\PermissionDeleted;
+use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\Titles\PermissionTitle;
+use ElPandaPe\Warden\Tenancy\AppliesPivotTenancy;
+use ElPandaPe\Warden\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Facades\Event;
@@ -23,7 +23,7 @@ trait IsPermission
     use ResolvesContext;
 
     /**
-     * @return MorphToMany<\ElPandaPe\Bouncer\Models\Role, $this, Grant>
+     * @return MorphToMany<\ElPandaPe\Warden\Models\Role, $this, Grant>
      */
     public function roles(): MorphToMany
     {

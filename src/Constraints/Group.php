@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Constraints;
+namespace ElPandaPe\Warden\Constraints;
 
-use ElPandaPe\Bouncer\Contracts\Constraint;
-use ElPandaPe\Bouncer\Enums\ConstraintType;
-use ElPandaPe\Bouncer\Enums\LogicalOperator;
+use ElPandaPe\Warden\Contracts\Constraint;
+use ElPandaPe\Warden\Enums\ConstraintType;
+use ElPandaPe\Warden\Enums\LogicalOperator;
 use Illuminate\Database\Eloquent\Model;
 
 /**

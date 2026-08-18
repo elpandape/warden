@@ -38,8 +38,8 @@ return [
      * Stable morph aliases, compatible with Relation::enforceMorphMap().
      */
     'morph_aliases' => [
-        'permission' => 'bouncer.permission',
-        'role' => 'bouncer.role',
+        'permission' => 'warden.permission',
+        'role' => 'warden.role',
     ],
 
     'gate' => [
@@ -75,7 +75,7 @@ return [
     'cache' => [
         'enabled' => true,
         'store' => 'default',
-        'prefix' => 'bouncer',
+        'prefix' => 'warden',
         'expiration_time' => DateInterval::createFromDateString('24 hours'),
     ],
 

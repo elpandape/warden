@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Checks\Queries;
+namespace ElPandaPe\Warden\Checks\Queries;
 
 use Closure;
-use ElPandaPe\Bouncer\Constraints\ColumnConstraint;
-use ElPandaPe\Bouncer\Constraints\ConstraintSerializer;
-use ElPandaPe\Bouncer\Constraints\Group;
-use ElPandaPe\Bouncer\Constraints\ValueConstraint;
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Contracts\Constraint;
-use ElPandaPe\Bouncer\Enums\LogicalOperator;
+use ElPandaPe\Warden\Constraints\ColumnConstraint;
+use ElPandaPe\Warden\Constraints\ConstraintSerializer;
+use ElPandaPe\Warden\Constraints\Group;
+use ElPandaPe\Warden\Constraints\ValueConstraint;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Contracts\Constraint;
+use ElPandaPe\Warden\Enums\LogicalOperator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;

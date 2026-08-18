@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Actions;
+namespace ElPandaPe\Warden\Actions;
 
 use BackedEnum;
-use ElPandaPe\Bouncer\Actions\Concerns\ResolvesAuthority;
-use ElPandaPe\Bouncer\Actions\Concerns\ResolvesPermissions;
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Events\Concerns\DispatchesEvents;
-use ElPandaPe\Bouncer\Events\PermissionRevoked;
-use ElPandaPe\Bouncer\Events\PermissionUnforbidden;
-use ElPandaPe\Bouncer\Tenancy\Tenancy;
-use ElPandaPe\Bouncer\Tenancy\TenantScope;
+use ElPandaPe\Warden\Actions\Concerns\ResolvesAuthority;
+use ElPandaPe\Warden\Actions\Concerns\ResolvesPermissions;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
+use ElPandaPe\Warden\Events\PermissionRevoked;
+use ElPandaPe\Warden\Events\PermissionUnforbidden;
+use ElPandaPe\Warden\Tenancy\Tenancy;
+use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
@@ -98,7 +98,7 @@ class RevokesPermissions
         if ($deleted) {
             $this->bumpCacheVersion($scope);
 
-            $this->dispatchBouncerEvent($this->forbidden
+            $this->dispatchWardenEvent($this->forbidden
                 ? new PermissionUnforbidden($authority, new Collection($permissionModels), $scope)
                 : new PermissionRevoked($authority, new Collection($permissionModels), $scope));
         }

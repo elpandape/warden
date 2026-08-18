@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Concerns;
+namespace ElPandaPe\Warden\Concerns;
 
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Models\Grant;
-use ElPandaPe\Bouncer\Support\Config;
-use ElPandaPe\Bouncer\Tenancy\AppliesPivotTenancy;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Tenancy\AppliesPivotTenancy;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 
 trait HasPermissions
@@ -15,7 +15,7 @@ trait HasPermissions
     use AppliesPivotTenancy;
 
     /**
-     * @return MorphToMany<\ElPandaPe\Bouncer\Models\Permission, $this, Grant>
+     * @return MorphToMany<\ElPandaPe\Warden\Models\Permission, $this, Grant>
      */
     public function permissions(): MorphToMany
     {

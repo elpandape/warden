@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Bouncer;
-use ElPandaPe\Bouncer\Tests\Fixtures\Account;
-use ElPandaPe\Bouncer\Tests\Fixtures\User;
+use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\User;
+use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 beforeEach(function (): void {
-    migrateBouncerTables();
+    migrateWardenTables();
 
-    $this->bouncer = app(Bouncer::class);
+    $this->warden = app(Warden::class);
     $this->user = User::query()->create(['name' => 'Joseph']);
 });
 
@@ -35,8 +35,8 @@ it('returns the rows a class-wide grant covers, minus forbids', function (): voi
     $one = Account::query()->create(['name' => 'One'])->refresh();
     Account::query()->create(['name' => 'Two'])->refresh();
 
-    $this->bouncer->allow($this->user)->to('view', Account::class);
-    $this->bouncer->forbid($this->user)->to('view', $one);
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $this->warden->forbid($this->user)->to('view', $one);
 
     expect(Account::query()->whereCan($this->user, 'view')->pluck('name')->all())->toBe(['Two']);
     assertQueryMatchesChecks($this->user, 'view');
@@ -46,15 +46,15 @@ it('returns instance grants, wildcard grants and everyone-grants', function (): 
     $mine = Account::query()->create(['name' => 'Mine'])->refresh();
     Account::query()->create(['name' => 'Other'])->refresh();
 
-    $this->bouncer->allow($this->user)->to('edit', $mine);
-    $this->bouncer->allowEveryone()->to('browse', Account::class);
+    $this->warden->allow($this->user)->to('edit', $mine);
+    $this->warden->allowEveryone()->to('browse', Account::class);
 
     expect(Account::query()->whereCan($this->user, 'edit')->pluck('name')->all())->toBe(['Mine'])
         ->and(Account::query()->whereCan($this->user, 'browse')->count())->toBe(2);
     assertQueryMatchesChecks($this->user, 'edit');
 
     // The full wildcard widens every check, and the query follows.
-    $this->bouncer->allow($this->user)->everything();
+    $this->warden->allow($this->user)->everything();
 
     expect(Account::query()->whereCan($this->user, 'edit')->count())->toBe(2)
         ->and(Account::query()->whereCan($this->user, 'anything')->count())->toBe(2);
@@ -72,7 +72,7 @@ it('compiles ownership grants to the owner attribute', function (): void {
     $mine = Account::query()->create(['name' => 'Mine', 'user_id' => $this->user->getKey()])->refresh();
     Account::query()->create(['name' => 'Other'])->refresh();
 
-    $this->bouncer->allow($this->user)->toOwn(Account::class, 'edit');
+    $this->warden->allow($this->user)->toOwn(Account::class, 'edit');
 
     expect(Account::query()->whereCan($this->user, 'edit')->pluck('name')->all())->toBe(['Mine']);
     assertQueryMatchesChecks($this->user, 'edit');
@@ -81,8 +81,8 @@ it('compiles ownership grants to the owner attribute', function (): void {
 it('excludes ownership grants resolved by closures, fail-closed', function (): void {
     Account::query()->create(['name' => 'Mine', 'user_id' => $this->user->getKey()])->refresh();
 
-    $this->bouncer->ownedVia(fn (Model $entity, Model $authority): bool => true);
-    $this->bouncer->allow($this->user)->toOwn(Account::class, 'edit');
+    $this->warden->ownedVia(fn (Model $entity, Model $authority): bool => true);
+    $this->warden->allow($this->user)->toOwn(Account::class, 'edit');
 
     // The closure cannot become SQL: the query stays empty even though can() passes.
     expect(Account::query()->whereCan($this->user, 'edit')->count())->toBe(0);
@@ -93,7 +93,7 @@ it('compiles constraints with sql precedence', function (): void {
     Account::query()->create(['name' => 'Draft', 'user_id' => 8])->refresh();
     $ownDraft = Account::query()->create(['name' => 'Draft', 'user_id' => $this->user->getKey()])->refresh();
 
-    $this->bouncer->allow($this->user)->to('view', Account::class)
+    $this->warden->allow($this->user)->to('view', Account::class)
         ->where('name', 'Post')
         ->orWhere('name', 'Draft')->whereColumn('user_id', 'id');
 
@@ -105,24 +105,24 @@ it('compiles constraints with sql precedence', function (): void {
 it('blocks shape rows entirely when a forbid is inexpressible', function (): void {
     Account::query()->create(['name' => 'One', 'user_id' => $this->user->getKey()])->refresh();
 
-    $this->bouncer->allow($this->user)->to('view', Account::class);
-    $this->bouncer->ownedVia(fn (): bool => false);
-    $this->bouncer->forbid($this->user)->toOwn(Account::class, 'view');
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $this->warden->ownedVia(fn (): bool => false);
+    $this->warden->forbid($this->user)->toOwn(Account::class, 'view');
 
     // The owned forbid cannot compile: fail closed, nothing comes back.
     expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0);
 });
 
 it('honors role grants and tenancy', function (): void {
-    $this->bouncer->tenant()->to(1);
+    $this->warden->tenant()->to(1);
     $inTenant = Account::query()->create(['name' => 'T1'])->refresh();
 
-    $this->bouncer->allow('editor')->to('edit', Account::class);
-    $this->bouncer->assign('editor')->to($this->user);
+    $this->warden->allow('editor')->to('edit', Account::class);
+    $this->warden->assign('editor')->to($this->user);
 
     expect(Account::query()->whereCan($this->user, 'edit')->count())->toBe(1);
 
-    $this->bouncer->tenant()->to(2);
+    $this->warden->tenant()->to(2);
 
     expect(Account::query()->whereCan($this->user, 'edit')->count())->toBe(0);
     assertQueryMatchesChecks($this->user, 'edit');
@@ -131,15 +131,15 @@ it('honors role grants and tenancy', function (): void {
 it('excludes restricted role assignments, fail-closed', function (): void {
     $org = Account::query()->create(['name' => 'Org'])->refresh();
 
-    $this->bouncer->allow('editor')->to('edit', Account::class);
-    $this->bouncer->assign('editor')->on($org)->to($this->user);
+    $this->warden->allow('editor')->to('edit', Account::class);
+    $this->warden->assign('editor')->on($org)->to($this->user);
 
     // A restricted editor is not a queryable global editor.
     expect(Account::query()->whereCan($this->user, 'edit')->count())->toBe(0);
 });
 
 it('works through the global macro for models without the trait', function (): void {
-    $this->bouncer->allow($this->user)->to('probe', User::class);
+    $this->warden->allow($this->user)->to('probe', User::class);
 
     /** @phpstan-ignore method.notFound */
     expect(User::query()->whereCan($this->user, 'probe')->count())->toBe(1);
@@ -150,7 +150,7 @@ it('paginates like any other scope', function (): void {
         Account::query()->create(['name' => "A{$i}"]);
     }
 
-    $this->bouncer->allow($this->user)->to('view', Account::class);
+    $this->warden->allow($this->user)->to('view', Account::class);
 
     expect(Account::query()->whereCan($this->user, 'view')->paginate(2)->total())->toBe(5);
 });
@@ -158,16 +158,16 @@ it('paginates like any other scope', function (): void {
 it('skips corrupt constraint candidates and blocks corrupt forbids', function (): void {
     Account::query()->create(['name' => 'One'])->refresh();
 
-    $this->bouncer->allow($this->user)->to('view', Account::class)->where('name', 'One');
-    ElPandaPe\Bouncer\Models\Permission::query()->withoutGlobalScopes()
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'One');
+    ElPandaPe\Warden\Models\Permission::query()->withoutGlobalScopes()
         ->whereNotNull('options')->update(['options' => ['v' => 99, 'g' => 'junk']]);
 
     // Granted side: the undecidable candidate is skipped, nothing comes back.
     expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0);
 
-    $this->bouncer->allow($this->user)->to('view', Account::class);
-    $this->bouncer->forbid($this->user)->to('view', Account::class)->where('name', 'Two');
-    ElPandaPe\Bouncer\Models\Permission::query()->withoutGlobalScopes()
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $this->warden->forbid($this->user)->to('view', Account::class)->where('name', 'Two');
+    ElPandaPe\Warden\Models\Permission::query()->withoutGlobalScopes()
         ->whereNotNull('options')->update(['options' => ['v' => 99, 'g' => 'junk']]);
 
     // Forbidden side: the undecidable forbid blocks every shape row.
@@ -178,8 +178,8 @@ it('compiles nested groups and impossible authority columns', function (): void 
     $match = Account::query()->create(['name' => 'X', 'user_id' => 5])->refresh();
     Account::query()->create(['name' => 'Y', 'user_id' => 5])->refresh();
 
-    $this->bouncer->allow($this->user)->to('view', Account::class)
-        ->where(function (ElPandaPe\Bouncer\Constraints\Builder $group): void {
+    $this->warden->allow($this->user)->to('view', Account::class)
+        ->where(function (ElPandaPe\Warden\Constraints\Builder $group): void {
             $group->where('name', 'X')->orWhere('name', 'Z');
         })
         ->where('user_id', 5);
@@ -188,8 +188,8 @@ it('compiles nested groups and impossible authority columns', function (): void 
     assertQueryMatchesChecks($this->user, 'view');
 
     // An unreadable authority attribute compiles to an impossible condition.
-    $this->bouncer->disallow($this->user)->to('view', Account::class);
-    $this->bouncer->allow($this->user)->to('view', Account::class)->whereColumn('user_id', 'missing_attr');
+    $this->warden->disallow($this->user)->to('view', Account::class);
+    $this->warden->allow($this->user)->to('view', Account::class)->whereColumn('user_id', 'missing_attr');
 
     expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0);
 });
@@ -198,9 +198,9 @@ it('blocks forbids carried by restricted roles instead of dropping them', functi
     $org = Account::query()->create(['name' => 'Org'])->refresh();
     Account::query()->create(['name' => 'Elsewhere'])->refresh();
 
-    $this->bouncer->allow($this->user)->to('view', Account::class);
-    $this->bouncer->forbid('auditor')->to('view', Account::class);
-    $this->bouncer->assign('auditor')->on($org)->to($this->user);
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $this->warden->forbid('auditor')->to('view', Account::class);
+    $this->warden->assign('auditor')->on($org)->to($this->user);
 
     // can() denies inside the context; the query must never return $org.
     expect(Gate::forUser($this->user)->allows('view', $org))->toBeFalse()
@@ -211,8 +211,8 @@ it('blocks forbids carried by restricted roles instead of dropping them', functi
 it('keeps empty constraint groups from erasing forbid branches', function (): void {
     Account::query()->create(['name' => 'One'])->refresh();
 
-    $this->bouncer->allow($this->user)->to('view', Account::class);
-    $this->bouncer->forbid($this->user)->to('view', Account::class)->where(function (ElPandaPe\Bouncer\Constraints\Builder $group): void {
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $this->warden->forbid($this->user)->to('view', Account::class)->where(function (ElPandaPe\Warden\Constraints\Builder $group): void {
         // Intentionally empty: passes trivially, must still block in SQL.
     });
 
@@ -223,7 +223,7 @@ it('keeps empty constraint groups from erasing forbid branches', function (): vo
 it('treats boolean constraints without a cast as impossible, like can()', function (): void {
     Account::query()->create(['name' => 'One', 'user_id' => 1])->refresh();
 
-    $this->bouncer->allow($this->user)->to('view', Account::class)->where('user_id', true);
+    $this->warden->allow($this->user)->to('view', Account::class)->where('user_id', true);
 
     // The strict comparator can never match int 1 to bool true: parity is empty.
     expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0);

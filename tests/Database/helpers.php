@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Tests\Database;
+namespace ElPandaPe\Warden\Tests\Database;
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-function dropBouncerTables(): void
+function dropWardenTables(): void
 {
     // Children first: real databases enforce the foreign keys.
     foreach (['grants', 'assigned_roles', 'roles', 'permissions', 'users', 'accounts'] as $table) {
@@ -16,12 +16,12 @@ function dropBouncerTables(): void
     }
 }
 
-function migrateBouncerTables(): Migration
+function migrateWardenTables(): Migration
 {
-    dropBouncerTables();
+    dropWardenTables();
 
     /** @var Migration $migration */
-    $migration = require __DIR__.'/../../database/migrations/create_bouncer_tables.php.stub';
+    $migration = require __DIR__.'/../../database/migrations/create_warden_tables.php.stub';
     $migration->up();
 
     foreach (['users', 'accounts'] as $table) {

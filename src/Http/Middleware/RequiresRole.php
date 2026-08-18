@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Http\Middleware;
+namespace ElPandaPe\Warden\Http\Middleware;
 
 use Closure;
-use ElPandaPe\Bouncer\Actions\ChecksRoles;
-use ElPandaPe\Bouncer\Exceptions\UnauthorizedException;
+use ElPandaPe\Warden\Actions\ChecksRoles;
+use ElPandaPe\Warden\Exceptions\UnauthorizedException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Route middleware: ->middleware('bouncer.role:admin,editor') — any of.
+ * Route middleware: ->middleware('warden.role:admin,editor') — any of.
  */
 final class RequiresRole
 {

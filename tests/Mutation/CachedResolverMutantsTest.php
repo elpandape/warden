@@ -2,29 +2,29 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Bouncer;
-use ElPandaPe\Bouncer\Checks\Resolvers\CachedResolver;
-use ElPandaPe\Bouncer\Checks\Resolvers\CacheKeyVersioner;
-use ElPandaPe\Bouncer\Checks\Resolvers\DatabaseResolver;
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Contracts\Resolver;
-use ElPandaPe\Bouncer\Models\AssignedRole;
-use ElPandaPe\Bouncer\Models\Grant;
-use ElPandaPe\Bouncer\Models\Role;
-use ElPandaPe\Bouncer\Tests\Fixtures\Account;
-use ElPandaPe\Bouncer\Tests\Fixtures\User;
+use ElPandaPe\Warden\Checks\Resolvers\CachedResolver;
+use ElPandaPe\Warden\Checks\Resolvers\CacheKeyVersioner;
+use ElPandaPe\Warden\Checks\Resolvers\DatabaseResolver;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Contracts\Resolver;
+use ElPandaPe\Warden\Models\AssignedRole;
+use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Models\Role;
+use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\User;
+use ElPandaPe\Warden\Warden;
 use Illuminate\Cache\ArrayLock;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 function mutantPayloadKey(User $authority): string
 {
     return implode(':', [
-        'bouncer',
+        'warden',
         'p2',
         app(CacheKeyVersioner::class)->segment(),
         $authority->getMorphClass(),
@@ -60,10 +60,10 @@ function seedMutantPayload(User $authority, array $grants): void
 }
 
 beforeEach(function (): void {
-    migrateBouncerTables();
-    config()->set('bouncer.cache.enabled', true);
+    migrateWardenTables();
+    config()->set('warden.cache.enabled', true);
 
-    $this->bouncer = app(Bouncer::class);
+    $this->warden = app(Warden::class);
     $this->user = User::query()->create(['name' => 'Joseph']);
 });
 
@@ -71,9 +71,9 @@ beforeEach(function (): void {
 // the resolver must pass through to the database engine without ever writing
 // a payload into the store.
 it('never touches the store while the cache is disabled', function (): void {
-    config()->set('bouncer.cache.enabled', false);
+    config()->set('warden.cache.enabled', false);
 
-    $this->bouncer->allow($this->user)->to('fly');
+    $this->warden->allow($this->user)->to('fly');
 
     expect(app(Resolver::class)->resolve($this->user, 'fly')->isGranted())->toBeTrue()
         ->and(Cache::store('array')->get(mutantPayloadKey($this->user)))->toBeNull();
@@ -83,7 +83,7 @@ it('never touches the store while the cache is disabled', function (): void {
 // string belongs to app policies. Without the abstain, a wildcard grant in
 // the payload would wrongly satisfy the check.
 it('abstains on non-class strings even when a wildcard grant exists', function (): void {
-    $this->bouncer->allow($this->user)->everything();
+    $this->warden->allow($this->user)->everything();
 
     expect(app(Resolver::class)->resolve($this->user, 'edit', 'not-a-class')->isAbstained())->toBeTrue();
 });
@@ -92,7 +92,7 @@ it('abstains on non-class strings even when a wildcard grant exists', function (
 // lifecycle come from the memo, so wiping the store and the rows behind the
 // resolver's back must not change the answer.
 it('serves repeat checks from the memo, not from the store', function (): void {
-    $this->bouncer->allow($this->user)->to('fly');
+    $this->warden->allow($this->user)->to('fly');
 
     $resolver = app(Resolver::class);
     expect($resolver->resolve($this->user, 'fly')->isGranted())->toBeTrue();
@@ -107,7 +107,7 @@ it('serves repeat checks from the memo, not from the store', function (): void {
 // (GreaterOrEqualToSmaller): loading another authority below the memo limit
 // must not reset already memoized payloads.
 it('keeps memoized payloads while under the memo limit', function (): void {
-    $this->bouncer->allow($this->user)->to('fly');
+    $this->warden->allow($this->user)->to('fly');
 
     $resolver = app(Resolver::class);
     expect($resolver->resolve($this->user, 'fly')->isGranted())->toBeTrue();
@@ -125,7 +125,7 @@ it('keeps memoized payloads while under the memo limit', function (): void {
 // exactly when it holds MEMO_LIMIT entries, not one load later. After the
 // reset the stale entry is gone and the check rebuilds from the empty rows.
 it('resets the memo exactly at the limit', function (): void {
-    $this->bouncer->allow($this->user)->to('fly');
+    $this->warden->allow($this->user)->to('fly');
 
     $resolver = app(Resolver::class);
     expect($resolver->resolve($this->user, 'fly')->isGranted())->toBeTrue();
@@ -148,7 +148,7 @@ it('resets the memo exactly at the limit', function (): void {
 // answers directly, without going anywhere near the build lock. With the lock
 // held by someone else, falling through would rebuild from the deleted rows.
 it('returns a valid stored payload without taking the build lock', function (): void {
-    $this->bouncer->allow($this->user)->to('fly');
+    $this->warden->allow($this->user)->to('fly');
     expect(app(Resolver::class)->resolve($this->user, 'fly')->isGranted())->toBeTrue();
 
     Grant::query()->withoutGlobalScopes()->delete();
@@ -181,9 +181,9 @@ it('guards cold rebuilds with the store lock', function (): void {
 
     Cache::extend('spy', fn (): Illuminate\Contracts\Cache\Repository => Cache::repository($store));
     config()->set('cache.stores.spy', ['driver' => 'spy']);
-    config()->set('bouncer.cache.store', 'spy');
+    config()->set('warden.cache.store', 'spy');
 
-    $this->bouncer->allow($this->user)->to('fly');
+    $this->warden->allow($this->user)->to('fly');
 
     expect(Gate::forUser($this->user)->allows('fly'))->toBeTrue()
         ->and($store->lockCalls)->toBeGreaterThan(0);
@@ -193,7 +193,7 @@ it('guards cold rebuilds with the store lock', function (): void {
 // under the lock are the result. Falling through would build the payload a
 // second time, doubling the cold-check queries.
 it('builds a cold payload exactly once', function (): void {
-    $this->bouncer->allow($this->user)->to('fly');
+    $this->warden->allow($this->user)->to('fly');
 
     $resolver = app(Resolver::class);
 
@@ -210,13 +210,13 @@ it('builds a cold payload exactly once', function (): void {
 it('authorizes through roles whose keys are strings', function (): void {
     $account = Account::query()->create(['name' => 'Acme']);
 
-    $this->bouncer->allow('editor')->to('edit', Account::class);
-    $this->bouncer->assign('editor')->to($this->user);
+    $this->warden->allow('editor')->to('edit', Account::class);
+    $this->warden->assign('editor')->to($this->user);
 
     DB::statement('PRAGMA foreign_keys = OFF');
     DB::table('assigned_roles')->update(['role_id' => 'role-uuid']);
     DB::table('grants')->update(['entity_id' => 'role-uuid']);
-    $this->bouncer->refresh();
+    $this->warden->refresh();
 
     expect(Gate::forUser($this->user)->allows('edit', $account))->toBeTrue();
 })->skip(fn (): bool => DB::connection()->getDriverName() !== 'sqlite', 'Needs the UUID column variant; sqlite emulates it with loose typing');
@@ -226,13 +226,13 @@ it('authorizes through roles whose keys are strings', function (): void {
 it('keeps scanning assignments after a half-written restriction row', function (): void {
     $org = Account::query()->create(['name' => 'Org'])->refresh();
 
-    $this->bouncer->allow('editor')->to('edit', Account::class);
-    $this->bouncer->assign('editor')->on($org)->to($this->user);
-    $this->bouncer->assign('editor')->to($this->user);
+    $this->warden->allow('editor')->to('edit', Account::class);
+    $this->warden->assign('editor')->on($org)->to($this->user);
+    $this->warden->assign('editor')->to($this->user);
 
     // Corrupt the first (restricted) row into the half-written shape.
     AssignedRole::query()->whereNotNull('restricted_to_type')->update(['restricted_to_id' => null]);
-    $this->bouncer->refresh();
+    $this->warden->refresh();
 
     expect(Gate::forUser($this->user)->allows('edit', Account::class))->toBeTrue();
 });
@@ -244,8 +244,8 @@ it('keeps scanning assignments after a half-written restriction row', function (
 it('keeps direct grants unrestricted when a role key matches the authority key', function (): void {
     $org = Account::query()->create(['name' => 'Org'])->refresh();
 
-    $this->bouncer->assign('manager')->on($org)->to($this->user);
-    $this->bouncer->allow($this->user)->to('fly');
+    $this->warden->assign('manager')->on($org)->to($this->user);
+    $this->warden->allow($this->user)->to('fly');
 
     // The collision the mutants depend on: role key === authority key.
     expect(Role::query()->sole()->getKey())->toBe($this->user->getKey())
@@ -256,8 +256,8 @@ it('keeps direct grants unrestricted when a role key matches the authority key',
 // without it, a forbid and a grant of the same permission collide in the
 // dedupe key and the later row silently erases the forbid.
 it('keeps forbid and allow rows of one permission apart in the payload', function (): void {
-    $this->bouncer->forbid($this->user)->to('publish');
-    $this->bouncer->allow($this->user)->to('publish');
+    $this->warden->forbid($this->user)->to('publish');
+    $this->warden->allow($this->user)->to('publish');
 
     expect(Gate::forUser($this->user)->allows('publish'))->toBeFalse();
 });
@@ -271,9 +271,9 @@ it('keeps restrictions of different context types with the same id apart', funct
     // Same-id contexts of different types: Account#1 and User#1.
     expect($org->getKey())->toBe($this->user->getKey());
 
-    $this->bouncer->allow('editor')->to('edit', Account::class);
-    $this->bouncer->assign('editor')->on($org)->to($this->user);
-    $this->bouncer->assign('editor')->on($this->user)->to($this->user);
+    $this->warden->allow('editor')->to('edit', Account::class);
+    $this->warden->assign('editor')->on($org)->to($this->user);
+    $this->warden->assign('editor')->on($this->user)->to($this->user);
 
     $project = Account::query()->create(['name' => 'Project', 'account_id' => $org->getKey()])->refresh();
 
@@ -289,9 +289,9 @@ it('keeps restrictions of one type with different context ids apart', function (
     $orgOne = Account::query()->create(['name' => 'Org One'])->refresh();
     $orgTwo = Account::query()->create(['name' => 'Org Two'])->refresh();
 
-    $this->bouncer->allow('editor')->to('edit', Account::class);
-    $this->bouncer->assign('editor')->on($orgOne)->to($this->user);
-    $this->bouncer->assign('editor')->on($orgTwo)->to($this->user);
+    $this->warden->allow('editor')->to('edit', Account::class);
+    $this->warden->assign('editor')->on($orgOne)->to($this->user);
+    $this->warden->assign('editor')->on($orgTwo)->to($this->user);
 
     $project = Account::query()->create(['name' => 'Project', 'account_id' => $orgOne->getKey()])->refresh();
 
@@ -301,13 +301,13 @@ it('keeps restrictions of one type with different context ids apart', function (
 // Kills 834adbc48ba0635f (build, ContinueToBreak): a grant whose permission
 // row is gone is skipped; it must not stop the scan before later grants.
 it('skips grants with missing permission rows without stopping the scan', function (): void {
-    $this->bouncer->allow($this->user)->to('ghost');
-    $this->bouncer->allow($this->user)->to('real');
+    $this->warden->allow($this->user)->to('ghost');
+    $this->warden->allow($this->user)->to('real');
 
     // Orphan the first grant: its permission row disappears, the row stays.
     DB::statement('PRAGMA foreign_keys = OFF');
     DB::table('permissions')->where('name', 'ghost')->delete();
-    $this->bouncer->refresh();
+    $this->warden->refresh();
 
     expect(Gate::forUser($this->user)->allows('real'))->toBeTrue();
 })->skip(fn (): bool => DB::connection()->getDriverName() !== 'sqlite', 'Needs the UUID column variant; sqlite emulates it with loose typing');

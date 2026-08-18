@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Events;
+namespace ElPandaPe\Warden\Events;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;

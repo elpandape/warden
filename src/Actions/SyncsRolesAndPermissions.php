@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Actions;
+namespace ElPandaPe\Warden\Actions;
 
-use ElPandaPe\Bouncer\Actions\Concerns\NormalizesRoles;
-use ElPandaPe\Bouncer\Actions\Concerns\ResolvesAuthority;
-use ElPandaPe\Bouncer\Actions\Concerns\ResolvesPermissions;
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Events\Concerns\DispatchesEvents;
-use ElPandaPe\Bouncer\Events\PermissionsSynced;
-use ElPandaPe\Bouncer\Events\RolesSynced;
-use ElPandaPe\Bouncer\Events\SyncResult;
-use ElPandaPe\Bouncer\Tenancy\Tenancy;
-use ElPandaPe\Bouncer\Tenancy\TenantScope;
+use ElPandaPe\Warden\Actions\Concerns\NormalizesRoles;
+use ElPandaPe\Warden\Actions\Concerns\ResolvesAuthority;
+use ElPandaPe\Warden\Actions\Concerns\ResolvesPermissions;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
+use ElPandaPe\Warden\Events\PermissionsSynced;
+use ElPandaPe\Warden\Events\RolesSynced;
+use ElPandaPe\Warden\Events\SyncResult;
+use ElPandaPe\Warden\Tenancy\Tenancy;
+use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
@@ -79,7 +79,7 @@ class SyncsRolesAndPermissions
             ->get()
             ->toBase();
 
-        $this->dispatchBouncerEvent(new RolesSynced($authority, $this->diff($models, $before), $scope));
+        $this->dispatchWardenEvent(new RolesSynced($authority, $this->diff($models, $before), $scope));
 
         return $this;
     }
@@ -158,7 +158,7 @@ class SyncsRolesAndPermissions
             ->get()
             ->toBase();
 
-        $this->dispatchBouncerEvent(
+        $this->dispatchWardenEvent(
             new PermissionsSynced($authority, $this->diff($permissionModels, $before), $scope, $forbidden),
         );
 

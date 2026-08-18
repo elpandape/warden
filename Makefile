@@ -16,7 +16,7 @@ test: ## Run the test suite
 	$(PHP) vendor/bin/pest --parallel
 
 test-cached: ## Full suite again through the cached resolver (parity matrix)
-	$(DC) run --rm -e BOUNCER_TEST_RESOLVER=cached php vendor/bin/pest --ci
+	$(DC) run --rm -e WARDEN_TEST_RESOLVER=cached php vendor/bin/pest --ci
 
 coverage: ## Tests + 100% coverage gate
 	$(PHP) php -d memory_limit=1G -d pcov.directory=/app -d 'pcov.exclude=~/(vendor|tests|\.cache)/~' vendor/bin/pest --ci --coverage --min=100
@@ -56,5 +56,5 @@ mutation: ## Mutation testing over the core, one pass per path
 
 test-dbs: ## Suite against MySQL & Postgres (waits for healthchecks)
 	$(DC) up -d --wait mysql postgres
-	$(PHP) sh -c "DB_CONNECTION=mysql DB_HOST=mysql DB_PORT=3306 DB_USERNAME=root DB_PASSWORD=secret DB_DATABASE=bouncer vendor/bin/pest --ci"
-	$(PHP) sh -c "DB_CONNECTION=pgsql DB_HOST=postgres DB_PORT=5432 DB_USERNAME=postgres DB_PASSWORD=secret DB_DATABASE=bouncer vendor/bin/pest --ci"
+	$(PHP) sh -c "DB_CONNECTION=mysql DB_HOST=mysql DB_PORT=3306 DB_USERNAME=root DB_PASSWORD=secret DB_DATABASE=warden vendor/bin/pest --ci"
+	$(PHP) sh -c "DB_CONNECTION=pgsql DB_HOST=postgres DB_PORT=5432 DB_USERNAME=postgres DB_PASSWORD=secret DB_DATABASE=warden vendor/bin/pest --ci"

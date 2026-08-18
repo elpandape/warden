@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Concerns;
+namespace ElPandaPe\Warden\Concerns;
 
 use BackedEnum;
-use ElPandaPe\Bouncer\Checks\Queries\WhereCan;
-use ElPandaPe\Bouncer\Support\Name;
+use ElPandaPe\Warden\Checks\Queries\WhereCan;
+use ElPandaPe\Warden\Support\Name;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 

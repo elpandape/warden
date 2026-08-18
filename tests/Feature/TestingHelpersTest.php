@@ -2,27 +2,27 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Bouncer;
-use ElPandaPe\Bouncer\Testing\BouncerFake;
-use ElPandaPe\Bouncer\Testing\WithPermissions;
-use ElPandaPe\Bouncer\Tests\Fixtures\Account;
-use ElPandaPe\Bouncer\Tests\Fixtures\User;
+use ElPandaPe\Warden\Testing\WardenFake;
+use ElPandaPe\Warden\Testing\WithPermissions;
+use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\User;
+use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Facades\Gate;
 use PHPUnit\Framework\AssertionFailedError;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 pest()->use(WithPermissions::class);
 
 beforeEach(function (): void {
-    migrateBouncerTables();
+    migrateWardenTables();
 
-    $this->bouncer = app(Bouncer::class);
+    $this->warden = app(Warden::class);
     $this->user = User::query()->create(['name' => 'Joseph']);
 });
 
 it('scripts verdicts without touching the database', function (): void {
-    $fake = $this->bouncer->fake();
+    $fake = $this->warden->fake();
     $account = Account::query()->create(['name' => 'A'])->refresh();
 
     $fake->allow('edit-site');
@@ -37,7 +37,7 @@ it('scripts verdicts without touching the database', function (): void {
 });
 
 it('applies forbidden-first among scripted rules', function (): void {
-    $fake = $this->bouncer->fake();
+    $fake = $this->warden->fake();
 
     $fake->allow('publish')->forbid('publish');
 
@@ -45,7 +45,7 @@ it('applies forbidden-first among scripted rules', function (): void {
 });
 
 it('leaves unscripted checks to the app policies', function (): void {
-    $this->bouncer->fake();
+    $this->warden->fake();
 
     Gate::define('special', fn (User $user): bool => true);
 
@@ -53,7 +53,7 @@ it('leaves unscripted checks to the app policies', function (): void {
 });
 
 it('records checks for assertions', function (): void {
-    $fake = $this->bouncer->fake();
+    $fake = $this->warden->fake();
     $fake->allow('edit-site')->forbid('delete');
 
     Gate::forUser($this->user)->allows('edit-site');
@@ -72,10 +72,10 @@ it('records checks for assertions', function (): void {
 });
 
 it('asserts silence when nothing was checked', function (): void {
-    $fake = $this->bouncer->fake();
+    $fake = $this->warden->fake();
 
     $fake->assertNothingChecked();
-    expect($fake)->toBeInstanceOf(BouncerFake::class);
+    expect($fake)->toBeInstanceOf(WardenFake::class);
 });
 
 it('arranges real permissions through the testing trait', function (): void {

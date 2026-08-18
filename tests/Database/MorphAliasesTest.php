@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Models\Permission;
-use ElPandaPe\Bouncer\Models\Role;
-use ElPandaPe\Bouncer\Tests\Fixtures\User;
+use ElPandaPe\Warden\Models\Permission;
+use ElPandaPe\Warden\Models\Role;
+use ElPandaPe\Warden\Tests\Fixtures\User;
 use Illuminate\Database\Eloquent\Relations\Relation;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 beforeEach(function (): void {
-    migrateBouncerTables();
+    migrateWardenTables();
 });
 
 afterEach(function (): void {
@@ -20,10 +20,10 @@ afterEach(function (): void {
 });
 
 it('registers stable morph aliases for the package models', function (): void {
-    expect((new Role)->getMorphClass())->toBe('bouncer.role')
-        ->and((new Permission)->getMorphClass())->toBe('bouncer.permission')
-        ->and(Relation::getMorphedModel('bouncer.role'))->toBe(Role::class)
-        ->and(Relation::getMorphedModel('bouncer.permission'))->toBe(Permission::class);
+    expect((new Role)->getMorphClass())->toBe('warden.role')
+        ->and((new Permission)->getMorphClass())->toBe('warden.permission')
+        ->and(Relation::getMorphedModel('warden.role'))->toBe(Role::class)
+        ->and(Relation::getMorphedModel('warden.permission'))->toBe(Permission::class);
 });
 
 it('stores role grants under the morph alias', function (): void {
@@ -31,7 +31,7 @@ it('stores role grants under the morph alias', function (): void {
     $role->permissions()->attach(Permission::query()->create(['name' => 'edit']), ['forbidden' => false]);
 
     expect(
-        app('db')->table('grants')->where('entity_type', 'bouncer.role')->count(),
+        app('db')->table('grants')->where('entity_type', 'warden.role')->count(),
     )->toBe(1);
 });
 

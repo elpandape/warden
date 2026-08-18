@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Models;
+namespace ElPandaPe\Warden\Models;
 
-use ElPandaPe\Bouncer\Database\Factories\PermissionFactory;
-use ElPandaPe\Bouncer\Models\Concerns\IsPermission;
+use ElPandaPe\Warden\Database\Factories\PermissionFactory;
+use ElPandaPe\Warden\Models\Concerns\IsPermission;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 

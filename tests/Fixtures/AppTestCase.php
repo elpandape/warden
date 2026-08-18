@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Tests\Fixtures;
+namespace ElPandaPe\Warden\Tests\Fixtures;
 
-use ElPandaPe\Bouncer\Testing\WithPermissions;
-use ElPandaPe\Bouncer\Tests\TestCase;
+use ElPandaPe\Warden\Testing\WithPermissions;
+use ElPandaPe\Warden\Tests\TestCase;
 
 /**
  * How an app suite adopts the testing helpers.

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Actions;
+namespace ElPandaPe\Warden\Actions;
 
 class ForbidsPermissions extends GrantsPermissions
 {

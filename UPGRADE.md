@@ -8,19 +8,19 @@ ownership, scopes) is intentionally compatible — most call sites survive as-is
 
 ```bash
 composer remove silber/bouncer
-composer require elpandape/bouncer
+composer require elpandape/warden
 ```
 
 The packages cannot coexist (`conflict`), by design.
 
-## 2. Upgrade the database — `bouncer:upgrade`
+## 2. Upgrade the database — `warden:upgrade`
 
 Do **not** run this package's migration on a legacy database. Run the upgrade
 command instead; it transforms the silber/bouncer schema in place:
 
 ```bash
-php artisan bouncer:upgrade --dry-run   # report only
-php artisan bouncer:upgrade
+php artisan warden:upgrade --dry-run   # report only
+php artisan warden:upgrade
 ```
 
 What it does, in the one order that survives the table-name crossing:
@@ -56,35 +56,56 @@ snapshot first if you need a rollback path. Indexes keep their legacy names.
 
 Scope: the command upgrades the **stable silber/bouncer schema (>= 1.0)**. If you
 are on one of the ancient 1.0.0-rc releases with a pre-rename schema, migrate to
-upstream 1.0 first, then run `bouncer:upgrade`.
+upstream 1.0 first, then run `warden:upgrade`.
 
 ## 3. Rename the code — Rector set
 
 ```bash
-vendor/bin/rector process app --config vendor/elpandape/bouncer/stubs/rector-silber-upgrade.php
+vendor/bin/rector process app --config vendor/elpandape/warden/stubs/rector-silber-upgrade.php
 ```
 
 It rewrites imports and renamed calls. The main equivalences:
 
-| silber/bouncer | elpandape/bouncer |
+> **The facade alias changed.** `silber/bouncer` registered the root alias
+> `Bouncer`; this package registers `Warden`. The set rewrites those call sites
+> too — `use Bouncer;`, `\Bouncer::` and un-namespaced files like `routes/web.php`
+> — so `Bouncer::allow(...)` becomes `Warden::allow(...)` on its own. If your app
+> has its own global-namespace class called `Bouncer`, drop that one mapping from
+> the set first.
+
+| silber/bouncer | elpandape/warden |
 |---|---|
-| `Silber\Bouncer\BouncerFacade` | `ElPandaPe\Bouncer\Facades\Bouncer` |
-| `Silber\Bouncer\Database\Ability` | `ElPandaPe\Bouncer\Models\Permission` |
-| `Silber\Bouncer\Database\Role` | `ElPandaPe\Bouncer\Models\Role` |
+| `Silber\Bouncer\BouncerFacade` | `ElPandaPe\Warden\Facades\Warden` |
+| `Silber\Bouncer\Database\Ability` | `ElPandaPe\Warden\Models\Permission` |
+| `Silber\Bouncer\Database\Role` | `ElPandaPe\Warden\Models\Role` |
 | `...\Concerns\HasRolesAndAbilities` | `...\Concerns\HasRolesAndPermissions` |
-| `Bouncer::ability([...])` | `Bouncer::permission([...])` |
+| `Bouncer::ability([...])` | `Warden::permission([...])` |
 | `$user->getAbilities()` | `$user->getPermissions()` (unrestricted-role channel; restricted contexts excluded) |
-| `Bouncer::scope()` | unchanged (alias of `tenant()`) |
-| `Bouncer::cache()` / `dontCache()` | config `bouncer.cache.enabled` |
-| `Bouncer::refresh()` / `refreshFor()` | unchanged, now O(1) |
+| `Bouncer::scope()` | `Warden::scope()`, kept as an alias of `tenant()` |
+| `Bouncer::cache()` / `dontCache()` | config `warden.cache.enabled` |
+| `Bouncer::refresh()` / `refreshFor()` | `Warden::refresh()` / `refreshFor()`, now O(1) |
 
 ## What changed underneath (worth knowing)
 
 - Checks run through the Gate exactly as before, but a versioned cache with
   automatic invalidation answers them by default — raw DB edits need
-  `Bouncer::refresh()` (writes through the API do not).
+  `Warden::refresh()` (writes through the API do not).
 - `sync()` manages **unrestricted** role assignments only.
-- Null-tenant visibility is configurable (`bouncer.scope.null_behavior`), and
+- Null-tenant visibility is configurable (`warden.scope.null_behavior`), and
   writes always target one exact tenant scope.
 - Everything new (ABAC, scoped roles, `whereCan()`, `explain()`, events,
   typed exceptions, testing tools) is additive: adopt at your own pace.
+
+---
+
+## A note on the name
+
+This package shipped its 1.0.0 as `elpandape/bouncer` for a day before being
+renamed to `elpandape/warden` — same schema, same API, only identifiers moved.
+If you installed it in that window: `ElPandaPe\Bouncer\*` is now
+`ElPandaPe\Warden\*`, the `Bouncer` facade and its root alias are `Warden`,
+`bouncer:*` commands are `warden:*`, `config/bouncer.php` is `config/warden.php`,
+and the morph aliases `bouncer.role` / `bouncer.permission` are `warden.role` /
+`warden.permission` — that last pair is written into `entity_type` and
+`restricted_to_type`, so rewrite those columns before trusting your grants.
+Full list in the [changelog](CHANGELOG.md).

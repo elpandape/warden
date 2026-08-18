@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Contracts;
+namespace ElPandaPe\Warden\Contracts;
 
-use ElPandaPe\Bouncer\Checks\Verdict;
+use ElPandaPe\Warden\Checks\Verdict;
 use Illuminate\Database\Eloquent\Model;
 
 interface Resolver

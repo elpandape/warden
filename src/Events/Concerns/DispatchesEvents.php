@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Events\Concerns;
+namespace ElPandaPe\Warden\Events\Concerns;
 
-use ElPandaPe\Bouncer\Support\Config;
+use ElPandaPe\Warden\Support\Config;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Facades\Event;
 
@@ -16,7 +16,7 @@ trait DispatchesEvents
      */
     protected bool $silentEvents = false;
 
-    private function dispatchBouncerEvent(object $event): void
+    private function dispatchWardenEvent(object $event): void
     {
         if (Config::eventsEnabled() && ! $this->silentEvents) {
             Event::dispatch($event);

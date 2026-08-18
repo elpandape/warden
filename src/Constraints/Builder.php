@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Constraints;
+namespace ElPandaPe\Warden\Constraints;
 
 use Closure;
-use ElPandaPe\Bouncer\Contracts\Constraint;
-use ElPandaPe\Bouncer\Enums\ComparisonOperator;
-use ElPandaPe\Bouncer\Enums\LogicalOperator;
-use ElPandaPe\Bouncer\Exceptions\ConfigurationException;
+use ElPandaPe\Warden\Contracts\Constraint;
+use ElPandaPe\Warden\Enums\ComparisonOperator;
+use ElPandaPe\Warden\Enums\LogicalOperator;
+use ElPandaPe\Warden\Exceptions\ConfigurationException;
 
 /**
  * The fluent surface behind allow(...)->to(...)->where(...): Eloquent-shaped

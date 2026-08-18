@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Actions\Concerns;
+namespace ElPandaPe\Warden\Actions\Concerns;
 
-use ElPandaPe\Bouncer\Tenancy\Tenancy;
+use ElPandaPe\Warden\Tenancy\Tenancy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 

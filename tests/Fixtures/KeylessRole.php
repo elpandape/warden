@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Tests\Fixtures;
+namespace ElPandaPe\Warden\Tests\Fixtures;
 
-use ElPandaPe\Bouncer\Models\Role;
+use ElPandaPe\Warden\Models\Role;
 
 final class KeylessRole extends Role
 {

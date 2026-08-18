@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Models\Permission;
-use ElPandaPe\Bouncer\Models\Role;
+use ElPandaPe\Warden\Models\Permission;
+use ElPandaPe\Warden\Models\Role;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 beforeEach(function (): void {
-    migrateBouncerTables();
+    migrateWardenTables();
 });
 
 it('creates permissions through the factory', function (): void {

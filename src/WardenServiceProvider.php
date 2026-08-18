@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer;
+namespace ElPandaPe\Warden;
 
-use ElPandaPe\Bouncer\Checks\GateRegistrar;
-use ElPandaPe\Bouncer\Support\Config;
+use ElPandaPe\Warden\Checks\GateRegistrar;
+use ElPandaPe\Warden\Support\Config;
 use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
@@ -13,22 +13,22 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\ServiceProvider;
 
-final class BouncerServiceProvider extends ServiceProvider
+final class WardenServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/bouncer.php', 'bouncer');
+        $this->mergeConfigFrom(__DIR__.'/../config/warden.php', 'warden');
 
         $this->app->singleton(Context::class, function (Application $app): Context {
-            $config = $app->make(Repository::class)->get('bouncer');
+            $config = $app->make(Repository::class)->get('warden');
 
             return Context::fromConfig(is_array($config) ? $config : []);
         });
 
-        $this->app->singleton(Bouncer::class);
+        $this->app->singleton(Warden::class);
 
         $tenancy = function (Application $app): Tenancy\Tenancy {
-            $resolver = $app->make(Repository::class)->get('bouncer.scope.tenant_resolver');
+            $resolver = $app->make(Repository::class)->get('warden.scope.tenant_resolver');
 
             $instance = is_string($resolver) && is_subclass_of($resolver, Contracts\TenantResolver::class)
                 ? $app->make($resolver)
@@ -40,7 +40,7 @@ final class BouncerServiceProvider extends ServiceProvider
         };
 
         // Scoped: tenant state resets between Octane requests and queue jobs.
-        if ((bool) $this->app->make(Repository::class)->get('bouncer.octane.register_reset_listener', true)) {
+        if ((bool) $this->app->make(Repository::class)->get('warden.octane.register_reset_listener', true)) {
             $this->app->scoped(Tenancy\Tenancy::class, $tenancy);
         } else {
             $this->app->singleton(Tenancy\Tenancy::class, $tenancy);
@@ -57,7 +57,7 @@ final class BouncerServiceProvider extends ServiceProvider
         );
 
         // Scoped: per-request memoization resets between Octane requests and jobs.
-        if ((bool) $this->app->make(Repository::class)->get('bouncer.octane.register_reset_listener', true)) {
+        if ((bool) $this->app->make(Repository::class)->get('warden.octane.register_reset_listener', true)) {
             $this->app->scoped(Contracts\Resolver::class, $resolver);
         } else {
             $this->app->singleton(Contracts\Resolver::class, $resolver);
@@ -72,13 +72,13 @@ final class BouncerServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'bouncer');
+        $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'warden');
 
         // Optional borrowings, off by default: identity stays fluent-first.
         if (Config::registersMiddlewareAliases()) {
             $router = $this->app->make(\Illuminate\Routing\Router::class);
-            $router->aliasMiddleware('bouncer.role', Http\Middleware\RequiresRole::class);
-            $router->aliasMiddleware('bouncer.permission', Http\Middleware\RequiresPermission::class);
+            $router->aliasMiddleware('warden.role', Http\Middleware\RequiresRole::class);
+            $router->aliasMiddleware('warden.permission', Http\Middleware\RequiresPermission::class);
         }
 
         if (Config::registersBladeDirectives()) {
@@ -115,22 +115,22 @@ final class BouncerServiceProvider extends ServiceProvider
                 Console\UpgradeCommand::class,
             ]);
 
-            \Illuminate\Foundation\Console\AboutCommand::add('Bouncer', fn (): array => [
-                'Version' => \Composer\InstalledVersions::getPrettyVersion('elpandape/bouncer') ?? 'dev',
+            \Illuminate\Foundation\Console\AboutCommand::add('Warden', fn (): array => [
+                'Version' => \Composer\InstalledVersions::getPrettyVersion('elpandape/warden') ?? 'dev',
                 'Cache' => Config::cacheEnabled() ? 'enabled' : 'disabled',
                 'Events' => Config::eventsEnabled() ? 'enabled' : 'disabled',
                 'Tenancy null behavior' => Config::scopeNullBehavior(),
             ]);
 
             $this->publishes([
-                __DIR__.'/../config/bouncer.php' => config_path('bouncer.php'),
-            ], 'bouncer-config');
+                __DIR__.'/../config/warden.php' => config_path('warden.php'),
+            ], 'warden-config');
 
             $this->publishes([
-                __DIR__.'/../database/migrations/create_bouncer_tables.php.stub' => database_path(
-                    'migrations/'.date('Y_m_d_His').'_create_bouncer_tables.php',
+                __DIR__.'/../database/migrations/create_warden_tables.php.stub' => database_path(
+                    'migrations/'.date('Y_m_d_His').'_create_warden_tables.php',
                 ),
-            ], 'bouncer-migrations');
+            ], 'warden-migrations');
         }
     }
 
@@ -138,8 +138,8 @@ final class BouncerServiceProvider extends ServiceProvider
     {
         // Read config directly: resolving the Context here would freeze it too early.
         $config = $this->app->make(Repository::class);
-        $aliases = $config->get('bouncer.morph_aliases');
-        $models = $config->get('bouncer.models');
+        $aliases = $config->get('warden.morph_aliases');
+        $models = $config->get('warden.models');
 
         $defaults = [
             'permission' => Models\Permission::class,

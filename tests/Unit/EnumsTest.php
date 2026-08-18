@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Enums\ComparisonOperator;
-use ElPandaPe\Bouncer\Enums\GateSlot;
-use ElPandaPe\Bouncer\Enums\LogicalOperator;
+use ElPandaPe\Warden\Enums\ComparisonOperator;
+use ElPandaPe\Warden\Enums\GateSlot;
+use ElPandaPe\Warden\Enums\LogicalOperator;
 
 describe('LogicalOperator', function (): void {
     it('combines with and', function (bool $carry, bool $operand, bool $expected): void {
@@ -64,9 +64,9 @@ describe('GateSlot', function (): void {
 
 describe('Verdict', function (): void {
     it('models the three outcomes', function (): void {
-        $granted = ElPandaPe\Bouncer\Checks\Verdict::granted(7);
-        $forbidden = ElPandaPe\Bouncer\Checks\Verdict::forbidden(3);
-        $abstained = ElPandaPe\Bouncer\Checks\Verdict::abstained();
+        $granted = ElPandaPe\Warden\Checks\Verdict::granted(7);
+        $forbidden = ElPandaPe\Warden\Checks\Verdict::forbidden(3);
+        $abstained = ElPandaPe\Warden\Checks\Verdict::abstained();
 
         expect($granted->isGranted())->toBeTrue()
             ->and($granted->permissionKey)->toBe(7)

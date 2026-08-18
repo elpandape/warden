@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Exceptions;
+namespace ElPandaPe\Warden\Exceptions;
 
 use InvalidArgumentException;
 

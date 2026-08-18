@@ -5,9 +5,9 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Schema;
 
-function bouncerMigration(): Migration
+function wardenMigration(): Migration
 {
-    return require __DIR__.'/../../database/migrations/create_bouncer_tables.php.stub';
+    return require __DIR__.'/../../database/migrations/create_warden_tables.php.stub';
 }
 
 beforeEach(function (): void {
@@ -15,11 +15,11 @@ beforeEach(function (): void {
         Schema::dropIfExists($table);
     }
 
-    ElPandaPe\Bouncer\Tests\Database\dropBouncerTables();
+    ElPandaPe\Warden\Tests\Database\dropWardenTables();
 });
 
-it('creates and drops the four bouncer tables', function (): void {
-    $migration = bouncerMigration();
+it('creates and drops the four warden tables', function (): void {
+    $migration = wardenMigration();
 
     $migration->up();
 
@@ -37,7 +37,7 @@ it('creates and drops the four bouncer tables', function (): void {
 });
 
 it('ships the schema v2 columns, including the ones reserved for v0.8', function (): void {
-    $migration = bouncerMigration();
+    $migration = wardenMigration();
     $migration->up();
 
     expect(Schema::hasColumns('permissions', [
@@ -54,14 +54,14 @@ it('ships the schema v2 columns, including the ones reserved for v0.8', function
 });
 
 it('honors custom table names from the config', function (): void {
-    config()->set('bouncer.tables', [
+    config()->set('warden.tables', [
         'permissions' => 'custom_permissions',
         'roles' => 'custom_roles',
         'assigned_roles' => 'custom_assigned_roles',
         'grants' => 'custom_grants',
     ]);
 
-    $migration = bouncerMigration();
+    $migration = wardenMigration();
     $migration->up();
 
     expect(Schema::hasTable('custom_permissions'))->toBeTrue()

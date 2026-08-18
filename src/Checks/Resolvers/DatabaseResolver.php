@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Checks\Resolvers;
+namespace ElPandaPe\Warden\Checks\Resolvers;
 
-use ElPandaPe\Bouncer\Checks\Verdict;
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Contracts\Resolver;
-use ElPandaPe\Bouncer\Models\Permission;
+use ElPandaPe\Warden\Checks\Verdict;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Contracts\Resolver;
+use ElPandaPe\Warden\Models\Permission;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -100,9 +100,9 @@ final readonly class DatabaseResolver implements Resolver
             return true;
         }
 
-        $group = \ElPandaPe\Bouncer\Constraints\ConstraintSerializer::deserialize($options);
+        $group = \ElPandaPe\Warden\Constraints\ConstraintSerializer::deserialize($options);
 
-        if (! $group instanceof \ElPandaPe\Bouncer\Constraints\Group) {
+        if (! $group instanceof \ElPandaPe\Warden\Constraints\Group) {
             // Undecidable constraints fail closed in each pass's safe
             // direction: a grant must not widen, a forbid must not lift.
             return $forbidden;
@@ -239,7 +239,7 @@ final readonly class DatabaseResolver implements Resolver
         $permissionKey = $permissionModel->getQualifiedKeyName();
         $roleMorph = (new ($this->context->roleClass()))->getMorphClass();
 
-        $filter = app(\ElPandaPe\Bouncer\Tenancy\Tenancy::class)->readFilter();
+        $filter = app(\ElPandaPe\Warden\Tenancy\Tenancy::class)->readFilter();
 
         $builder->from($grants)
             ->whereColumn("{$grants}.permission_id", $permissionKey)

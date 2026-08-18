@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Bouncer;
-use ElPandaPe\Bouncer\Tests\Fixtures\User;
+use ElPandaPe\Warden\Tests\Fixtures\User;
+use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 afterEach(function (): void {
     // Leave no legacy tables behind for the rest of the suite.
@@ -19,9 +19,9 @@ afterEach(function (): void {
 });
 
 beforeEach(function (): void {
-    migrateBouncerTables();
+    migrateWardenTables();
 
-    $this->bouncer = app(Bouncer::class);
+    $this->warden = app(Warden::class);
     $this->user = User::query()->create(['name' => 'Joseph']);
 
     // Replace this package's tables with a faithful silber/bouncer schema.
@@ -86,7 +86,7 @@ beforeEach(function (): void {
 });
 
 it('reports without touching anything on a dry run', function (): void {
-    $this->artisan('bouncer:upgrade --dry-run')
+    $this->artisan('warden:upgrade --dry-run')
         ->expectsOutputToContain('silber/bouncer schema detected')
         ->expectsOutputToContain('Dry run')
         ->assertExitCode(0);
@@ -96,7 +96,7 @@ it('reports without touching anything on a dry run', function (): void {
 });
 
 it('upgrades the schema in place and keeps every verdict', function (): void {
-    $this->artisan('bouncer:upgrade')->assertExitCode(0);
+    $this->artisan('warden:upgrade')->assertExitCode(0);
 
     expect(Schema::hasTable('grants'))->toBeTrue()
         ->and(Schema::hasTable('abilities'))->toBeFalse()
@@ -113,7 +113,7 @@ it('upgrades the schema in place and keeps every verdict', function (): void {
 it('rewrites custom legacy role morphs when told to', function (): void {
     DB::table('permissions')->where('ability_id', 2)->update(['entity_type' => 'App\Models\Role']);
 
-    $this->artisan('bouncer:upgrade', ['--role-morph' => ['App\Models\Role']])->assertExitCode(0);
+    $this->artisan('warden:upgrade', ['--role-morph' => ['App\Models\Role']])->assertExitCode(0);
 
     expect(Gate::forUser($this->user)->allows('audit'))->toBeTrue();
 });
@@ -121,42 +121,42 @@ it('rewrites custom legacy role morphs when told to', function (): void {
 it('refuses to run without a legacy schema or over a fresh install', function (): void {
     Schema::rename('abilities', 'abilities_gone');
 
-    $this->artisan('bouncer:upgrade')->assertExitCode(1);
+    $this->artisan('warden:upgrade')->assertExitCode(1);
 
     Schema::rename('abilities_gone', 'abilities');
     Schema::create('grants', function (Blueprint $table): void {
         $table->id();
     });
 
-    $this->artisan('bouncer:upgrade')->assertExitCode(1);
+    $this->artisan('warden:upgrade')->assertExitCode(1);
 });
 
 it('rewrites role morphs on role-targeted abilities too', function (): void {
     DB::table('abilities')->insert(['id' => 9, 'name' => 'manage', 'title' => null, 'entity_id' => null, 'entity_type' => 'roles', 'only_owned' => false, 'options' => null, 'scope' => null, 'created_at' => now(), 'updated_at' => now()]);
     DB::table('permissions')->insert(['ability_id' => 9, 'entity_id' => $this->user->getKey(), 'entity_type' => $this->user->getMorphClass(), 'forbidden' => false, 'scope' => null]);
 
-    $this->artisan('bouncer:upgrade')->assertExitCode(0);
+    $this->artisan('warden:upgrade')->assertExitCode(0);
 
-    expect(Gate::forUser($this->user)->allows('manage', ElPandaPe\Bouncer\Models\Role::class))->toBeTrue();
+    expect(Gate::forUser($this->user)->allows('manage', ElPandaPe\Warden\Models\Role::class))->toBeTrue();
 });
 
 it('refuses to widen legacy tenant isolation under the all default', function (): void {
     DB::table('permissions')->where('ability_id', 1)->update(['scope' => 2]);
 
-    $this->artisan('bouncer:upgrade')
+    $this->artisan('warden:upgrade')
         ->expectsOutputToContain('null_behavior')
         ->assertExitCode(1);
 
     expect(Schema::hasTable('abilities'))->toBeTrue();
 
     // Explicit acknowledgement, or the legacy-faithful strict mode, proceed.
-    config()->set('bouncer.scope.null_behavior', 'strict');
+    config()->set('warden.scope.null_behavior', 'strict');
 
-    $this->artisan('bouncer:upgrade')->assertExitCode(0);
+    $this->artisan('warden:upgrade')->assertExitCode(0);
 });
 
 it('proceeds over scoped rows when widening is acknowledged', function (): void {
     DB::table('permissions')->where('ability_id', 1)->update(['scope' => 2]);
 
-    $this->artisan('bouncer:upgrade', ['--allow-open-scopes' => true])->assertExitCode(0);
+    $this->artisan('warden:upgrade', ['--allow-open-scopes' => true])->assertExitCode(0);
 });

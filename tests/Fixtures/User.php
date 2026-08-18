@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Tests\Fixtures;
+namespace ElPandaPe\Warden\Tests\Fixtures;
 
-use ElPandaPe\Bouncer\Concerns\HasRolesAndPermissions;
-use ElPandaPe\Bouncer\Concerns\QueriesByPermission;
+use ElPandaPe\Warden\Concerns\HasRolesAndPermissions;
+use ElPandaPe\Warden\Concerns\QueriesByPermission;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
 class User extends Authenticatable

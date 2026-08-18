@@ -1,7 +1,51 @@
 # Changelog
 
-All notable changes to `elpandape/bouncer` are documented here.
+All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
+
+## v1.0.0 — Renamed to Warden (2026-08-18)
+
+The package is now `elpandape/warden`. Nothing about the behaviour changed: this
+release is `elpandape/bouncer` v1.0.0 under a new name, because "Bouncer" belonged
+to the package this one succeeds. `elpandape/bouncer` is abandoned and declared in
+`conflict`; the two cannot coexist.
+
+`elpandape/bouncer` existed for a single day and shipped no migration tooling of
+its own: the table below is the whole upgrade. The morph aliases are the only
+entry that touches data already written — they live in `entity_type` and
+`restricted_to_type`, and a stale value makes a grant stop matching instead of
+raising.
+
+### Breaking
+
+| Was | Is |
+|---|---|
+| `elpandape/bouncer` | `elpandape/warden` |
+| `ElPandaPe\Bouncer\*` | `ElPandaPe\Warden\*` |
+| `ElPandaPe\Bouncer\Bouncer` | `ElPandaPe\Warden\Warden` |
+| `BouncerServiceProvider` | `WardenServiceProvider` |
+| `Bouncer` facade / root alias | `Warden` |
+| `BouncerFake` | `WardenFake` |
+| `php artisan bouncer:*` | `php artisan warden:*` |
+| `config/bouncer.php`, `config('bouncer.*')` | `config/warden.php`, `config('warden.*')` |
+| `--tag=bouncer-config` / `bouncer-migrations` | `warden-config` / `warden-migrations` |
+| `*_create_bouncer_tables.php` | `*_create_warden_tables.php` |
+| morph aliases `bouncer.role` / `bouncer.permission` | `warden.role` / `warden.permission` |
+| middleware `bouncer.role` / `bouncer.permission` | `warden.role` / `warden.permission` |
+| translations `bouncer::bouncer.*` | `warden::warden.*` |
+| cache prefix `bouncer` | `warden` |
+
+Migrating from `silber/bouncer` is unaffected: `warden:upgrade` and
+`stubs/rector-silber-upgrade.php` target `elpandape/warden` directly — see
+[UPGRADE.md](UPGRADE.md).
+
+---
+
+## Released as `elpandape/bouncer`
+
+Everything below shipped under the old package name. The entries are left as
+published — the commands, classes and config keys they mention are the ones that
+existed at the time.
 
 ## v1.0.0 — The package, finished (2026-08-18)
 

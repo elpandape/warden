@@ -2,35 +2,35 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Bouncer;
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Models\Grant;
-use ElPandaPe\Bouncer\Models\Permission;
-use ElPandaPe\Bouncer\Models\Role;
-use ElPandaPe\Bouncer\Tests\Fixtures\Account;
-use ElPandaPe\Bouncer\Tests\Fixtures\KeylessAccount;
-use ElPandaPe\Bouncer\Tests\Fixtures\User;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Models\Permission;
+use ElPandaPe\Warden\Models\Role;
+use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\KeylessAccount;
+use ElPandaPe\Warden\Tests\Fixtures\User;
+use ElPandaPe\Warden\Warden;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 beforeEach(function (): void {
-    migrateBouncerTables();
+    migrateWardenTables();
 
-    $this->bouncer = app(Bouncer::class);
+    $this->warden = app(Warden::class);
     $this->user = User::query()->create(['name' => 'Joseph']);
 });
 
 it('revokes blanket grants without touching ownership grants', function (): void {
-    $this->bouncer->allow($this->user)->to('edit', Account::class);
-    $this->bouncer->allow($this->user)->toOwn(Account::class, 'edit');
+    $this->warden->allow($this->user)->to('edit', Account::class);
+    $this->warden->allow($this->user)->toOwn(Account::class, 'edit');
 
-    $this->bouncer->disallow($this->user)->to('edit', Account::class);
+    $this->warden->disallow($this->user)->to('edit', Account::class);
 
     expect(Grant::query()->count())->toBe(1)
         ->and(Permission::query()->where('only_owned', true)->count())->toBe(1);
 
-    $this->bouncer->disallow($this->user)->toOwn(Account::class, 'edit');
-    $this->bouncer->disallow($this->user)->toOwnEverything();
+    $this->warden->disallow($this->user)->toOwn(Account::class, 'edit');
+    $this->warden->disallow($this->user)->toOwnEverything();
 
     expect(Grant::query()->count())->toBe(0);
 });
@@ -38,7 +38,7 @@ it('revokes blanket grants without touching ownership grants', function (): void
 it('rejects entities whose key is not usable instead of widening the grant', function (): void {
     $broken = KeylessAccount::query()->create(['name' => 'Acme']);
 
-    expect(fn () => $this->bouncer->allow($this->user)->to('edit', $broken))
+    expect(fn () => $this->warden->allow($this->user)->to('edit', $broken))
         ->toThrow(InvalidArgumentException::class, 'int or string key')
         ->and(Permission::query()->count())->toBe(0);
 });
@@ -47,18 +47,18 @@ it('rejects models of the wrong type as permissions or roles', function (): void
     $role = Role::query()->create(['name' => 'admin']);
     $permission = Permission::query()->create(['name' => 'edit']);
 
-    expect(fn () => $this->bouncer->allow($this->user)->to([$role]))
+    expect(fn () => $this->warden->allow($this->user)->to([$role]))
         ->toThrow(InvalidArgumentException::class, 'not the configured permission model')
-        ->and(fn () => $this->bouncer->assign($permission)->to($this->user))
+        ->and(fn () => $this->warden->assign($permission)->to($this->user))
         ->toThrow(InvalidArgumentException::class, 'not the configured role model')
-        ->and(fn () => $this->bouncer->retract($permission)->from($this->user))
+        ->and(fn () => $this->warden->retract($permission)->from($this->user))
         ->toThrow(InvalidArgumentException::class, 'not the configured role model')
-        ->and(fn () => $this->bouncer->disallow($this->user)->to([$role]))
+        ->and(fn () => $this->warden->disallow($this->user)->to([$role]))
         ->toThrow(InvalidArgumentException::class, 'not the configured permission model');
 });
 
 it('enforces the model contracts at the config boundary', function (): void {
-    config()->set('bouncer.models.grant', ElPandaPe\Bouncer\Tests\Fixtures\Plain::class);
+    config()->set('warden.models.grant', ElPandaPe\Warden\Tests\Fixtures\Plain::class);
     app()->forgetInstance(Context::class);
 
     expect(fn () => Context::resolve()->grantClass())
@@ -68,12 +68,12 @@ it('enforces the model contracts at the config boundary', function (): void {
 it('registers morph aliases before the app finishes booting', function (): void {
     // The provider registers aliases in boot(), not only in booted():
     // a write from another provider boot() must already store the alias.
-    expect(Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel('bouncer.role'))
+    expect(Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel('warden.role'))
         ->toBe(Role::class);
 });
 
 it('enforces the permission model contract too', function (): void {
-    config()->set('bouncer.models.permission', ElPandaPe\Bouncer\Tests\Fixtures\Plain::class);
+    config()->set('warden.models.permission', ElPandaPe\Warden\Tests\Fixtures\Plain::class);
     app()->forgetInstance(Context::class);
 
     expect(fn () => Context::resolve()->permissionClass())

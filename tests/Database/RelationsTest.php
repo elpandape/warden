@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Models\AssignedRole;
-use ElPandaPe\Bouncer\Models\Grant;
-use ElPandaPe\Bouncer\Models\Permission;
-use ElPandaPe\Bouncer\Models\Role;
-use ElPandaPe\Bouncer\Tests\Fixtures\User;
+use ElPandaPe\Warden\Models\AssignedRole;
+use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Models\Permission;
+use ElPandaPe\Warden\Models\Role;
+use ElPandaPe\Warden\Tests\Fixtures\User;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 beforeEach(function (): void {
-    migrateBouncerTables();
+    migrateWardenTables();
 
     $this->user = User::query()->create(['name' => 'Joseph']);
 });
@@ -56,7 +56,7 @@ it('does not use pivot timestamps by default', function (): void {
     expect((new AssignedRole)->usesTimestamps())->toBeFalse()
         ->and((new Grant)->usesTimestamps())->toBeFalse();
 
-    config()->set('bouncer.pivot_timestamps', true);
+    config()->set('warden.pivot_timestamps', true);
 
     expect((new AssignedRole)->usesTimestamps())->toBeTrue()
         ->and((new Grant)->usesTimestamps())->toBeTrue();
@@ -72,7 +72,7 @@ it('selects pivot timestamps when the opt-in is enabled', function (): void {
 
     expect($user->roles()->getPivotColumns())->not->toContain('created_at');
 
-    config()->set('bouncer.pivot_timestamps', true);
+    config()->set('warden.pivot_timestamps', true);
 
     expect($user->roles()->getPivotColumns())->toContain('created_at', 'updated_at')
         ->and($user->permissions()->getPivotColumns())->toContain('created_at');

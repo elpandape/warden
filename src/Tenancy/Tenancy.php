@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Tenancy;
+namespace ElPandaPe\Warden\Tenancy;
 
 use Closure;
-use ElPandaPe\Bouncer\Contracts\TenantResolver;
+use ElPandaPe\Warden\Contracts\TenantResolver;
 
 final class Tenancy
 {
@@ -21,8 +21,8 @@ final class Tenancy
     {
         // Config-backed defaults: scoped instances are rebuilt per Octane
         // request, so boot-time runtime calls alone would silently revert.
-        $this->onlyRelations = \ElPandaPe\Bouncer\Support\Config::scopeOnlyRelations();
-        $this->scopeRoleGrants = \ElPandaPe\Bouncer\Support\Config::scopeRoleGrants();
+        $this->onlyRelations = \ElPandaPe\Warden\Support\Config::scopeOnlyRelations();
+        $this->scopeRoleGrants = \ElPandaPe\Warden\Support\Config::scopeRoleGrants();
     }
 
     public function to(int|string $tenant): self
@@ -125,7 +125,7 @@ final class Tenancy
             return ['both', $tenant];
         }
 
-        return \ElPandaPe\Bouncer\Support\Config::scopeNullBehavior() === 'strict'
+        return \ElPandaPe\Warden\Support\Config::scopeNullBehavior() === 'strict'
             ? ['null', null]
             : null;
     }

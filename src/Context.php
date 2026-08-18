@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer;
+namespace ElPandaPe\Warden;
 
 use Closure;
-use ElPandaPe\Bouncer\Exceptions\ConfigurationException;
-use ElPandaPe\Bouncer\Models\AssignedRole;
-use ElPandaPe\Bouncer\Models\Grant;
-use ElPandaPe\Bouncer\Models\Permission;
-use ElPandaPe\Bouncer\Models\Role;
+use ElPandaPe\Warden\Exceptions\ConfigurationException;
+use ElPandaPe\Warden\Models\AssignedRole;
+use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Models\Permission;
+use ElPandaPe\Warden\Models\Role;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphPivot;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -71,7 +71,7 @@ final class Context
         // Fail fast: an empty name would otherwise surface later as broken
         // SQL with an empty identifier, far from the misconfiguration.
         if ($table === '') {
-            throw new ConfigurationException("Configured bouncer table [{$name}] must not be empty.");
+            throw new ConfigurationException("Configured warden table [{$name}] must not be empty.");
         }
 
         return $table;
@@ -215,7 +215,7 @@ final class Context
         if ($override !== null) {
             if (! is_subclass_of($override, Model::class)) {
                 throw new ConfigurationException(
-                    "Configured bouncer model [{$key}] must be an Eloquent model class, [{$override}] given.",
+                    "Configured warden model [{$key}] must be an Eloquent model class, [{$override}] given.",
                 );
             }
 
@@ -229,7 +229,7 @@ final class Context
         }
 
         return self::DEFAULT_MODELS[$key]
-            ?? throw new ConfigurationException("Unknown bouncer model key [{$key}].");
+            ?? throw new ConfigurationException("Unknown warden model key [{$key}].");
     }
 
     /**
@@ -324,7 +324,7 @@ final class Context
         }
 
         throw new ConfigurationException(
-            'Unable to resolve the user model from the default auth guard; set bouncer.models.user explicitly.',
+            'Unable to resolve the user model from the default auth guard; set warden.models.user explicitly.',
         );
     }
 
@@ -346,7 +346,7 @@ final class Context
 
         if (! $satisfied) {
             throw new ConfigurationException(
-                "Configured bouncer model [{$key}] ([{$override}]) does not satisfy the {$key} contract.",
+                "Configured warden model [{$key}] ([{$override}]) does not satisfy the {$key} contract.",
             );
         }
     }

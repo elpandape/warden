@@ -2,26 +2,26 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer;
+namespace ElPandaPe\Warden;
 
-use ElPandaPe\Bouncer\Actions\AssignsRoles;
-use ElPandaPe\Bouncer\Actions\ChecksRoles;
-use ElPandaPe\Bouncer\Actions\ForbidsPermissions;
-use ElPandaPe\Bouncer\Actions\GrantsPermissions;
-use ElPandaPe\Bouncer\Actions\RetractsRoles;
-use ElPandaPe\Bouncer\Actions\RevokesPermissions;
-use ElPandaPe\Bouncer\Actions\SyncsRolesAndPermissions;
-use ElPandaPe\Bouncer\Actions\UnforbidsPermissions;
-use ElPandaPe\Bouncer\Exceptions\PermissionDoesNotExist;
-use ElPandaPe\Bouncer\Exceptions\RoleDoesNotExist;
-use ElPandaPe\Bouncer\Exceptions\UnauthorizedException;
-use ElPandaPe\Bouncer\Support\Name;
+use ElPandaPe\Warden\Actions\AssignsRoles;
+use ElPandaPe\Warden\Actions\ChecksRoles;
+use ElPandaPe\Warden\Actions\ForbidsPermissions;
+use ElPandaPe\Warden\Actions\GrantsPermissions;
+use ElPandaPe\Warden\Actions\RetractsRoles;
+use ElPandaPe\Warden\Actions\RevokesPermissions;
+use ElPandaPe\Warden\Actions\SyncsRolesAndPermissions;
+use ElPandaPe\Warden\Actions\UnforbidsPermissions;
+use ElPandaPe\Warden\Exceptions\PermissionDoesNotExist;
+use ElPandaPe\Warden\Exceptions\RoleDoesNotExist;
+use ElPandaPe\Warden\Exceptions\UnauthorizedException;
+use ElPandaPe\Warden\Support\Name;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Database\Eloquent\Model;
 
-final class Bouncer
+final class Warden
 {
     public function allow(Model|string|\BackedEnum $authority): GrantsPermissions
     {
@@ -141,9 +141,9 @@ final class Bouncer
     /**
      * Swap the resolver for a scriptable fake that records every check.
      */
-    public function fake(): Testing\BouncerFake
+    public function fake(): Testing\WardenFake
     {
-        $fake = new Testing\BouncerFake;
+        $fake = new Testing\WardenFake;
 
         app()->instance(Contracts\Resolver::class, $fake);
 

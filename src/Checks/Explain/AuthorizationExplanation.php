@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Checks\Explain;
+namespace ElPandaPe\Warden\Checks\Explain;
 
-use ElPandaPe\Bouncer\Checks\Verdict;
+use ElPandaPe\Warden\Checks\Verdict;
 use Illuminate\Database\Eloquent\Model;
 use Stringable;
 
@@ -36,8 +36,8 @@ final readonly class AuthorizationExplanation implements Stringable
             Cause::ForbiddenDirectly => "Explicitly forbidden by {$subject}, held directly.",
             Cause::ForbiddenViaRole => "Explicitly forbidden by {$subject}{$via}.",
             Cause::ForbiddenToEveryone => "Explicitly forbidden by {$subject}, applied to everyone.",
-            Cause::NoMatchingGrant => 'No matching grant: Bouncer abstains, app policies decide.',
-            Cause::NotApplicable => 'Not a Bouncer question: the entity is not a model.',
+            Cause::NoMatchingGrant => 'No matching grant: Warden abstains, app policies decide.',
+            Cause::NotApplicable => 'Not a Warden question: the entity is not a model.',
         };
     }
 

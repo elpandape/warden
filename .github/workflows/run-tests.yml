@@ -45,7 +45,7 @@ jobs:
       - name: Run tests (cached resolver)
         run: vendor/bin/pest --ci
         env:
-          BOUNCER_TEST_RESOLVER: cached
+          WARDEN_TEST_RESOLVER: cached
 
   test-databases:
     runs-on: ubuntu-latest
@@ -55,14 +55,14 @@ jobs:
         image: mysql:9
         env:
           MYSQL_ROOT_PASSWORD: secret
-          MYSQL_DATABASE: bouncer
+          MYSQL_DATABASE: warden
         ports: ["3306:3306"]
         options: --health-cmd="mysqladmin ping -psecret" --health-interval=5s --health-retries=10
       postgres:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: secret
-          POSTGRES_DB: bouncer
+          POSTGRES_DB: warden
         ports: ["5432:5432"]
         options: --health-cmd="pg_isready -U postgres" --health-interval=5s --health-retries=10
 
@@ -91,5 +91,5 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_USERNAME: ${{ matrix.connection == 'mysql' && 'root' || 'postgres' }}
           DB_PASSWORD: secret
-          DB_DATABASE: bouncer
+          DB_DATABASE: warden
         run: vendor/bin/pest --ci

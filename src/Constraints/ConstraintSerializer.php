@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Constraints;
+namespace ElPandaPe\Warden\Constraints;
 
-use ElPandaPe\Bouncer\Contracts\Constraint;
-use ElPandaPe\Bouncer\Enums\ComparisonOperator;
-use ElPandaPe\Bouncer\Enums\ConstraintType;
-use ElPandaPe\Bouncer\Enums\LogicalOperator;
+use ElPandaPe\Warden\Contracts\Constraint;
+use ElPandaPe\Warden\Enums\ComparisonOperator;
+use ElPandaPe\Warden\Enums\ConstraintType;
+use ElPandaPe\Warden\Enums\LogicalOperator;
 
 /**
  * The persisted shape is versioned and discriminated by enum, never by class

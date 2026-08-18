@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Bouncer;
-use ElPandaPe\Bouncer\BouncerServiceProvider;
-use ElPandaPe\Bouncer\Exceptions\UnauthorizedException;
-use ElPandaPe\Bouncer\Http\Middleware\RequiresPermission;
-use ElPandaPe\Bouncer\Http\Middleware\RequiresRole;
-use ElPandaPe\Bouncer\Tests\Fixtures\User;
+use ElPandaPe\Warden\Exceptions\UnauthorizedException;
+use ElPandaPe\Warden\Http\Middleware\RequiresPermission;
+use ElPandaPe\Warden\Http\Middleware\RequiresRole;
+use ElPandaPe\Warden\Tests\Fixtures\User;
+use ElPandaPe\Warden\Warden;
+use ElPandaPe\Warden\WardenServiceProvider;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Blade;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 beforeEach(function (): void {
-    migrateBouncerTables();
+    migrateWardenTables();
 
-    $this->bouncer = app(Bouncer::class);
+    $this->warden = app(Warden::class);
     $this->user = User::query()->create(['name' => 'Joseph']);
 });
 
@@ -31,18 +31,18 @@ function requestAs(?User $user): Request
 }
 
 it('registers aliases and directives only when opted in', function (): void {
-    expect(app(Router::class)->getMiddleware())->not->toHaveKey('bouncer.role');
+    expect(app(Router::class)->getMiddleware())->not->toHaveKey('warden.role');
 
-    config()->set('bouncer.register_middleware_aliases', true);
-    config()->set('bouncer.register_blade_directives', true);
-    new BouncerServiceProvider(app())->boot();
+    config()->set('warden.register_middleware_aliases', true);
+    config()->set('warden.register_blade_directives', true);
+    new WardenServiceProvider(app())->boot();
 
     expect(app(Router::class)->getMiddleware())
-        ->toHaveKeys(['bouncer.role', 'bouncer.permission']);
+        ->toHaveKeys(['warden.role', 'warden.permission']);
 });
 
 it('guards routes by role, any-of', function (): void {
-    $this->bouncer->assign('editor')->to($this->user);
+    $this->warden->assign('editor')->to($this->user);
 
     $middleware = new RequiresRole;
     $response = $middleware->handle(requestAs($this->user), fn (): Response => new Response('ok'), 'admin', 'editor');
@@ -61,7 +61,7 @@ it('guards routes by role, any-of', function (): void {
 });
 
 it('guards routes by permission, all-of', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
 
     $middleware = new RequiresPermission;
     $response = $middleware->handle(requestAs($this->user), fn (): Response => new Response('ok'), 'edit-site');
@@ -80,33 +80,33 @@ it('guards routes by permission, all-of', function (): void {
 });
 
 it('renders the forbidden directive for explicit denials only', function (): void {
-    config()->set('bouncer.register_blade_directives', true);
-    new BouncerServiceProvider(app())->boot();
+    config()->set('warden.register_blade_directives', true);
+    new WardenServiceProvider(app())->boot();
 
-    $this->bouncer->allow($this->user)->to('publish');
-    $this->bouncer->forbid($this->user)->to('publish');
+    $this->warden->allow($this->user)->to('publish');
+    $this->warden->forbid($this->user)->to('publish');
     $this->actingAs($this->user);
 
     $template = '@forbidden("publish") BLOCKED @else FREE @endforbidden';
 
     expect(trim(Blade::render($template)))->toBe('BLOCKED');
 
-    $this->bouncer->unforbid($this->user)->to('publish');
+    $this->warden->unforbid($this->user)->to('publish');
 
     // Merely lacking a permission is not an explicit denial.
     expect(trim(Blade::render('@forbidden("missing") BLOCKED @else FREE @endforbidden')))->toBe('FREE');
 });
 
 it('stays quiet for guests in the forbidden directive', function (): void {
-    config()->set('bouncer.register_blade_directives', true);
-    new BouncerServiceProvider(app())->boot();
+    config()->set('warden.register_blade_directives', true);
+    new WardenServiceProvider(app())->boot();
 
     expect(trim(Blade::render('@forbidden("anything") BLOCKED @else FREE @endforbidden')))->toBe('FREE');
 });
 
 it('fails closed when middleware is registered without parameters', function (): void {
-    $this->bouncer->assign('admin')->to($this->user);
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->assign('admin')->to($this->user);
+    $this->warden->allow($this->user)->to('edit-site');
 
     expect(fn () => new RequiresRole()->handle(requestAs($this->user), fn (): Response => new Response('ok')))
         ->toThrow(UnauthorizedException::class)

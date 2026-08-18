@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Warden\Context;
 
 it('resolves configured table names and falls back to the given name', function (): void {
     $context = Context::fromConfig(['tables' => ['roles' => 'custom_roles']]);
@@ -34,9 +34,9 @@ it('allows overriding the connection at runtime', function (): void {
 });
 
 it('resolves morph aliases', function (): void {
-    $context = Context::fromConfig(['morph_aliases' => ['role' => 'bouncer.role']]);
+    $context = Context::fromConfig(['morph_aliases' => ['role' => 'warden.role']]);
 
-    expect($context->morphAlias('role'))->toBe('bouncer.role')
+    expect($context->morphAlias('role'))->toBe('warden.role')
         ->and($context->morphAlias('missing'))->toBeNull();
 });
 
@@ -59,16 +59,16 @@ it('ignores non-string entries in string maps', function (): void {
 });
 
 it('fails fast on empty configured table names', function (): void {
-    config()->set('bouncer.tables.permissions', '');
+    config()->set('warden.tables.permissions', '');
     app()->forgetInstance(Context::class);
 
     // Without this guard the misconfiguration surfaces later as broken
     // SQL with an empty identifier, far from its cause.
     expect(fn () => Context::resolve()->table('permissions'))
-        ->toThrow(ElPandaPe\Bouncer\Exceptions\ConfigurationException::class, 'must not be empty');
+        ->toThrow(ElPandaPe\Warden\Exceptions\ConfigurationException::class, 'must not be empty');
 
     expect(fn () => Context::resolve()->setTable('roles', ''))
         ->not->toThrow(Exception::class)
         ->and(fn () => Context::resolve()->table('roles'))
-        ->toThrow(ElPandaPe\Bouncer\Exceptions\ConfigurationException::class);
+        ->toThrow(ElPandaPe\Warden\Exceptions\ConfigurationException::class);
 });

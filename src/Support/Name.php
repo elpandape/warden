@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Support;
+namespace ElPandaPe\Warden\Support;
 
 use BackedEnum;
 

@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Console;
+namespace ElPandaPe\Warden\Console;
 
-use ElPandaPe\Bouncer\Bouncer;
+use ElPandaPe\Warden\Warden;
 use Illuminate\Console\Command;
 
 final class CacheResetCommand extends Command
 {
-    protected $signature = 'bouncer:cache-reset';
+    protected $signature = 'warden:cache-reset';
 
     protected $description = 'Invalidate every cached authorization payload (an O(1) version bump)';
 
-    public function handle(Bouncer $bouncer): int
+    public function handle(Warden $warden): int
     {
-        $bouncer->refresh();
+        $warden->refresh();
 
-        $this->components->info('Bouncer cache invalidated.');
+        $this->components->info('Warden cache invalidated.');
 
         return self::SUCCESS;
     }

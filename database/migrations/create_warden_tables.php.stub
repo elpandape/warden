@@ -10,8 +10,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $tables = config('bouncer.tables', []);
-        $connection = config('bouncer.connection');
+        $tables = config('warden.tables', []);
+        $connection = config('warden.connection');
 
         $schema = Schema::connection(is_string($connection) ? $connection : null);
         // Explicit index names must carry the prefix: Postgres scopes them per database.
@@ -62,7 +62,7 @@ return new class extends Migration
                 $prefix.'assigned_roles_unique',
             );
             $table->index(['entity_id', 'entity_type', 'scope'], $prefix.'assigned_roles_entity_index');
-            // Uncomment (and enable bouncer.pivot_timestamps) to audit assignments:
+            // Uncomment (and enable warden.pivot_timestamps) to audit assignments:
             // $table->timestamps();
         });
 
@@ -84,15 +84,15 @@ return new class extends Migration
                 $prefix.'grants_unique',
             );
             $table->index(['entity_id', 'entity_type', 'scope'], $prefix.'grants_entity_index');
-            // Uncomment (and enable bouncer.pivot_timestamps) to audit grants:
+            // Uncomment (and enable warden.pivot_timestamps) to audit grants:
             // $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        $tables = config('bouncer.tables', []);
-        $connection = config('bouncer.connection');
+        $tables = config('warden.tables', []);
+        $connection = config('warden.connection');
 
         $schema = Schema::connection(is_string($connection) ? $connection : null);
 

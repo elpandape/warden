@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Actions\Concerns;
+namespace ElPandaPe\Warden\Actions\Concerns;
 
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Exceptions\RoleDoesNotExist;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Exceptions\RoleDoesNotExist;
 use Illuminate\Database\Eloquent\Model;
 
 trait ResolvesAuthority

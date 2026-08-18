@@ -2,25 +2,25 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Bouncer;
-use ElPandaPe\Bouncer\Checks\Resolvers\CachedResolver;
-use ElPandaPe\Bouncer\Checks\Resolvers\CacheKeyVersioner;
-use ElPandaPe\Bouncer\Contracts\Resolver;
-use ElPandaPe\Bouncer\Models\Grant;
-use ElPandaPe\Bouncer\Tenancy\Tenancy;
-use ElPandaPe\Bouncer\Tests\Fixtures\Account;
-use ElPandaPe\Bouncer\Tests\Fixtures\PlainCacheStore;
-use ElPandaPe\Bouncer\Tests\Fixtures\User;
+use ElPandaPe\Warden\Checks\Resolvers\CachedResolver;
+use ElPandaPe\Warden\Checks\Resolvers\CacheKeyVersioner;
+use ElPandaPe\Warden\Contracts\Resolver;
+use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Tenancy\Tenancy;
+use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\PlainCacheStore;
+use ElPandaPe\Warden\Tests\Fixtures\User;
+use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 function cachedPayloadKey(User $authority): string
 {
     return implode(':', [
-        'bouncer',
+        'warden',
         'p2',
         app(CacheKeyVersioner::class)->segment(),
         $authority->getMorphClass(),
@@ -29,10 +29,10 @@ function cachedPayloadKey(User $authority): string
 }
 
 beforeEach(function (): void {
-    migrateBouncerTables();
-    config()->set('bouncer.cache.enabled', true);
+    migrateWardenTables();
+    config()->set('warden.cache.enabled', true);
 
-    $this->bouncer = app(Bouncer::class);
+    $this->warden = app(Warden::class);
     $this->user = User::query()->create(['name' => 'Joseph']);
 });
 
@@ -40,13 +40,13 @@ it('answers every grant shape like the database engine', function (): void {
     $account = Account::query()->create(['name' => 'Mine', 'user_id' => $this->user->getKey()])->refresh();
     $foreign = Account::query()->create(['name' => 'Other'])->refresh();
 
-    $this->bouncer->allow($this->user)->to('ban-users');
-    $this->bouncer->allow($this->user)->to('edit', Account::class);
-    $this->bouncer->allow($this->user)->toOwn(Account::class, ['delete']);
-    $this->bouncer->allow('admin')->to('audit');
-    $this->bouncer->assign('admin')->to($this->user);
-    $this->bouncer->allowEveryone()->to('browse');
-    $this->bouncer->forbid($this->user)->to('edit', $foreign);
+    $this->warden->allow($this->user)->to('ban-users');
+    $this->warden->allow($this->user)->to('edit', Account::class);
+    $this->warden->allow($this->user)->toOwn(Account::class, ['delete']);
+    $this->warden->allow('admin')->to('audit');
+    $this->warden->assign('admin')->to($this->user);
+    $this->warden->allowEveryone()->to('browse');
+    $this->warden->forbid($this->user)->to('edit', $foreign);
 
     $gate = Gate::forUser($this->user);
 
@@ -65,7 +65,7 @@ it('abstains on non-model entity strings without touching the cache', function (
 });
 
 it('serves checks from the cached payload without new queries', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
 
@@ -83,7 +83,7 @@ it('serves checks from the cached payload without new queries', function (): voi
 });
 
 it('keeps serving the cached payload when rows change behind its back', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
 
@@ -94,79 +94,79 @@ it('keeps serving the cached payload when rows change behind its back', function
 });
 
 it('reflects every action immediately through version bumps', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
 
-    $this->bouncer->disallow($this->user)->to('edit-site');
+    $this->warden->disallow($this->user)->to('edit-site');
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
 
-    $this->bouncer->assign('admin')->to($this->user);
-    $this->bouncer->allow('admin')->to('audit');
+    $this->warden->assign('admin')->to($this->user);
+    $this->warden->allow('admin')->to('audit');
     expect(Gate::forUser($this->user)->allows('audit'))->toBeTrue();
 
-    $this->bouncer->retract('admin')->from($this->user);
+    $this->warden->retract('admin')->from($this->user);
     expect(Gate::forUser($this->user)->allows('audit'))->toBeFalse();
 
-    $this->bouncer->sync($this->user)->permissions(['publish']);
+    $this->warden->sync($this->user)->permissions(['publish']);
     expect(Gate::forUser($this->user)->allows('publish'))->toBeTrue();
 
-    $this->bouncer->forbid($this->user)->to('publish');
+    $this->warden->forbid($this->user)->to('publish');
     expect(Gate::forUser($this->user)->allows('publish'))->toBeFalse();
 
-    $this->bouncer->unforbid($this->user)->to('publish');
+    $this->warden->unforbid($this->user)->to('publish');
     expect(Gate::forUser($this->user)->allows('publish'))->toBeTrue();
 });
 
 it('keeps tenant payloads independent through per-tenant versions', function (): void {
-    $this->bouncer->tenant()->to(2);
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->tenant()->to(2);
+    $this->warden->allow($this->user)->to('edit-site');
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
 
     // A write in tenant 1 must not invalidate tenant 2's cached payload:
     // the raw delete is only visible once something bumps tenant 2.
     Grant::query()->withoutGlobalScopes()->where('scope', 2)->delete();
-    $this->bouncer->tenant()->onceTo(1, function (): void {
-        $this->bouncer->allow($this->user)->to('other');
+    $this->warden->tenant()->onceTo(1, function (): void {
+        $this->warden->allow($this->user)->to('other');
     });
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
 
     // A global write bumps every shape, so the stale payload is rebuilt.
-    $this->bouncer->tenant()->removeOnce(function (): void {
-        $this->bouncer->allowEveryone()->to('browse');
+    $this->warden->tenant()->removeOnce(function (): void {
+        $this->warden->allowEveryone()->to('browse');
     });
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
 });
 
 it('invalidates everything with refresh', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
 
     Grant::query()->withoutGlobalScopes()->delete();
-    $this->bouncer->refresh();
+    $this->warden->refresh();
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
 });
 
 it('invalidates one authority with refreshFor', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
 
     Grant::query()->withoutGlobalScopes()->delete();
-    $this->bouncer->refreshFor($this->user);
+    $this->warden->refreshFor($this->user);
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
 });
 
 it('ignores refreshFor when the cache is disabled', function (): void {
-    config()->set('bouncer.cache.enabled', false);
-    $this->bouncer->allow($this->user)->to('edit-site');
+    config()->set('warden.cache.enabled', false);
+    $this->warden->allow($this->user)->to('edit-site');
 
     // Passthrough mode: the database engine answers and refreshFor is a no-op.
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue()
-        ->and($this->bouncer->refreshFor($this->user))->toBe($this->bouncer);
+        ->and($this->warden->refreshFor($this->user))->toBe($this->warden);
 
     Grant::query()->withoutGlobalScopes()->delete();
 
@@ -174,7 +174,7 @@ it('ignores refreshFor when the cache is disabled', function (): void {
 });
 
 it('expires payloads after the configured ttl', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
 
     Grant::query()->withoutGlobalScopes()->delete();
@@ -187,7 +187,7 @@ it('expires payloads after the configured ttl', function (): void {
 });
 
 it('stores a versioned payload with the fields v0.8 will need', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
     Gate::forUser($this->user)->allows('edit-site');
 
     $payload = Cache::store('array')->get(cachedPayloadKey($this->user));
@@ -201,7 +201,7 @@ it('stores a versioned payload with the fields v0.8 will need', function (): voi
 });
 
 it('discards cached payloads from other payload versions', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
     Gate::forUser($this->user)->allows('edit-site');
 
     // A payload written by a different package version must be rebuilt.
@@ -212,11 +212,11 @@ it('discards cached payloads from other payload versions', function (): void {
 });
 
 it('falls back to a direct rebuild when the stampede lock times out', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
 
     $resolver = new CachedResolver(
         app(Resolver::class),
-        ElPandaPe\Bouncer\Context::resolve(),
+        ElPandaPe\Warden\Context::resolve(),
         app(CacheKeyVersioner::class),
         lockWaitSeconds: 0,
     );
@@ -230,9 +230,9 @@ it('falls back to a direct rebuild when the stampede lock times out', function (
 it('rebuilds without locking on stores that cannot lock', function (): void {
     Cache::extend('plain', fn (): Illuminate\Contracts\Cache\Repository => Cache::repository(new PlainCacheStore));
     config()->set('cache.stores.plain', ['driver' => 'plain']);
-    config()->set('bouncer.cache.store', 'plain');
+    config()->set('warden.cache.store', 'plain');
 
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
 
@@ -243,11 +243,11 @@ it('rebuilds without locking on stores that cannot lock', function (): void {
 });
 
 it('reseeds corrupted version counters at random', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
     Gate::forUser($this->user)->allows('edit-site');
 
-    Cache::store('array')->put('bouncer:v:a', 'junk', 60);
-    Cache::store('array')->put('bouncer:v:g', 'junk', 60);
+    Cache::store('array')->put('warden:v:a', 'junk', 60);
+    Cache::store('array')->put('warden:v:g', 'junk', 60);
     app()->forgetScopedInstances();
 
     // A corrupted counter reseeds instead of resurrecting stale entries.
@@ -269,7 +269,7 @@ it('matches wildcard and class shapes from the cached payload', function (): voi
     $account = Account::query()->create(['name' => 'Plain'])->refresh();
     $other = User::query()->create(['name' => 'Ana']);
 
-    $this->bouncer->allow($this->user)->to('edit', Account::class);
+    $this->warden->allow($this->user)->to('edit', Account::class);
 
     $resolver = app(Resolver::class);
 
@@ -277,7 +277,7 @@ it('matches wildcard and class shapes from the cached payload', function (): voi
         ->and(Gate::forUser($this->user)->allows('edit', $other))->toBeFalse()
         ->and($resolver->resolve($this->user, 'edit', '*')->isAbstained())->toBeTrue();
 
-    $this->bouncer->allow($this->user)->everything();
+    $this->warden->allow($this->user)->everything();
 
     expect($resolver->resolve($this->user, 'edit', '*')->isGranted())->toBeTrue()
         ->and(Gate::forUser($this->user)->allows('whatever', $account))->toBeTrue()
@@ -285,15 +285,15 @@ it('matches wildcard and class shapes from the cached payload', function (): voi
 });
 
 it('versions strict no-tenant checks by the global counter', function (): void {
-    config()->set('bouncer.scope.null_behavior', 'strict');
+    config()->set('warden.scope.null_behavior', 'strict');
 
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
 });
 
 it('reuses stored payloads across container lifecycles', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
 
     // New lifecycle, same version: the payload comes from the store, not the db.
@@ -304,7 +304,7 @@ it('reuses stored payloads across container lifecycles', function (): void {
 });
 
 it('discards payloads whose grant list is corrupted', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
     Gate::forUser($this->user)->allows('edit-site');
 
     Cache::store('array')->put(cachedPayloadKey($this->user), ['v' => 2, 'grants' => 'junk'], 60);
@@ -314,12 +314,12 @@ it('discards payloads whose grant list is corrupted', function (): void {
 });
 
 it('skips grants whose permission is invisible to the current filter', function (): void {
-    $this->bouncer->tenant()->to(1);
-    $this->bouncer->allow($this->user)->to('ghost');
+    $this->warden->tenant()->to(1);
+    $this->warden->allow($this->user)->to('ghost');
 
     // A global grant pointing at a tenant-1 permission: visible rows, filtered catalog.
     Grant::query()->withoutGlobalScopes()->update(['scope' => null]);
-    $this->bouncer->tenant()->to(2);
+    $this->warden->tenant()->to(2);
 
     expect(Gate::forUser($this->user)->allows('ghost'))->toBeFalse();
 });
@@ -337,67 +337,67 @@ it('bounds per-instance memoization for long-lived workers', function (): void {
 it('keys payloads by the full read shape, tenant identity included', function (): void {
     $versioner = app(CacheKeyVersioner::class);
 
-    $this->bouncer->tenant()->to(5);
+    $this->warden->tenant()->to(5);
     expect($versioner->segment())->toStartWith('t5.c1.');
 
-    $this->bouncer->tenant()->onlyRelations();
+    $this->warden->tenant()->onlyRelations();
     expect($versioner->segment())->toStartWith('t5.c0.');
 
-    $this->bouncer->tenant()->onlyRelations(false)->remove();
+    $this->warden->tenant()->onlyRelations(false)->remove();
     expect($versioner->segment())->toStartWith('all.c1.');
 
-    config()->set('bouncer.scope.null_behavior', 'strict');
+    config()->set('warden.scope.null_behavior', 'strict');
     expect($versioner->segment())->toStartWith('strict.c1.');
 });
 
 it('rebuilds the payload when catalog visibility changes', function (): void {
     // A global grant pointing at a tenant-1 permission: only visible while
     // the catalog is unscoped (onlyRelations).
-    $this->bouncer->tenant()->to(1);
-    $this->bouncer->allow($this->user)->to('ghost');
+    $this->warden->tenant()->to(1);
+    $this->warden->allow($this->user)->to('ghost');
     Grant::query()->withoutGlobalScopes()->update(['scope' => null]);
 
-    $this->bouncer->tenant()->to(2);
-    $this->bouncer->tenant()->onlyRelations();
+    $this->warden->tenant()->to(2);
+    $this->warden->tenant()->onlyRelations();
 
     expect(Gate::forUser($this->user)->allows('ghost'))->toBeTrue();
 
     // Same tenant, catalog scoped again: a different key, never a stale hit.
-    $this->bouncer->tenant()->onlyRelations(false);
+    $this->warden->tenant()->onlyRelations(false);
 
     expect(Gate::forUser($this->user)->allows('ghost'))->toBeFalse();
 });
 
 it('invalidates writes made while the cache is disabled', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('edit-site');
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
 
     // The window runs on the database engine, but its writes must still
     // orphan payloads cached before it.
-    config()->set('bouncer.cache.enabled', false);
-    $this->bouncer->disallow($this->user)->to('edit-site');
-    config()->set('bouncer.cache.enabled', true);
+    config()->set('warden.cache.enabled', false);
+    $this->warden->disallow($this->user)->to('edit-site');
+    config()->set('warden.cache.enabled', true);
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
 });
 
 it('bumps again after commit for writes inside a transaction', function (): void {
-    $this->bouncer->allow($this->user)->to('edit-site');
-    $before = Cache::store('array')->get('bouncer:v:g');
+    $this->warden->allow($this->user)->to('edit-site');
+    $before = Cache::store('array')->get('warden:v:g');
 
     DB::transaction(function (): void {
-        $this->bouncer->disallow($this->user)->to('edit-site');
+        $this->warden->disallow($this->user)->to('edit-site');
     });
 
     // Once inside the transaction, once after commit: a payload rebuilt by a
     // concurrent reader from pre-commit rows gets orphaned too.
-    expect(Cache::store('array')->get('bouncer:v:g'))->toBe($before + 2)
+    expect(Cache::store('array')->get('warden:v:g'))->toBe($before + 2)
         ->and(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
 });
 
 it('applies config-backed tenancy splits on fresh lifecycles', function (): void {
-    config()->set('bouncer.scope.only_relations', true);
-    config()->set('bouncer.scope.role_grants', false);
+    config()->set('warden.scope.only_relations', true);
+    config()->set('warden.scope.role_grants', false);
     app()->forgetScopedInstances();
 
     expect(app(Tenancy::class)->scopesCatalog())->toBeFalse()

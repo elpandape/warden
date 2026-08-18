@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Enums;
+namespace ElPandaPe\Warden\Enums;
 
 enum ComparisonOperator: string
 {

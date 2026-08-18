@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Checks\Explain;
+namespace ElPandaPe\Warden\Checks\Explain;
 
 use BackedEnum;
-use ElPandaPe\Bouncer\Checks\Resolvers\DatabaseResolver;
-use ElPandaPe\Bouncer\Checks\Verdict;
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Support\Name;
-use ElPandaPe\Bouncer\Tenancy\TenantScope;
+use ElPandaPe\Warden\Checks\Resolvers\DatabaseResolver;
+use ElPandaPe\Warden\Checks\Verdict;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Support\Name;
+use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 
 /**

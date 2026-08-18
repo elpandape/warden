@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Facades;
+namespace ElPandaPe\Warden\Facades;
 
-use ElPandaPe\Bouncer\Actions\AssignsRoles;
-use ElPandaPe\Bouncer\Actions\ChecksRoles;
-use ElPandaPe\Bouncer\Actions\ForbidsPermissions;
-use ElPandaPe\Bouncer\Actions\GrantsPermissions;
-use ElPandaPe\Bouncer\Actions\RetractsRoles;
-use ElPandaPe\Bouncer\Actions\RevokesPermissions;
-use ElPandaPe\Bouncer\Actions\SyncsRolesAndPermissions;
-use ElPandaPe\Bouncer\Actions\UnforbidsPermissions;
+use ElPandaPe\Warden\Actions\AssignsRoles;
+use ElPandaPe\Warden\Actions\ChecksRoles;
+use ElPandaPe\Warden\Actions\ForbidsPermissions;
+use ElPandaPe\Warden\Actions\GrantsPermissions;
+use ElPandaPe\Warden\Actions\RetractsRoles;
+use ElPandaPe\Warden\Actions\RevokesPermissions;
+use ElPandaPe\Warden\Actions\SyncsRolesAndPermissions;
+use ElPandaPe\Warden\Actions\UnforbidsPermissions;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Facade;
 
@@ -32,25 +32,25 @@ use Illuminate\Support\Facades\Facade;
  * @method static bool cannot(string|\BackedEnum $permission, Model|string|null $entity = null)
  * @method static bool canAny(array<int, string|\BackedEnum> $permissions, Model|string|null $entity = null)
  * @method static \Illuminate\Auth\Access\Response authorize(string|\BackedEnum $permission, Model|string|null $entity = null)
- * @method static \ElPandaPe\Bouncer\Bouncer ownedVia(string|\Closure $modelOrAttribute, string|\Closure|null $attribute = null)
+ * @method static \ElPandaPe\Warden\Warden ownedVia(string|\Closure $modelOrAttribute, string|\Closure|null $attribute = null)
  * @method static \Illuminate\Database\Eloquent\Model findRole(string|\BackedEnum $name)
  * @method static \Illuminate\Database\Eloquent\Model findPermission(string|\BackedEnum $name)
- * @method static \ElPandaPe\Bouncer\Testing\BouncerFake fake()
- * @method static \ElPandaPe\Bouncer\Checks\Explain\AuthorizationExplanation explain(\Illuminate\Database\Eloquent\Model $authority, string|\BackedEnum $permission, \Illuminate\Database\Eloquent\Model|string|null $entity = null)
- * @method static \ElPandaPe\Bouncer\Bouncer restrictedVia(string|\Closure $contextOrAttribute, string|\Closure|null $attribute = null)
- * @method static \ElPandaPe\Bouncer\Bouncer refresh()
- * @method static \ElPandaPe\Bouncer\Bouncer refreshFor(\Illuminate\Database\Eloquent\Model $authority)
- * @method static \ElPandaPe\Bouncer\Tenancy\Tenancy tenant()
- * @method static \ElPandaPe\Bouncer\Tenancy\Tenancy scope()
+ * @method static \ElPandaPe\Warden\Testing\WardenFake fake()
+ * @method static \ElPandaPe\Warden\Checks\Explain\AuthorizationExplanation explain(\Illuminate\Database\Eloquent\Model $authority, string|\BackedEnum $permission, \Illuminate\Database\Eloquent\Model|string|null $entity = null)
+ * @method static \ElPandaPe\Warden\Warden restrictedVia(string|\Closure $contextOrAttribute, string|\Closure|null $attribute = null)
+ * @method static \ElPandaPe\Warden\Warden refresh()
+ * @method static \ElPandaPe\Warden\Warden refreshFor(\Illuminate\Database\Eloquent\Model $authority)
+ * @method static \ElPandaPe\Warden\Tenancy\Tenancy tenant()
+ * @method static \ElPandaPe\Warden\Tenancy\Tenancy scope()
  * @method static Model role(array<string, mixed> $attributes = [])
  * @method static Model permission(array<string, mixed> $attributes = [])
  *
- * @see \ElPandaPe\Bouncer\Bouncer
+ * @see \ElPandaPe\Warden\Warden
  */
-final class Bouncer extends Facade
+final class Warden extends Facade
 {
     protected static function getFacadeAccessor(): string
     {
-        return \ElPandaPe\Bouncer\Bouncer::class;
+        return \ElPandaPe\Warden\Warden::class;
     }
 }

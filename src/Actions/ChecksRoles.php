@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Actions;
+namespace ElPandaPe\Warden\Actions;
 
 use BackedEnum;
-use ElPandaPe\Bouncer\Concerns\HasRolesAndPermissions;
-use ElPandaPe\Bouncer\Exceptions\ConfigurationException;
-use ElPandaPe\Bouncer\Support\Name;
+use ElPandaPe\Warden\Concerns\HasRolesAndPermissions;
+use ElPandaPe\Warden\Exceptions\ConfigurationException;
+use ElPandaPe\Warden\Support\Name;
 use Illuminate\Database\Eloquent\Model;
 
 class ChecksRoles

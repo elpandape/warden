@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Bouncer;
-use ElPandaPe\Bouncer\Tests\Fixtures\User;
+use ElPandaPe\Warden\Tests\Fixtures\User;
+use ElPandaPe\Warden\Warden;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 beforeEach(function (): void {
-    migrateBouncerTables();
+    migrateWardenTables();
 
-    $this->bouncer = app(Bouncer::class);
+    $this->warden = app(Warden::class);
     $this->admin = User::query()->create(['name' => 'Admin']);
     $this->editor = User::query()->create(['name' => 'Editor']);
     $this->both = User::query()->create(['name' => 'Both']);
     $this->none = User::query()->create(['name' => 'None']);
 
-    $this->bouncer->assign('admin')->to([$this->admin, $this->both]);
-    $this->bouncer->assign('editor')->to([$this->editor, $this->both]);
+    $this->warden->assign('admin')->to([$this->admin, $this->both]);
+    $this->warden->assign('editor')->to([$this->editor, $this->both]);
 });
 
 it('filters authorities having any of the roles', function (): void {
@@ -36,12 +36,12 @@ it('filters authorities lacking the roles', function (): void {
 });
 
 it('hides scoped assignments under strict null behavior', function (): void {
-    $this->bouncer->tenant()->to(1);
+    $this->warden->tenant()->to(1);
     $scoped = User::query()->create(['name' => 'Scoped']);
-    $this->bouncer->assign('tenant-admin')->to($scoped);
-    $this->bouncer->tenant()->remove();
+    $this->warden->assign('tenant-admin')->to($scoped);
+    $this->warden->tenant()->remove();
 
-    config()->set('bouncer.scope.null_behavior', 'strict');
+    config()->set('warden.scope.null_behavior', 'strict');
 
     expect($scoped->isA('tenant-admin'))->toBeFalse()
         ->and($this->admin->isA('admin'))->toBeTrue();

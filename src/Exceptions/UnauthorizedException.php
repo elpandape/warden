@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Exceptions;
+namespace ElPandaPe\Warden\Exceptions;
 
-use ElPandaPe\Bouncer\Support\Config;
+use ElPandaPe\Warden\Support\Config;
 use Illuminate\Auth\Access\AuthorizationException;
 use Throwable;
 
@@ -27,7 +27,7 @@ final class UnauthorizedException extends AuthorizationException
     public static function forPermissions(array $permissions, ?Throwable $previous = null): self
     {
         $message = Config::displayPermissionInException() && $permissions !== []
-            ? trans('bouncer::bouncer.unauthorized_permission', ['permission' => implode(', ', $permissions)])
+            ? trans('warden::warden.unauthorized_permission', ['permission' => implode(', ', $permissions)])
             : self::fallbackMessage($previous);
 
         $exception = self::make(is_string($message) ? $message : null, $previous);
@@ -42,7 +42,7 @@ final class UnauthorizedException extends AuthorizationException
     public static function forRoles(array $roles, ?Throwable $previous = null): self
     {
         $message = Config::displayRoleInException() && $roles !== []
-            ? trans('bouncer::bouncer.unauthorized_role', ['role' => implode(', ', $roles)])
+            ? trans('warden::warden.unauthorized_role', ['role' => implode(', ', $roles)])
             : self::fallbackMessage($previous);
 
         $exception = self::make(is_string($message) ? $message : null, $previous);
@@ -101,7 +101,7 @@ final class UnauthorizedException extends AuthorizationException
             return $previous->getMessage();
         }
 
-        $message = trans('bouncer::bouncer.unauthorized');
+        $message = trans('warden::warden.unauthorized');
 
         return is_string($message) ? $message : $laravelDefault;
     }

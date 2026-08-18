@@ -1,5 +1,5 @@
 {
-    "name": "elpandape/bouncer",
+    "name": "elpandape/warden",
     "description": "Roles & permissions for Laravel — instance-level grants, explicit forbids, ownership, multi-tenancy, ABAC. A modernized evolution of Joseph Silber's Bouncer.",
     "keywords": [
         "laravel",
@@ -9,9 +9,16 @@
         "acl",
         "rbac",
         "abac",
-        "authorization"
+        "authorization",
+        "warden",
+        "bouncer"
     ],
     "license": "MIT",
+    "homepage": "https://github.com/elpandape/warden",
+    "support": {
+        "issues": "https://github.com/elpandape/warden/issues",
+        "source": "https://github.com/elpandape/warden"
+    },
     "authors": [
         {
             "name": "Carlos Mayorga",
@@ -38,26 +45,27 @@
         "rector/rector": "^2.0"
     },
     "conflict": {
+        "elpandape/bouncer": "*",
         "silber/bouncer": "*"
     },
     "autoload": {
         "psr-4": {
-            "ElPandaPe\\Bouncer\\": "src/",
-            "ElPandaPe\\Bouncer\\Database\\Factories\\": "database/factories/"
+            "ElPandaPe\\Warden\\": "src/",
+            "ElPandaPe\\Warden\\Database\\Factories\\": "database/factories/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "ElPandaPe\\Bouncer\\Tests\\": "tests/"
+            "ElPandaPe\\Warden\\Tests\\": "tests/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "ElPandaPe\\Bouncer\\BouncerServiceProvider"
+                "ElPandaPe\\Warden\\WardenServiceProvider"
             ],
             "aliases": {
-                "Bouncer": "ElPandaPe\\Bouncer\\Facades\\Bouncer"
+                "Warden": "ElPandaPe\\Warden\\Facades\\Warden"
             }
         }
     },

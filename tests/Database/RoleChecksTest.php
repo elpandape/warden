@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Models\Role;
-use ElPandaPe\Bouncer\Tests\Fixtures\User;
+use ElPandaPe\Warden\Models\Role;
+use ElPandaPe\Warden\Tests\Fixtures\User;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 beforeEach(function (): void {
-    migrateBouncerTables();
+    migrateWardenTables();
 
     $this->user = User::query()->create(['name' => 'Joseph']);
     $this->user->roles()->attach(Role::query()->create(['name' => 'admin']));
@@ -52,19 +52,19 @@ it('answers from the eager-loaded relation without extra queries', function (): 
 });
 
 it('lists granted and forbidden permissions for migrators', function (): void {
-    $bouncer = app(ElPandaPe\Bouncer\Bouncer::class);
+    $warden = app(ElPandaPe\Warden\Warden::class);
     $user = User::query()->create(['name' => 'Lister']);
-    $org = ElPandaPe\Bouncer\Tests\Fixtures\Account::query()->create(['name' => 'Org'])->refresh();
+    $org = ElPandaPe\Warden\Tests\Fixtures\Account::query()->create(['name' => 'Org'])->refresh();
 
-    $bouncer->allow($user)->to('direct');
-    $bouncer->allow('lister-role')->to('via-role');
-    $bouncer->assign('lister-role')->to($user);
-    $bouncer->allowEveryone()->to('shared');
-    $bouncer->forbid($user)->to('banned');
+    $warden->allow($user)->to('direct');
+    $warden->allow('lister-role')->to('via-role');
+    $warden->assign('lister-role')->to($user);
+    $warden->allowEveryone()->to('shared');
+    $warden->forbid($user)->to('banned');
 
     // Restricted contexts are excluded from the flat listing, fail-closed.
-    $bouncer->allow('scoped-role')->to('scoped-only');
-    $bouncer->assign('scoped-role')->on($org)->to($user);
+    $warden->allow('scoped-role')->to('scoped-only');
+    $warden->assign('scoped-role')->on($org)->to($user);
 
     expect($user->getPermissions()->pluck('name')->sort()->values()->all())
         ->toBe(['direct', 'shared', 'via-role'])

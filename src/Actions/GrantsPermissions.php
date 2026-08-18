@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Actions;
+namespace ElPandaPe\Warden\Actions;
 
 use BackedEnum;
 use Closure;
-use ElPandaPe\Bouncer\Actions\Concerns\ResolvesAuthority;
-use ElPandaPe\Bouncer\Actions\Concerns\ResolvesPermissions;
-use ElPandaPe\Bouncer\Constraints\Builder;
-use ElPandaPe\Bouncer\Constraints\ConstraintSerializer;
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Events\Concerns\DispatchesEvents;
-use ElPandaPe\Bouncer\Events\ForbiddingPermission;
-use ElPandaPe\Bouncer\Events\GrantingPermission;
-use ElPandaPe\Bouncer\Events\PermissionForbidden;
-use ElPandaPe\Bouncer\Events\PermissionGranted;
-use ElPandaPe\Bouncer\Exceptions\ConfigurationException;
-use ElPandaPe\Bouncer\Tenancy\Tenancy;
-use ElPandaPe\Bouncer\Tenancy\TenantScope;
+use ElPandaPe\Warden\Actions\Concerns\ResolvesAuthority;
+use ElPandaPe\Warden\Actions\Concerns\ResolvesPermissions;
+use ElPandaPe\Warden\Constraints\Builder;
+use ElPandaPe\Warden\Constraints\ConstraintSerializer;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
+use ElPandaPe\Warden\Events\ForbiddingPermission;
+use ElPandaPe\Warden\Events\GrantingPermission;
+use ElPandaPe\Warden\Events\PermissionForbidden;
+use ElPandaPe\Warden\Events\PermissionGranted;
+use ElPandaPe\Warden\Exceptions\ConfigurationException;
+use ElPandaPe\Warden\Tenancy\Tenancy;
+use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
@@ -165,7 +165,7 @@ class GrantsPermissions
 
         $this->bumpCacheVersion($scope);
 
-        $this->dispatchBouncerEvent($this->forbidding
+        $this->dispatchWardenEvent($this->forbidding
             ? new PermissionForbidden($authority, new Collection($permissions), $scope)
             : new PermissionGranted($authority, new Collection($permissions), $scope));
     }

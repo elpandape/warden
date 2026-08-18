@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Actions\Concerns;
+namespace ElPandaPe\Warden\Actions\Concerns;
 
-use ElPandaPe\Bouncer\Checks\Resolvers\CacheKeyVersioner;
-use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Warden\Checks\Resolvers\CacheKeyVersioner;
+use ElPandaPe\Warden\Context;
 
 trait BumpsCacheVersion
 {

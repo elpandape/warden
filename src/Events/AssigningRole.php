@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Events;
+namespace ElPandaPe\Warden\Events;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Events\Dispatchable;
 
 /**
- * Cancellable pre-action (opt-in via bouncer.cancellable_events): a listener
+ * Cancellable pre-action (opt-in via warden.cancellable_events): a listener
  * returning false aborts the assignment before anything is written.
  */
 final readonly class AssigningRole

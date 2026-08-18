@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 arch('source uses strict types')
-    ->expect('ElPandaPe\Bouncer')
+    ->expect('ElPandaPe\Warden')
     ->toUseStrictTypes();
 
 arch('no debugging functions left behind')
@@ -11,5 +11,5 @@ arch('no debugging functions left behind')
     ->not->toBeUsed();
 
 arch('enums live in the Enums namespace')
-    ->expect('ElPandaPe\Bouncer\Enums')
+    ->expect('ElPandaPe\Warden\Enums')
     ->toBeEnums();

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Actions\Concerns;
+namespace ElPandaPe\Warden\Actions\Concerns;
 
 use BackedEnum;
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Support\Name;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Support\Name;
 use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
 

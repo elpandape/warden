@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Models\Permission;
-use ElPandaPe\Bouncer\Models\Role;
-use ElPandaPe\Bouncer\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Models\Permission;
+use ElPandaPe\Warden\Models\Role;
+use ElPandaPe\Warden\Tests\Fixtures\Account;
 
-use function ElPandaPe\Bouncer\Tests\Database\migrateBouncerTables;
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 beforeEach(function (): void {
-    migrateBouncerTables();
+    migrateWardenTables();
 });
 
 it('grants roles and permissions to authorities that are not users', function (): void {
@@ -24,7 +24,7 @@ it('grants roles and permissions to authorities that are not users', function ()
 
 it('keeps authorities of different types apart', function (): void {
     $account = Account::query()->create(['name' => 'Acme']);
-    $user = ElPandaPe\Bouncer\Tests\Fixtures\User::query()->create(['name' => 'Joseph']);
+    $user = ElPandaPe\Warden\Tests\Fixtures\User::query()->create(['name' => 'Joseph']);
 
     $account->roles()->attach(Role::query()->create(['name' => 'tenant-admin']));
 

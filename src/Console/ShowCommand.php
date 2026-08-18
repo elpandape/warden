@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Console;
+namespace ElPandaPe\Warden\Console;
 
-use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Warden\Context;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
 
 final class ShowCommand extends Command
 {
-    protected $signature = 'bouncer:show {authority? : Inspect one authority, as Class:id (e.g. "App\\Models\\User:1")}';
+    protected $signature = 'warden:show {authority? : Inspect one authority, as Class:id (e.g. "App\\Models\\User:1")}';
 
     protected $description = 'Show the roles and permissions catalog, or one authority\'s access';
 

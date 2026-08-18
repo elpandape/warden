@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Console;
+namespace ElPandaPe\Warden\Console;
 
-use ElPandaPe\Bouncer\Bouncer;
-use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Warden;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -27,14 +27,14 @@ final class UpgradeCommand extends Command
 {
     private const array LEGACY_ROLE_MORPHS = ['Silber\Bouncer\Database\Role', 'roles'];
 
-    protected $signature = 'bouncer:upgrade
+    protected $signature = 'warden:upgrade
         {--dry-run : Report what would happen without touching anything}
         {--allow-open-scopes : Proceed even though null_behavior=all widens legacy tenant isolation}
         {--role-morph=* : Extra legacy role morph values to rewrite (e.g. App\\Models\\Role)}';
 
     protected $description = 'Upgrade a silber/bouncer database schema in place';
 
-    public function handle(Bouncer $bouncer): int
+    public function handle(Warden $warden): int
     {
         if (! Schema::hasTable('abilities') || ! Schema::hasColumn('permissions', 'ability_id')) {
             $this->components->error(
@@ -76,12 +76,12 @@ final class UpgradeCommand extends Command
         // Legacy checks hid every tenant-scoped row when no scope was active;
         // the shipped default 'all' would surface them globally. Fail closed.
         $widens = $scoped > 0
-            && \ElPandaPe\Bouncer\Support\Config::scopeNullBehavior() === 'all'
+            && \ElPandaPe\Warden\Support\Config::scopeNullBehavior() === 'all'
             && ! (bool) $this->option('allow-open-scopes');
 
         if ($widens) {
             $this->components->error(
-                "Found {$scoped} tenant-scoped row(s), and bouncer.scope.null_behavior is 'all': "
+                "Found {$scoped} tenant-scoped row(s), and warden.scope.null_behavior is 'all': "
                 ."scope-less checks would see every tenant's rows, unlike your legacy install. "
                 ."Set 'null_behavior' => 'strict' to preserve legacy semantics, "
                 .'or re-run with --allow-open-scopes if widening is intentional.',
@@ -126,7 +126,7 @@ final class UpgradeCommand extends Command
             $steps(); // @codeCoverageIgnore
         }
 
-        $bouncer->refresh();
+        $warden->refresh();
 
         $this->components->info('Upgrade complete. Review indexes if you tuned them, then run your test suite.');
         $this->components->info('Update code imports with the Rector set: see UPGRADE.md.');

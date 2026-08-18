@@ -6,7 +6,7 @@
          failOnRisky="true"
          failOnWarning="true">
     <testsuites>
-        <testsuite name="Bouncer">
+        <testsuite name="Warden">
             <directory>tests</directory>
         </testsuite>
     </testsuites>

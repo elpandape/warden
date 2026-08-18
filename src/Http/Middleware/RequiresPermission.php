@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Http\Middleware;
+namespace ElPandaPe\Warden\Http\Middleware;
 
 use Closure;
-use ElPandaPe\Bouncer\Exceptions\UnauthorizedException;
+use ElPandaPe\Warden\Exceptions\UnauthorizedException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Route middleware: ->middleware('bouncer.permission:edit-site') — all of.
+ * Route middleware: ->middleware('warden.permission:edit-site') — all of.
  * Checks run through the Gate, so policies keep their say.
  */
 final class RequiresPermission

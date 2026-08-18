@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Models;
+namespace ElPandaPe\Warden\Models;
 
-use ElPandaPe\Bouncer\Database\Factories\RoleFactory;
-use ElPandaPe\Bouncer\Models\Concerns\IsRole;
+use ElPandaPe\Warden\Database\Factories\RoleFactory;
+use ElPandaPe\Warden\Models\Concerns\IsRole;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 

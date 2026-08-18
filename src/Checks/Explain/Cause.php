@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Checks\Explain;
+namespace ElPandaPe\Warden\Checks\Explain;
 
 enum Cause: string
 {

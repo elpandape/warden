@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Testing;
+namespace ElPandaPe\Warden\Testing;
 
 use BackedEnum;
-use ElPandaPe\Bouncer\Bouncer;
+use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -18,7 +18,7 @@ trait WithPermissions
      */
     protected function allowUser(Model $authority, string|array|BackedEnum $permissions, Model|string|null $entity = null): void
     {
-        app(Bouncer::class)->allow($authority)->to($permissions, $entity);
+        app(Warden::class)->allow($authority)->to($permissions, $entity);
     }
 
     /**
@@ -26,7 +26,7 @@ trait WithPermissions
      */
     protected function forbidUser(Model $authority, string|array|BackedEnum $permissions, Model|string|null $entity = null): void
     {
-        app(Bouncer::class)->forbid($authority)->to($permissions, $entity);
+        app(Warden::class)->forbid($authority)->to($permissions, $entity);
     }
 
     /**
@@ -34,6 +34,6 @@ trait WithPermissions
      */
     protected function assignRoles(Model $authority, string|array|BackedEnum $roles): void
     {
-        app(Bouncer::class)->assign($roles)->to($authority);
+        app(Warden::class)->assign($roles)->to($authority);
     }
 }

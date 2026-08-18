@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Tests;
+namespace ElPandaPe\Warden\Tests;
 
-use ElPandaPe\Bouncer\BouncerServiceProvider;
+use ElPandaPe\Warden\WardenServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 abstract class TestCase extends Orchestra
@@ -20,15 +20,15 @@ abstract class TestCase extends Orchestra
 
     protected function getPackageProviders($app): array
     {
-        return [BouncerServiceProvider::class];
+        return [WardenServiceProvider::class];
     }
 
     protected function defineEnvironment($app): void
     {
         $app['config']->set('cache.default', 'array');
 
-        // The default pass runs the database engine; BOUNCER_TEST_RESOLVER=cached
+        // The default pass runs the database engine; WARDEN_TEST_RESOLVER=cached
         // re-runs the whole suite through the cached resolver (parity matrix).
-        $app['config']->set('bouncer.cache.enabled', getenv('BOUNCER_TEST_RESOLVER') === 'cached');
+        $app['config']->set('warden.cache.enabled', getenv('WARDEN_TEST_RESOLVER') === 'cached');
     }
 }

@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Models\Concerns;
+namespace ElPandaPe\Warden\Models\Concerns;
 
-use ElPandaPe\Bouncer\Concerns\HasPermissions;
-use ElPandaPe\Bouncer\Events\RoleCreated;
-use ElPandaPe\Bouncer\Events\RoleDeleted;
-use ElPandaPe\Bouncer\Support\Config;
-use ElPandaPe\Bouncer\Support\Titles\RoleTitle;
-use ElPandaPe\Bouncer\Tenancy\BelongsToTenant;
+use ElPandaPe\Warden\Concerns\HasPermissions;
+use ElPandaPe\Warden\Events\RoleCreated;
+use ElPandaPe\Warden\Events\RoleDeleted;
+use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\Titles\RoleTitle;
+use ElPandaPe\Warden\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Event;
 

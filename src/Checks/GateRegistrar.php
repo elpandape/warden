@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Checks;
+namespace ElPandaPe\Warden\Checks;
 
-use ElPandaPe\Bouncer\Contracts\Resolver;
-use ElPandaPe\Bouncer\Enums\GateSlot;
-use ElPandaPe\Bouncer\Support\Config;
+use ElPandaPe\Warden\Contracts\Resolver;
+use ElPandaPe\Warden\Enums\GateSlot;
+use ElPandaPe\Warden\Support\Config;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Database\Eloquent\Model;
@@ -47,7 +47,7 @@ final readonly class GateRegistrar
 
         $arguments = array_values($arguments);
 
-        // Checks with extra arguments belong to app policies, never to Bouncer.
+        // Checks with extra arguments belong to app policies, never to Warden.
         if (count($arguments) > 1) {
             return null;
         }
@@ -71,7 +71,7 @@ final readonly class GateRegistrar
 
     private function denialMessage(): string
     {
-        $message = trans('bouncer::bouncer.unauthorized');
+        $message = trans('warden::warden.unauthorized');
 
         return is_string($message) ? $message : 'This action is unauthorized.';
     }

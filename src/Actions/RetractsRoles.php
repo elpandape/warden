@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Actions;
+namespace ElPandaPe\Warden\Actions;
 
 use BackedEnum;
-use ElPandaPe\Bouncer\Actions\Concerns\NormalizesRoles;
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Events\Concerns\DispatchesEvents;
-use ElPandaPe\Bouncer\Events\RoleRetracted;
-use ElPandaPe\Bouncer\Exceptions\ConfigurationException;
-use ElPandaPe\Bouncer\Tenancy\Tenancy;
-use ElPandaPe\Bouncer\Tenancy\TenantScope;
+use ElPandaPe\Warden\Actions\Concerns\NormalizesRoles;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
+use ElPandaPe\Warden\Events\RoleRetracted;
+use ElPandaPe\Warden\Exceptions\ConfigurationException;
+use ElPandaPe\Warden\Tenancy\Tenancy;
+use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -104,7 +104,7 @@ class RetractsRoles
 
             if ($deleted > 0) {
                 $this->bumpCacheVersion($scope);
-                $this->dispatchBouncerEvent(
+                $this->dispatchWardenEvent(
                     new RoleRetracted($authority, new Collection($models), $scope, $this->restrictedTo),
                 );
             }

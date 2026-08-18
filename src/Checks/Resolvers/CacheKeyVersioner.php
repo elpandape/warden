@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Checks\Resolvers;
+namespace ElPandaPe\Warden\Checks\Resolvers;
 
-use ElPandaPe\Bouncer\Support\Config;
-use ElPandaPe\Bouncer\Tenancy\Tenancy;
+use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Tenancy\Tenancy;
 use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Repository;
 

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Contracts;
+namespace ElPandaPe\Warden\Contracts;
 
 use Illuminate\Database\Eloquent\Model;
 

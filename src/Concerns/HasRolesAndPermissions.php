@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Concerns;
+namespace ElPandaPe\Warden\Concerns;
 
 use BackedEnum;
-use ElPandaPe\Bouncer\Context;
-use ElPandaPe\Bouncer\Models\AssignedRole;
-use ElPandaPe\Bouncer\Support\Config;
-use ElPandaPe\Bouncer\Support\Name;
-use ElPandaPe\Bouncer\Tenancy\Tenancy;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Models\AssignedRole;
+use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\Name;
+use ElPandaPe\Warden\Tenancy\Tenancy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -20,7 +20,7 @@ trait HasRolesAndPermissions
     use HasPermissions;
 
     /**
-     * @return MorphToMany<\ElPandaPe\Bouncer\Models\Role, $this, AssignedRole>
+     * @return MorphToMany<\ElPandaPe\Warden\Models\Role, $this, AssignedRole>
      */
     public function roles(): MorphToMany
     {
@@ -172,18 +172,18 @@ trait HasRolesAndPermissions
         $permissionKeys = $context->grantClass()::query()
             ->where('forbidden', $forbidden)
             ->where(
-                /** @param Builder<\ElPandaPe\Bouncer\Models\Grant> $query */
+                /** @param Builder<\ElPandaPe\Warden\Models\Grant> $query */
                 function (Builder $query) use ($roleMorph, $roleKeys): void {
                     $query
                         ->where(
-                            /** @param Builder<\ElPandaPe\Bouncer\Models\Grant> $direct */
+                            /** @param Builder<\ElPandaPe\Warden\Models\Grant> $direct */
                             function (Builder $direct): void {
                                 $direct->where('entity_type', $this->getMorphClass())
                                     ->where('entity_id', $this->getKey());
                             },
                         )
                         ->orWhere(
-                            /** @param Builder<\ElPandaPe\Bouncer\Models\Grant> $viaRole */
+                            /** @param Builder<\ElPandaPe\Warden\Models\Grant> $viaRole */
                             function (Builder $viaRole) use ($roleMorph, $roleKeys): void {
                                 $viaRole->where('entity_type', $roleMorph)
                                     ->whereIn('entity_id', $roleKeys);

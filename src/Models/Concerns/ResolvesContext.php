@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Models\Concerns;
+namespace ElPandaPe\Warden\Models\Concerns;
 
-use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Warden\Context;
 
 trait ResolvesContext
 {

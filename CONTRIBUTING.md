@@ -47,7 +47,7 @@ feat(resolver): honor ownership and tenancy
 ## Reporting bugs
 
 Include the Laravel and PHP versions, the database engine, and — most useful of all —
-the output of `Bouncer::explain($user, 'permission', $entity)`, which names the exact
+the output of `Warden::explain($user, 'permission', $entity)`, which names the exact
 row and role behind a verdict.
 
 Security issues: see [SECURITY.md](SECURITY.md). Do not open a public issue.

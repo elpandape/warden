@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Testing;
+namespace ElPandaPe\Warden\Testing;
 
 use BackedEnum;
-use ElPandaPe\Bouncer\Checks\Verdict;
-use ElPandaPe\Bouncer\Contracts\Resolver;
-use ElPandaPe\Bouncer\Support\Name;
+use ElPandaPe\Warden\Checks\Verdict;
+use ElPandaPe\Warden\Contracts\Resolver;
+use ElPandaPe\Warden\Support\Name;
 use Illuminate\Database\Eloquent\Model;
 use PHPUnit\Framework\Assert;
 
@@ -15,7 +15,7 @@ use PHPUnit\Framework\Assert;
  * A resolver you script by hand: no tables, no cache — your app's policies
  * still apply wherever the fake abstains. Records every check for assertions.
  */
-final class BouncerFake implements Resolver
+final class WardenFake implements Resolver
 {
     /** @var list<array{authority: Model, permission: string, entity: Model|string|null, verdict: Verdict}> */
     private array $checks = [];

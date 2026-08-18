@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Exceptions;
+namespace ElPandaPe\Warden\Exceptions;
 
-use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Warden\Context;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 /**

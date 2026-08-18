@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Console;
+namespace ElPandaPe\Warden\Console;
 
-use ElPandaPe\Bouncer\Bouncer;
-use ElPandaPe\Bouncer\Context;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Warden;
 use Illuminate\Console\Command;
 
 final class CleanCommand extends Command
 {
-    protected $signature = 'bouncer:clean {--dry-run : Report what would be deleted without deleting}';
+    protected $signature = 'warden:clean {--dry-run : Report what would be deleted without deleting}';
 
     protected $description = 'Delete unused permissions: catalog rows no grant points at';
 
-    public function handle(Bouncer $bouncer): int
+    public function handle(Warden $warden): int
     {
         $context = Context::resolve();
         $grantModel = new ($context->grantClass());
@@ -50,7 +50,7 @@ final class CleanCommand extends Command
             },
         );
 
-        $bouncer->refresh();
+        $warden->refresh();
 
         $this->components->info("Deleted {$deleted} unused permission(s).");
 

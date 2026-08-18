@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use ElPandaPe\Bouncer\Constraints\ColumnConstraint;
-use ElPandaPe\Bouncer\Constraints\Group;
-use ElPandaPe\Bouncer\Enums\ComparisonOperator;
-use ElPandaPe\Bouncer\Tests\Fixtures\Plain;
+use ElPandaPe\Warden\Constraints\ColumnConstraint;
+use ElPandaPe\Warden\Constraints\Group;
+use ElPandaPe\Warden\Enums\ComparisonOperator;
+use ElPandaPe\Warden\Tests\Fixtures\Plain;
 
 it('fails closed comparing columns without an authority', function (): void {
     $constraint = new ColumnConstraint('a', ComparisonOperator::Equal, 'b');
@@ -26,7 +26,7 @@ it('compares only compatible types in relational operators', function (): void {
 });
 
 it('never short-circuits a group that opens with or-where', function (): void {
-    $group = new ElPandaPe\Bouncer\Constraints\Builder()->orWhere('name', 'X')->group();
+    $group = new ElPandaPe\Warden\Constraints\Builder()->orWhere('name', 'X')->group();
 
     // The leading OR must not read a stale true clause: nothing matched yet.
     expect($group->passes(new Plain, null))->toBeFalse();

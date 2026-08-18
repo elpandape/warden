@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Tests\Fixtures;
+namespace ElPandaPe\Warden\Tests\Fixtures;
 
 use Illuminate\Database\Eloquent\Model;
 

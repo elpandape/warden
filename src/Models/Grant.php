@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Models;
+namespace ElPandaPe\Warden\Models;
 
-use ElPandaPe\Bouncer\Models\Concerns\ResolvesContext;
-use ElPandaPe\Bouncer\Support\Config;
-use ElPandaPe\Bouncer\Tenancy\BelongsToTenant;
+use ElPandaPe\Warden\Models\Concerns\ResolvesContext;
+use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Relations\MorphPivot;
 
 /**

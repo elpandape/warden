@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Bouncer\Database\Factories;
+namespace ElPandaPe\Warden\Database\Factories;
 
-use ElPandaPe\Bouncer\Models\Role;
+use ElPandaPe\Warden\Models\Role;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
