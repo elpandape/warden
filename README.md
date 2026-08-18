@@ -6,13 +6,13 @@
 > Based on [Bouncer](https://github.com/JosephSilber/bouncer) by Joseph Silber — this package
 > is a modernized evolution of his original work (MIT).
 
-![Version](https://img.shields.io/badge/version-0.7.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
+![Version](https://img.shields.io/badge/version-0.8.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
 
-> **Status: alpha (v0.7.0) — typed events, typed exceptions, enum-ready API.**
-> ABAC, `whereCan()` and `explain()` complete by v0.9.0.
+> **Status: alpha (v0.8.0) — ABAC constraints and model-scoped roles, live.**
+> `whereCan()`, `explain()` and testing helpers complete by v0.9.0.
 > Do not use in production before v1.0.0.
 
-## What's available (v0.7.0)
+## What's available (v0.8.0)
 
 - **Checks through Laravel's Gate**: `can()`, `@can`, `authorize()` and policies work
   out of the box — explicit forbids beat any grant, and Bouncer never overrides your
@@ -23,6 +23,10 @@
   catalog lifecycle — plus opt-in cancellable pre-action events.
 - **Typed exceptions** (`UnauthorizedException`, `RoleDoesNotExist`, …) with
   translatable, leak-safe messages; `BackedEnum` accepted wherever a name string is.
+- **ABAC constraints**: `allow()->to()->where('status', 'published')` — declarative
+  conditions evaluated on every check, in both engines. No other Laravel package has it.
+- **Model-scoped roles**: `assign('editor')->on($org)->to($user)` — the role's grants
+  only apply inside that context; the same role can repeat across contexts.
 - **Ownership**: `toOwn(Post::class)` grants only what the user owns — resolved by
   attribute (configurable globally, per class, or with a closure), strict-mode safe.
 - **Multi-tenancy**: `Bouncer::tenant()->to($id)` isolates the whole system per tenant,
@@ -40,7 +44,7 @@
   ids, and the published migration ships commented column variants to switch to string keys.
 - Schema v2 migration (frozen for 0.x), full config file, en/es translations, `Context`.
 
-ABAC, `whereCan()` and `explain()` complete by v0.9.0.
+`whereCan()`, `explain()` and testing helpers complete by v0.9.0.
 
 ## Ownership
 
@@ -92,6 +96,68 @@ Bouncer::tenant()->removeOnce(fn () => Bouncer::unforbid($user)->to('publish'));
 
 ❌ Don't — don't expect `Bouncer::unforbid($user)->to('publish')` under a tenant to
 lift a **global** forbid; global rules are only writable globally, by design.
+
+## Conditional permissions (ABAC)
+
+Grants can carry conditions, written in the grammar your queries already use and
+evaluated on **every check**, cached or not:
+
+```php
+Bouncer::allow($user)->to('view', Document::class)
+    ->where('status', 'published')
+    ->orWhere(fn ($group) => $group->where('tier', '>=', 2)->whereColumn('owner_id', 'id'));
+```
+
+- `where('column', $value)` compares an attribute of the checked entity; explicit
+  operators (`=`, `!=`, `<`, `<=`, `>`, `>=`) go in the middle, like Eloquent.
+- `whereColumn('owner_id', 'id')` compares against the **authority**'s attribute.
+- Precedence is SQL's: AND binds tighter than OR (`A or B and C` = `A or (B and C)`);
+  nest a closure to group explicitly.
+- Comparisons are strict — no PHP type juggling; numeric strings bridge to numbers.
+- A constrained grant **never matches instance-less checks** (`can('view')`,
+  `can('view', Document::class)`): conditions need an instance, so they fail closed.
+- The persisted shape is versioned and enum-discriminated; corrupt data fails closed.
+
+✅ Do — grant broadly, constrain the sensitive part; different holders never share rows:
+
+```php
+Bouncer::allow('viewer')->to('view', Document::class)->where('status', 'published');
+Bouncer::forbid($user)->to('view', Document::class)->where('classified', true);
+```
+
+❌ Don't — don't encode workflow logic as constraints (drafts visible on Tuesdays);
+constraints compare attributes. Complex rules belong in policies, which always win.
+
+## Scoped roles
+
+The columns other packages left dead for years, alive: restrict a role to any model —
+no global `team_id` required, the context is whatever model you choose.
+
+```php
+Bouncer::assign('editor')->on($orgOne)->to($user);   // editor only inside orgOne
+Bouncer::assign('editor')->on($orgTwo)->to($user);   // same role, second context
+Bouncer::retract('editor')->on($orgOne)->from($user); // leave one; without on(), all
+
+Bouncer::restrictedVia(Post::class, 'organization_id');           // membership by FK
+Bouncer::restrictedVia(fn ($entity, $context) => ...);            // or a closure
+```
+
+A restricted role's grants apply when the checked entity **belongs to the context**:
+it is the context itself, or its `{context}_id` attribute points at it (convention,
+configurable per class or globally). Checks without an instance fail closed — a
+restricted editor is not a global editor. `on()` goes **before** `to()`: writes are
+immediate. Role membership checks (`isAn('editor')`) ignore restrictions by design.
+
+✅ Do — model teams with the models you already have:
+
+```php
+Bouncer::assign('admin')->on($project)->to($user);
+$user->can('manage', $project);          // true: the entity IS the context
+$user->can('edit', $taskInProject);      // true: task->project_id points at it
+```
+
+❌ Don't — don't fall back to one global role plus scattered `if ($user->org_id === …)`
+checks; the assignment carries its context, queryable and revocable per context.
 
 ## Caching
 

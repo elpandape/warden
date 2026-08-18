@@ -3,6 +3,32 @@
 All notable changes to `elpandape/bouncer` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v0.8.0 — ABAC & scoped roles (2026-08-17)
+
+### Breaking
+- The `assigned_roles` unique index now includes `restricted_to_type/id`, so the same
+  role can repeat across contexts. Re-publish and re-run the package migration if you
+  are on an earlier 0.x (the one planned exception to the 0.x schema freeze).
+
+### Added
+- **ABAC constraints, actually evaluated** (the original shipped the infrastructure and
+  never ran it): `allow()->to()->where()/orWhere()/whereColumn()` with Eloquent-shaped
+  grammar, SQL precedence (AND over OR, closures group), strict comparisons, and
+  evaluation in **both** engines — constrained rows fall through to the next candidate
+  in specificity order. Constrained grants never match instance-less checks.
+- Safe persistence: versioned JSON discriminated by enum — never a class name; corrupt
+  or unknown shapes fail closed instead of widening a grant.
+- Distinct constraints mean distinct catalog rows: refining one holder's grant re-points
+  it to a twin permission and never mutates rows shared with other holders.
+- **Model-scoped roles**: `assign(...)->on($context)->to(...)` fills the long-dead
+  `restricted_to_*` columns. Membership resolves by convention (`{context}_id`), config
+  (`bouncer.restrictions.default_attribute`), per-class attribute or closure via
+  `Bouncer::restrictedVia()`. Restricted assignments contribute nothing to
+  instance-less checks; `retract()->on()` removes one context only.
+- Cache payload v2: role tuples carry their assignment's restriction; v1 entries are
+  invalidated cleanly by the version bump.
+- Role events now carry the real restriction context (`restrictedTo`).
+
 ## v0.7.0 — Events & exceptions (2026-08-17)
 
 ### Added
