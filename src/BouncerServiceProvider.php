@@ -82,6 +82,20 @@ final class BouncerServiceProvider extends ServiceProvider
         });
 
         if ($this->app->runningInConsole()) {
+            $this->commands([
+                Console\InstallCommand::class,
+                Console\ShowCommand::class,
+                Console\CacheResetCommand::class,
+                Console\CleanCommand::class,
+            ]);
+
+            \Illuminate\Foundation\Console\AboutCommand::add('Bouncer', fn (): array => [
+                'Version' => \Composer\InstalledVersions::getPrettyVersion('elpandape/bouncer') ?? 'dev',
+                'Cache' => Config::cacheEnabled() ? 'enabled' : 'disabled',
+                'Events' => Config::eventsEnabled() ? 'enabled' : 'disabled',
+                'Tenancy null behavior' => Config::scopeNullBehavior(),
+            ]);
+
             $this->publishes([
                 __DIR__.'/../config/bouncer.php' => config_path('bouncer.php'),
             ], 'bouncer-config');
