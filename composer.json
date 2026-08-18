@@ -14,11 +14,10 @@
     "license": "MIT",
     "authors": [
         {
-            "name": "elpandape"
-        },
-        {
-            "name": "Joseph Silber",
-            "role": "Author of the original Bouncer"
+            "name": "Carlos Mayorga",
+            "email": "cmayorgahilario@elpanda.pe",
+            "homepage": "https://carlosmayorga.me/",
+            "role": "Author and maintainer"
         }
     ],
     "require": {
