@@ -6,13 +6,13 @@
 > Based on [Bouncer](https://github.com/JosephSilber/bouncer) by Joseph Silber — this package
 > is a modernized evolution of his original work (MIT).
 
-![Version](https://img.shields.io/badge/version-0.8.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
+![Version](https://img.shields.io/badge/version-0.9.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
 
-> **Status: alpha (v0.8.0) — ABAC constraints and model-scoped roles, live.**
-> `whereCan()`, `explain()` and testing helpers complete by v0.9.0.
+> **Status: alpha (v0.9.0) — feature-complete. Queries, diagnosis and testing tools in.**
+> v0.10.0 brings the migration path from silber/bouncer; then the 1.0 freeze.
 > Do not use in production before v1.0.0.
 
-## What's available (v0.8.0)
+## What's available (v0.9.0)
 
 - **Checks through Laravel's Gate**: `can()`, `@can`, `authorize()` and policies work
   out of the box — explicit forbids beat any grant, and Bouncer never overrides your
@@ -27,6 +27,11 @@
   conditions evaluated on every check, in both engines. No other Laravel package has it.
 - **Model-scoped roles**: `assign('editor')->on($org)->to($user)` — the role's grants
   only apply inside that context; the same role can repeat across contexts.
+- **`whereCan()`**: `Post::whereCan($user, 'view')->paginate()` — the only package
+  whose data model can answer *over which rows*, constraints compiled to SQL included.
+- **`explain()`**: why a check resolves the way it does — including "you are
+  explicitly forbidden", which nobody else can say. Plus `Bouncer::fake()`,
+  testing helpers and artisan commands.
 - **Ownership**: `toOwn(Post::class)` grants only what the user owns — resolved by
   attribute (configurable globally, per class, or with a closure), strict-mode safe.
 - **Multi-tenancy**: `Bouncer::tenant()->to($id)` isolates the whole system per tenant,
@@ -43,8 +48,6 @@
   `Relation::enforceMorphMap()`. UUID/ULID-ready: no hardcoded integer cast on entity
   ids, and the published migration ships commented column variants to switch to string keys.
 - Schema v2 migration (frozen for 0.x), full config file, en/es translations, `Context`.
-
-`whereCan()`, `explain()` and testing helpers complete by v0.9.0.
 
 ## Ownership
 
@@ -158,6 +161,70 @@ $user->can('edit', $taskInProject);      // true: task->project_id points at it
 
 ❌ Don't — don't fall back to one global role plus scattered `if ($user->org_id === …)`
 checks; the assignment carries its context, queryable and revocable per context.
+
+## Querying by permission
+
+Checks answer "can X do Y?"; the data model can also answer **"over which rows?"** —
+as one composable, paginatable scope. Add the `QueriesByPermission` concern to the
+models being authorized:
+
+```php
+use ElPandaPe\Bouncer\Concerns\QueriesByPermission;
+
+Post::whereCan($user, 'view')->latest()->paginate();
+```
+
+Instance grants, class grants, wildcards, everyone-grants, role grants, forbids,
+tenancy, ownership (attribute-resolved) and **ABAC constraints all compile into the
+query**. What cannot become SQL fails closed, never open: closure-resolved ownership
+and restricted-role **grants** contribute no rows, restricted-role **forbids**
+over-block their whole shape, and constraint comparisons inside the query use the
+database engine's semantics (a case-insensitive collation may match more than the
+strict in-memory comparator; boolean values without a boolean cast match nothing,
+exactly like `can()`).
+
+✅ Do — drive index pages straight from authorization; no post-filtering, no N+1 checks.
+
+❌ Don't — don't `->get()->filter(fn ($p) => $user->can('view', $p))`; that's the N+1
+this scope exists to delete, and it breaks pagination counts.
+
+## Debugging with explain()
+
+```php
+$why = Bouncer::explain($user, 'edit', $post);
+
+$why->allowed();      // bool
+$why->cause;          // Cause::ForbiddenViaRole, Cause::GrantedDirectly, …
+$why->permission;     // the decisive catalog row
+$why->role;           // the role that carried it, when one did
+(string) $why;        // "Explicitly forbidden by permission [edit] via role [banned]."
+```
+
+Always answered by the database engine — never from cache — so it diagnoses stale-cache
+gotchas too. Forbid precedence is absolute by contract; when it surprises someone,
+`explain()` names the exact row and role to fix.
+
+## Testing your app
+
+```php
+// Script verdicts without touching tables; unscripted checks fall to your policies.
+$fake = Bouncer::fake();
+$fake->allow('edit-site')->forbid('delete');
+
+$fake->assertChecked('edit-site');
+$fake->assertGranted('edit-site');
+$fake->assertForbidden('delete');
+$fake->assertNothingChecked();
+
+// Or arrange real rows tersely with the trait:
+use ElPandaPe\Bouncer\Testing\WithPermissions;
+
+$this->allowUser($user, 'view', Document::class);
+$this->assignRoles($user, 'admin');
+```
+
+Artisan ships too: `bouncer:install`, `bouncer:show [Class:id]`, `bouncer:cache-reset`,
+`bouncer:clean --dry-run`, and a `php artisan about` section.
 
 ## Caching
 

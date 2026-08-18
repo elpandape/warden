@@ -3,6 +3,27 @@
 All notable changes to `elpandape/bouncer` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v0.9.0 — Queries & diagnosis (2026-08-17)
+
+### Added
+- **`whereCan()`** (`QueriesByPermission` concern): `Post::whereCan($user, 'view')` —
+  grant existence resolves once at build time; shapes, ownership (attribute-resolved),
+  tenancy and **ABAC constraints compile into row conditions** with SQL precedence.
+  Closure-resolved ownership and restricted-role assignments cannot become SQL and
+  fail closed; undecidable forbids block their shape rows. Row-for-row parity with
+  `can()` is pinned by tests.
+- **`Bouncer::explain()`**: an `AuthorizationExplanation` with the verdict, the cause
+  (granted/forbidden × directly/via-role/to-everyone, no-match, not-applicable), the
+  decisive permission row and the carrying role — always from the database engine, so
+  it diagnoses stale-cache gotchas; readable via `(string)`.
+- **Testing tools**: `Bouncer::fake()` — a scriptable resolver that records checks
+  (`allow`/`forbid` rules, forbidden-first) with `assertChecked/NotChecked/
+  NothingChecked/Granted/Forbidden`; plus the `WithPermissions` trait for terse
+  arrange steps against real rows.
+- **Artisan commands**: `bouncer:install [--migrate]`, `bouncer:show [Class:id]`,
+  `bouncer:cache-reset`, `bouncer:clean [--dry-run]` (chunked, event-firing), and a
+  `php artisan about` section.
+
 ## v0.8.0 — ABAC & scoped roles (2026-08-17)
 
 ### Breaking
