@@ -64,7 +64,7 @@ final class Bouncer
     }
 
     /**
-     * @param  string|array<int, mixed>|Model  $roles
+     * @param  string|array<int, mixed>|Model|\BackedEnum  $roles
      */
     public function assign(string|array|Model|\BackedEnum $roles): AssignsRoles
     {
@@ -72,7 +72,7 @@ final class Bouncer
     }
 
     /**
-     * @param  string|array<int, mixed>|Model  $roles
+     * @param  string|array<int, mixed>|Model|\BackedEnum  $roles
      */
     public function retract(string|array|Model|\BackedEnum $roles): RetractsRoles
     {
@@ -136,6 +136,27 @@ final class Bouncer
         Context::resolve()->restrictedVia($contextOrAttribute, $attribute);
 
         return $this;
+    }
+
+    /**
+     * Swap the resolver for a scriptable fake that records every check.
+     */
+    public function fake(): Testing\BouncerFake
+    {
+        $fake = new Testing\BouncerFake;
+
+        app()->instance(Contracts\Resolver::class, $fake);
+
+        return $fake;
+    }
+
+    /**
+     * Why a check resolves the way it does: verdict, cause, decisive rows.
+     * Always answered by the database engine, never from cache.
+     */
+    public function explain(Model $authority, string|\BackedEnum $permission, Model|string|null $entity = null): Checks\Explain\AuthorizationExplanation
+    {
+        return new Checks\Explain\Explainer(Context::resolve())->explain($authority, $permission, $entity);
     }
 
     /**

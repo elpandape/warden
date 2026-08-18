@@ -35,6 +35,8 @@ use Illuminate\Support\Facades\Facade;
  * @method static \ElPandaPe\Bouncer\Bouncer ownedVia(string|\Closure $modelOrAttribute, string|\Closure|null $attribute = null)
  * @method static \Illuminate\Database\Eloquent\Model findRole(string|\BackedEnum $name)
  * @method static \Illuminate\Database\Eloquent\Model findPermission(string|\BackedEnum $name)
+ * @method static \ElPandaPe\Bouncer\Testing\BouncerFake fake()
+ * @method static \ElPandaPe\Bouncer\Checks\Explain\AuthorizationExplanation explain(\Illuminate\Database\Eloquent\Model $authority, string|\BackedEnum $permission, \Illuminate\Database\Eloquent\Model|string|null $entity = null)
  * @method static \ElPandaPe\Bouncer\Bouncer restrictedVia(string|\Closure $contextOrAttribute, string|\Closure|null $attribute = null)
  * @method static \ElPandaPe\Bouncer\Bouncer refresh()
  * @method static \ElPandaPe\Bouncer\Bouncer refreshFor(\Illuminate\Database\Eloquent\Model $authority)
