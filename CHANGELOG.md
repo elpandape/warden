@@ -3,6 +3,29 @@
 All notable changes to `elpandape/bouncer` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v1.0.0-rc.3 — Upstream issue audit (2026-08-18)
+
+### Fixed
+- `Context::table()` fails fast with a `ConfigurationException` when a configured
+  table name is empty — previously the misconfiguration surfaced much later as
+  broken SQL with an empty identifier, the same failure family as the upstream
+  MySQL 9 report (#667).
+
+### Docs
+- **Recipes** section in the README: seven patterns for the questions the original
+  package's tracker kept receiving — authorizing another user, pivot-table
+  ownership, a default role per new user, landlord/tenant databases, roles grouped
+  by tenant, role replacement, and long-lived processes (tinker/Octane/queues).
+- UPGRADE.md states the scope of `bouncer:upgrade`: stable legacy schemas (>= 1.0);
+  ancient pre-1.0 rc schemas must migrate to upstream 1.0 first.
+
+### Audit
+- All 45 open issues of silber/bouncer were audited against this codebase, each
+  claim adversarially verified (several by execution): **20 resolved, 19 partially
+  addressed, 4 not resolved, 2 not applicable**. The four open ones are recorded
+  design decisions or v1.1 candidates (batch authorities, `whoCan()`, `forUser()`),
+  not architectural gaps.
+
 ## v1.0.0-rc.2 — Supported versions (2026-08-18)
 
 ### Breaking
