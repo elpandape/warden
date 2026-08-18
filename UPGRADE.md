@@ -54,6 +54,10 @@ Plus two data fixes:
 On Postgres and SQLite the upgrade is atomic; MySQL commits DDL implicitly, so
 snapshot first if you need a rollback path. Indexes keep their legacy names.
 
+Scope: the command upgrades the **stable silber/bouncer schema (>= 1.0)**. If you
+are on one of the ancient 1.0.0-rc releases with a pre-rename schema, migrate to
+upstream 1.0 first, then run `bouncer:upgrade`.
+
 ## 3. Rename the code — Rector set
 
 ```bash

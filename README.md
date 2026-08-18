@@ -488,6 +488,71 @@ Everything lives in `config/bouncer.php`: models, table names, database connecti
 morph aliases, gate behavior, ownership, multi-tenancy scope semantics, cache, events
 and i18n-safe exception messages. Every key is documented in the file itself.
 
+## Recipes
+
+Small patterns for questions that come up repeatedly (many inherited from the
+original package's issue tracker).
+
+**Authorize someone other than the authenticated user** — queue jobs, consoles,
+impersonation. Checks go through Laravel's Gate, so its own escape hatch works:
+
+```php
+Gate::forUser($tenantUser)->allows('edit', $post);
+Bouncer::explain($tenantUser, 'edit', $post);   // diagnosis takes any authority
+```
+
+**Ownership through a pivot table** — when "owning" is a relation, not a column,
+declare it with a closure (evaluated live on every check, never cached):
+
+```php
+Bouncer::ownedVia(Business::class, fn ($business, $user) => $business->owners()->whereKey($user->getKey())->exists());
+Bouncer::allow($user)->toOwn(Business::class, ['manage']);
+```
+
+Closure-resolved ownership cannot compile into `whereCan()` — those rows stay out
+of query results, fail-closed. Attribute-resolved ownership compiles fine.
+
+**A default role for every new user** — there is deliberately no "role for
+everyone": a role everybody holds is just a set of global grants, which
+`Bouncer::allowEveryone()->to(...)` already models without a row per user. If you
+want the *membership* to be visible, assign it where users are born:
+
+```php
+// In your User model or an observer:
+protected static function booted(): void
+{
+    static::created(fn (User $user) => Bouncer::assign('member')->to($user));
+}
+```
+
+**Landlord vs tenant databases** — point the bouncer tables at their own
+connection with `bouncer.connection`; the published migration honors it too
+(`Schema::connection(...)`), and the migration class is anonymous, so it never
+collides between landlord and tenant migration folders. The authority model may
+live on any other connection: checks only read its morph class and key.
+
+**Roles grouped by tenant, in one query** — the pivot exposes the scope column:
+
+```php
+Bouncer::tenant()->removeOnce(fn () => $user->roles()->get()->groupBy('pivot.scope'));
+```
+
+**Replace a role instead of stacking it** — `sync()` declares the full
+(unrestricted) set; for one-off swaps, retract and assign are atomic enough:
+
+```php
+Bouncer::sync($user)->roles(['editor']);          // declarative
+Bouncer::retract('viewer')->from($user);          // or surgical
+Bouncer::assign('editor')->to($user);
+```
+
+**Long-lived processes (tinker, Octane, queue workers)** — writes made through
+the API invalidate caches on their own. Only raw database edits need a manual
+`Bouncer::refresh()`. Tenant state and resolver memoization live in
+container-scoped bindings, so Octane requests and queue jobs reset themselves;
+a long tinker session is one lifecycle — call `Bouncer::tenant()->remove()` or
+`refresh()` yourself if you switch contexts mid-session.
+
 ## Development
 
 No local PHP or Composer needed — everything runs through Docker:
