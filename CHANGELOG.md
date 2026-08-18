@@ -3,6 +3,22 @@
 All notable changes to `elpandape/bouncer` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v1.0.0-rc.1 — API freeze (2026-08-18)
+
+### Frozen
+- **The public API is frozen**: every class, method and config key documented in the
+  README is a 1.0 contract. Only fixes land between this candidate and 1.0.0.
+
+### Hardened
+- Mutation testing over the core (resolvers, constraints, tenancy, actions): surviving
+  mutants that pointed at real assertion gaps were killed with targeted tests.
+- Release checklist: `composer validate --strict` clean, `composer audit` clean,
+  translations (`en`/`es`) in sync.
+- Developer loop: `make test`/`make test-cached` run in parallel (~5x faster),
+  `make mutation` is a first-class per-path target mirrored by the nightly, and the
+  install-command tests publish into private paths so nothing races the shared
+  skeleton.
+
 ## v0.10.0 — Migration & polish (2026-08-18)
 
 ### Added

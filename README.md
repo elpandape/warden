@@ -6,13 +6,13 @@
 > Based on [Bouncer](https://github.com/JosephSilber/bouncer) by Joseph Silber — this package
 > is a modernized evolution of his original work (MIT).
 
-![Version](https://img.shields.io/badge/version-0.10.0-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
+![Version](https://img.shields.io/badge/version-1.0.0--rc.1-blue) ![PHP](https://img.shields.io/badge/php-%5E8.4-777bb3) ![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-ff2d20) ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![PHPStan](https://img.shields.io/badge/phpstan-max-4b5563)
 
-> **Status: beta (v0.10.0) — feature-complete, with the migration path from
-> silber/bouncer in.** Next: the 1.0.0-rc freeze with mutation testing, then 1.0.0.
+> **Status: release candidate (v1.0.0-rc.1) — the API is frozen.**
+> Only fixes land between here and 1.0.0. Mutation testing hardens the core suite.
 > Do not use in production before v1.0.0.
 
-## What's available (v0.10.0)
+## What's available (v1.0.0-rc.1)
 
 - **Checks through Laravel's Gate**: `can()`, `@can`, `authorize()` and policies work
   out of the box — explicit forbids beat any grant, and Bouncer never overrides your
@@ -497,6 +497,7 @@ make build      # build the dev image
 make install    # composer install
 make ci         # pint + phpstan + rector + tests (100% coverage) + type coverage
 make test-dbs   # run the suite against MySQL 9 and Postgres 16
+make mutation   # mutation testing over the core, one pass per path
 make shell      # a shell inside the container
 ```
 
