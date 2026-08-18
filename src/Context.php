@@ -66,7 +66,15 @@ final class Context
 
     public function table(string $name): string
     {
-        return $this->tables[$name] ?? $name;
+        $table = $this->tables[$name] ?? $name;
+
+        // Fail fast: an empty name would otherwise surface later as broken
+        // SQL with an empty identifier, far from the misconfiguration.
+        if ($table === '') {
+            throw new ConfigurationException("Configured bouncer table [{$name}] must not be empty.");
+        }
+
+        return $table;
     }
 
     public function setTable(string $name, string $table): void

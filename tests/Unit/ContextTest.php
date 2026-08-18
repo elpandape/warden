@@ -57,3 +57,18 @@ it('ignores non-string entries in string maps', function (): void {
         ->and($context->table('grants'))->toBe('grants')
         ->and($context->morphAlias('role'))->toBeNull();
 });
+
+it('fails fast on empty configured table names', function (): void {
+    config()->set('bouncer.tables.permissions', '');
+    app()->forgetInstance(Context::class);
+
+    // Without this guard the misconfiguration surfaces later as broken
+    // SQL with an empty identifier, far from its cause.
+    expect(fn () => Context::resolve()->table('permissions'))
+        ->toThrow(ElPandaPe\Bouncer\Exceptions\ConfigurationException::class, 'must not be empty');
+
+    expect(fn () => Context::resolve()->setTable('roles', ''))
+        ->not->toThrow(Exception::class)
+        ->and(fn () => Context::resolve()->table('roles'))
+        ->toThrow(ElPandaPe\Bouncer\Exceptions\ConfigurationException::class);
+});
