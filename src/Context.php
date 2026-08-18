@@ -13,6 +13,7 @@ use ElPandaPe\Bouncer\Models\Role;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphPivot;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Str;
 
 final class Context
 {
@@ -25,6 +26,9 @@ final class Context
 
     /** @var array<string, string|Closure> */
     private array $ownershipMap = [];
+
+    /** @var array<string, string|Closure> */
+    private array $restrictionMap = [];
 
     /**
      * @param  array<string, string>  $tables
@@ -107,6 +111,60 @@ final class Context
         }
 
         $this->ownershipMap[$modelOrAttribute] = $attribute;
+    }
+
+    /**
+     * Configure how a checked entity is matched against a role's restriction
+     * context: a global attribute/closure, or one per context class.
+     */
+    public function restrictedVia(string|Closure $contextOrAttribute, string|Closure|null $attribute = null): void
+    {
+        if ($attribute === null) {
+            $this->restrictionMap['*'] = $contextOrAttribute;
+
+            return;
+        }
+
+        if ($contextOrAttribute instanceof Closure) {
+            throw new ConfigurationException('Per-model restriction requires the context class as a string.');
+        }
+
+        $this->restrictionMap[$contextOrAttribute] = $attribute;
+    }
+
+    /**
+     * Whether the checked entity belongs to a restricted role's context:
+     * it either IS the context, or points at it through an attribute
+     * (convention: {context_basename}_id), or a configured closure decides.
+     */
+    public function belongsToContext(Model $entity, string $contextType, int|string $contextId): bool
+    {
+        if ($entity->getMorphClass() === $contextType) {
+            $key = $entity->getKey();
+
+            if ((is_int($key) || is_string($key)) && (string) $key === (string) $contextId) {
+                return true;
+            }
+        }
+
+        $class = Relation::getMorphedModel($contextType) ?? $contextType;
+
+        $resolver = $this->restrictionMap[$class]
+            ?? $this->restrictionMap['*']
+            ?? Support\Config::restrictionsDefaultAttribute()
+            ?? Str::snake(class_basename($class)).'_id';
+
+        if ($resolver instanceof Closure) {
+            $context = is_subclass_of($class, Model::class)
+                ? $class::query()->find($contextId)
+                : null;
+
+            return $context instanceof Model && (bool) $resolver($entity, $context);
+        }
+
+        $value = $this->attributeValue($entity, $resolver);
+
+        return (is_int($value) || is_string($value)) && (string) $value === (string) $contextId;
     }
 
     public function isOwnedBy(Model $authority, Model $entity): bool
@@ -214,6 +272,25 @@ final class Context
         if ($alias !== null) {
             Relation::morphMap([$alias => $this->modelClass($key)]);
         }
+    }
+
+    /**
+     * Strict-mode safe attribute read (configurable): missing means null.
+     */
+    private function attributeValue(Model $model, string $attribute): mixed
+    {
+        if (! array_key_exists($attribute, $model->getAttributes())) {
+            if (Support\Config::ownershipStrictModeSafe()) {
+                return null;
+            }
+
+            // Opted out: surface whatever the model does, including strict-mode throws.
+            $model->getAttribute($attribute);
+
+            return null;
+        }
+
+        return $model->getAttributes()[$attribute];
     }
 
     /**

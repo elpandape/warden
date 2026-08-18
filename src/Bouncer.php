@@ -129,6 +129,16 @@ final class Bouncer
     }
 
     /**
+     * Configure how entities are matched against restricted-role contexts.
+     */
+    public function restrictedVia(string|\Closure $contextOrAttribute, string|\Closure|null $attribute = null): static
+    {
+        Context::resolve()->restrictedVia($contextOrAttribute, $attribute);
+
+        return $this;
+    }
+
+    /**
      * Invalidate every cached check at once (O(1): a version bump).
      */
     public function refresh(): static

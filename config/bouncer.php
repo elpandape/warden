@@ -48,6 +48,12 @@ return [
         'run_before_policies' => false,
     ],
 
+    'restrictions' => [
+        // Attribute on the checked entity holding a restricted role's context
+        // key. Null derives it from the context class name: organization_id.
+        'default_attribute' => null,
+    ],
+
     'ownership' => [
         'default_attribute' => 'user_id',
         // Never throw under Model::shouldBeStrict() when the attribute is missing.

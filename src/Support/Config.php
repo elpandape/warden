@@ -77,6 +77,13 @@ final class Config
         return (bool) config('bouncer.scope.role_grants', true);
     }
 
+    public static function restrictionsDefaultAttribute(): ?string
+    {
+        $attribute = config('bouncer.restrictions.default_attribute');
+
+        return is_string($attribute) && $attribute !== '' ? $attribute : null;
+    }
+
     public static function cacheEnabled(): bool
     {
         return (bool) config('bouncer.cache.enabled', true);

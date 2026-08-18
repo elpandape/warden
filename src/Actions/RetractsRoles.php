@@ -9,8 +9,10 @@ use ElPandaPe\Bouncer\Actions\Concerns\NormalizesRoles;
 use ElPandaPe\Bouncer\Context;
 use ElPandaPe\Bouncer\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Bouncer\Events\RoleRetracted;
+use ElPandaPe\Bouncer\Exceptions\ConfigurationException;
 use ElPandaPe\Bouncer\Tenancy\Tenancy;
 use ElPandaPe\Bouncer\Tenancy\TenantScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
@@ -23,6 +25,10 @@ class RetractsRoles
     /** @var list<string|Model> */
     private readonly array $roles;
 
+    private ?Model $restrictedTo = null;
+
+    private bool $retracted = false;
+
     /**
      * @param  string|array<int, mixed>|Model|BackedEnum  $roles
      */
@@ -32,10 +38,26 @@ class RetractsRoles
     }
 
     /**
+     * Retract only the assignment restricted to this context. Without on(),
+     * every assignment of the role goes, restricted ones included.
+     */
+    public function on(Model $context): static
+    {
+        if ($this->retracted) {
+            throw new ConfigurationException('Call on() before from(): retractions execute immediately.');
+        }
+
+        $this->restrictedTo = $context;
+
+        return $this;
+    }
+
+    /**
      * @param  Model|array<int, mixed>  $authorities
      */
     public function from(Model|array $authorities): static
     {
+        $this->retracted = true;
         $context = Context::resolve();
         $roleClass = $context->roleClass();
         $assignedRole = $context->assignedRoleClass();
@@ -70,11 +92,21 @@ class RetractsRoles
                 ->where('entity_type', $authority->getMorphClass())
                 ->where('entity_id', $authority->getKey())
                 ->where('scope', $scope)
+                ->when(
+                    $this->restrictedTo instanceof Model,
+                    /** @param Builder<Model> $query */
+                    function (Builder $query): void {
+                        $query->where('restricted_to_type', $this->restrictedTo?->getMorphClass())
+                            ->where('restricted_to_id', $this->restrictedTo?->getKey());
+                    },
+                )
                 ->delete();
 
             if ($deleted > 0) {
                 $this->bumpCacheVersion($scope);
-                $this->dispatchBouncerEvent(new RoleRetracted($authority, new Collection($models), $scope));
+                $this->dispatchBouncerEvent(
+                    new RoleRetracted($authority, new Collection($models), $scope, $this->restrictedTo),
+                );
             }
         }
 
