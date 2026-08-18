@@ -50,3 +50,23 @@ it('answers from the eager-loaded relation without extra queries', function (): 
 
     app('db')->disableQueryLog();
 });
+
+it('lists granted and forbidden permissions for migrators', function (): void {
+    $bouncer = app(ElPandaPe\Bouncer\Bouncer::class);
+    $user = User::query()->create(['name' => 'Lister']);
+    $org = ElPandaPe\Bouncer\Tests\Fixtures\Account::query()->create(['name' => 'Org'])->refresh();
+
+    $bouncer->allow($user)->to('direct');
+    $bouncer->allow('lister-role')->to('via-role');
+    $bouncer->assign('lister-role')->to($user);
+    $bouncer->allowEveryone()->to('shared');
+    $bouncer->forbid($user)->to('banned');
+
+    // Restricted contexts are excluded from the flat listing, fail-closed.
+    $bouncer->allow('scoped-role')->to('scoped-only');
+    $bouncer->assign('scoped-role')->on($org)->to($user);
+
+    expect($user->getPermissions()->pluck('name')->sort()->values()->all())
+        ->toBe(['direct', 'shared', 'via-role'])
+        ->and($user->getForbiddenPermissions()->pluck('name')->all())->toBe(['banned']);
+});
