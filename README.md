@@ -1,29 +1,98 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elpandape/warden/main/art/cover.jpg" alt="Warden — authorization that explains itself" width="100%">
+  <img src="https://raw.githubusercontent.com/elpandape/warden/main/art/cover.jpg" alt="Warden" width="800">
 </p>
 
-# Warden
+<h1 align="center">Warden</h1>
 
-> Roles & permissions for Laravel — instance-level grants, explicit forbids, ownership,
-> multi-tenancy, ABAC. PHP 8.4+ · Laravel 13+.
->
-> Based on [Bouncer](https://github.com/JosephSilber/bouncer) by Joseph Silber — this package
-> is a modernized evolution of his original work (MIT).
+<p align="center">
+  <strong>Roles & permissions for Laravel</strong><br>
+  Instance-level grants, explicit forbids, ownership, multi-tenancy, and ABAC.<br>
+  <em>Authorization that explains itself.</em>
+</p>
 
-[![Tests](https://github.com/elpandape/warden/actions/workflows/run-tests.yml/badge.svg)](https://github.com/elpandape/warden/actions/workflows/run-tests.yml)
-[![Quality](https://github.com/elpandape/warden/actions/workflows/quality.yml/badge.svg)](https://github.com/elpandape/warden/actions/workflows/quality.yml)
-[![Latest version](https://img.shields.io/packagist/v/elpandape/warden.svg)](https://packagist.org/packages/elpandape/warden)
-[![Downloads](https://img.shields.io/packagist/dt/elpandape/warden.svg)](https://packagist.org/packages/elpandape/warden)
-[![PHP](https://img.shields.io/packagist/dependency-v/elpandape/warden/php.svg)](composer.json)
-[![License](https://img.shields.io/packagist/l/elpandape/warden.svg)](LICENSE.md)
+<p align="center">
+  <a href="https://packagist.org/packages/elpandape/warden"><img src="https://img.shields.io/packagist/v/elpandape/warden?style=flat-square&color=blue" alt="Packagist Version"></a>
+  <a href="https://packagist.org/packages/elpandape/warden"><img src="https://img.shields.io/packagist/dt/elpandape/warden?style=flat-square&color=green" alt="Total Downloads"></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License"></a>
+  <a href="https://php.net"><img src="https://img.shields.io/badge/PHP-8.4+-777BB4?style=flat-square&logo=php" alt="PHP 8.4+"></a>
+  <a href="https://laravel.com"><img src="https://img.shields.io/badge/Laravel-13+-FF2D20?style=flat-square&logo=laravel" alt="Laravel 13+"></a>
+</p>
 
-Authorization that answers three questions no other Laravel package answers together:
-**can this user do X?**, **over which rows?**, and **why?**
+---
+
+## 📖 Table of Contents
+
+- [✨ Features](#-features)
+- [📋 Requirements](#-requirements)
+- [🚀 Installation](#-installation)
+- [⚡ Quick Start](#-quick-start)
+- [🔐 Checking Permissions](#-checking-permissions)
+- [🎁 Granting & Forbidding](#-granting--forbidding)
+- [🏠 Ownership](#-ownership)
+- [🎯 Scoped Roles](#-scoped-roles)
+- [🏢 Multi-tenancy](#-multi-tenancy)
+- [🔧 Conditional Permissions (ABAC)](#-conditional-permissions-abac)
+- [📊 Querying by Permission](#-querying-by-permission)
+- [🔍 Debugging with `explain()`](#-debugging-with-explain)
+- [📡 Events](#-events)
+- [⚠️ Exceptions](#-exceptions)
+- [🔢 Enums](#-enums)
+- [💾 Caching](#-caching)
+- [🧪 Testing](#-testing)
+- [🛡️ Middleware & Blade](#-middleware--blade)
+- [🏗️ Schema & Models](#️-schema--models)
+- [⚙️ Configuration](#-configuration)
+- [📖 Recipes](#-recipes)
+- [🔄 Migrating from silber/bouncer](#-migrating-from-silberbouncer)
+- [🧪 Development](#-development)
+- [👤 Credits & License](#-credits--license)
+
+---
+
+## ✨ Features
+
+| Feature | Description |
+|---|---|
+| 🎯 **Laravel's Gate, zero learning curve** | `can()`, `@can`, `authorize()` — works out of the box. |
+| 🔒 **Explicit forbids** | A `forbid()` beats every grant. Distinguishes "denied" from "not granted." |
+| 📊 **`whereCan()` query scope** | The only package that can answer *"over which rows?"* as an Eloquent scope. |
+| 🔍 **`explain()` debugging** | Know *why* a check resolved the way it did — including "explicitly forbidden." |
+| 🏗️ **ABAC constraints** | `where('status', 'published')` on grants — evaluated on every check. |
+| 🏠 **Ownership** | `toOwn(Post::class)` — grant only what the user owns, resolved by attribute or closure. |
+| 🎯 **Scoped roles** | `assign('editor')->on($org)` — same role, different contexts. |
+| 🏢 **Multi-tenancy** | Tenant-scoped rows with global fallback, injectable resolver, exception-safe `onceTo()`. |
+| 💾 **Smart caching** | O(1) invalidation, versioned payloads, anti-stampede locking, Octane-safe. |
+| 📡 **Typed events** | Every write dispatches a typed event with hydrated models — never raw IDs. |
+| 🔢 **Enum support** | `BackedEnum` accepted everywhere a name string is. |
+| 🧪 **Testing helpers** | `Warden::fake()`, `WithPermissions` trait, artisan commands. |
+| 🔄 **Migration path** | `warden:upgrade` + Rector set for silber/bouncer users. |
+
+---
+
+## 📋 Requirements
+
+| Requirement | Version |
+|---|---|
+| PHP | `^8.4` |
+| Laravel | `^13.0` |
+
+---
+
+## 🚀 Installation
 
 ```bash
 composer require elpandape/warden
 php artisan warden:install --migrate
 ```
+
+`warden:install` publishes the config, the migration, and runs it. You can also publish individually:
+
+```bash
+php artisan vendor:publish --tag=warden-config
+php artisan vendor:publish --tag=warden-migrations
+```
+
+Then add the concern to your authority model(s):
 
 ```php
 use ElPandaPe\Warden\Concerns\HasRolesAndPermissions;
@@ -34,75 +103,35 @@ class User extends Authenticatable
 }
 ```
 
+> 🔄 **Coming from silber/bouncer?** This package conflicts with it by design (same default tables). Run `php artisan warden:upgrade` to migrate the schema in place. See [UPGRADE.md](UPGRADE.md).
+
+---
+
+## ⚡ Quick Start
+
 ```php
-Warden::allow($user)->to('edit', Post::class);     // grant, at any granularity
-Warden::forbid($user)->to('edit', $secretPost);    // an explicit denial always wins
-Warden::assign('editor')->on($org)->to($user);     // a role, scoped to one model
+use ElPandaPe\Warden\Facades\Warden;
 
-$user->can('edit', $post);                          // it is Laravel's Gate
-Post::whereCan($user, 'edit')->paginate();          // which rows, as a query scope
-Warden::explain($user, 'edit', $post);             // why, row by row
+// Grant
+Warden::allow($user)->to('edit', Post::class);
+
+// Forbid (always wins)
+Warden::forbid($user)->to('edit', $secretPost);
+
+// Scoped role
+Warden::assign('editor')->on($org)->to($user);
+
+// Check
+$user->can('edit', $post);                          // Laravel's Gate
+Post::whereCan($user, 'edit')->paginate();           // Which rows?
+Warden::explain($user, 'edit', $post);               // Why?
 ```
 
-## What's available
+---
 
-- **Checks through Laravel's Gate**: `can()`, `@can`, `authorize()` and policies work
-  out of the box — explicit forbids beat any grant, and Warden never overrides your
-  policies unless you configure it to run first.
-- **Cached checks** (default on): one minimal versioned payload per authority, O(1)
-  automatic invalidation on every write, anti-stampede locking, Octane-safe.
-- **Typed events** for every write — grants, forbids, roles, syncs with a full diff,
-  catalog lifecycle — plus opt-in cancellable pre-action events.
-- **Typed exceptions** (`UnauthorizedException`, `RoleDoesNotExist`, …) with
-  translatable, leak-safe messages; `BackedEnum` accepted wherever a name string is.
-- **ABAC constraints**: `allow()->to()->where('status', 'published')` — declarative
-  conditions evaluated on every check, in both engines. No other Laravel package has it.
-- **Model-scoped roles**: `assign('editor')->on($org)->to($user)` — the role's grants
-  only apply inside that context; the same role can repeat across contexts.
-- **`whereCan()`**: `Post::whereCan($user, 'view')->paginate()` — the only package
-  whose data model can answer *over which rows*, constraints compiled to SQL included.
-- **`explain()`**: why a check resolves the way it does — including "you are
-  explicitly forbidden", which nobody else can say. Plus `Warden::fake()`,
-  testing helpers and artisan commands.
-- **A real migration path**: `warden:upgrade` transforms a silber/bouncer database
-  in place, and a Rector set renames your code. See [UPGRADE.md](UPGRADE.md).
-- Optional route middleware and a `@forbidden` Blade directive, off by default.
-- **Ownership**: `toOwn(Post::class)` grants only what the user owns — resolved by
-  attribute (configurable globally, per class, or with a closure), strict-mode safe.
-- **Multi-tenancy**: `Warden::tenant()->to($id)` isolates the whole system per tenant,
-  with global (unscoped) rows visible everywhere, an injectable tenant resolver,
-  exception-safe `onceTo()`, and catalog/role-grant splits.
-- **The fluent write API**: `Warden::allow($user)->to(...)`, `forbid()`, `disallow()`,
-  `unforbid()`, `assign()`, `retract()`, `sync()`, `is()` — immediate execution, no
-  destructor magic, safe under concurrency.
-- Models: `Permission`, `Role`, and real pivot models (`Grant`, `AssignedRole`) you can
-  swap or extend via config. Friendly titles are generated on creation (configurable).
-- `HasRolesAndPermissions` for any authority model (not just users): `roles()`,
-  `permissions()`, `isA()` / `isAn()` / `isNotA()` / `isAll()`.
-- Stable morph aliases (`warden.role`, `warden.permission`), safe with
-  `Relation::enforceMorphMap()`. UUID/ULID-ready: no hardcoded integer cast on entity
-  ids, and the published migration ships commented column variants to switch to string keys.
-- Schema v2 migration (frozen for 0.x), full config file, en/es translations, `Context`.
+## 🔐 Checking Permissions
 
-## Installation
-
-```bash
-composer require elpandape/warden
-php artisan warden:install --migrate
-```
-
-`warden:install` publishes the config and the migration (and runs it with `--migrate`);
-publishing by tag works too (`vendor:publish --tag=warden-config` / `warden-migrations`).
-Then add the `HasRolesAndPermissions` concern to every model that should hold roles or
-permissions — users, teams, API clients, anything Eloquent.
-
-This package **conflicts with `silber/bouncer`** by design: same default tables, same
-schema. Coming from it? `php artisan warden:upgrade` migrates the schema in place —
-see [UPGRADE.md](UPGRADE.md).
-
-## Checking permissions
-
-Nothing to learn: it is Laravel's Gate.
+Nothing to learn — it's Laravel's Gate.
 
 ```php
 $user->can('edit-site');            // simple permission
@@ -112,7 +141,7 @@ Gate::authorize('edit', $post);     // throws on deny
 @can('edit', $post) ... @endcan     // Blade, as always
 ```
 
-How grants match checks:
+### Grant vs Check Matrix
 
 | Grant ↓ / Check → | `can('edit')` | `can('edit', Post::class)` | `can('edit', $post)` |
 |---|---|---|---|
@@ -124,85 +153,121 @@ How grants match checks:
 | `toManage(Post::class)` | — | ✅ | ✅ |
 | `everything()` | ✅ | ✅ | ✅ |
 
-Rules worth knowing: an explicit `forbid()` beats every **Warden** grant; by default
-Warden answers **after** your policies and Gate definitions, so those always win over
-both grants and forbids (set `warden.gate.run_before_policies` to flip it, making
-forbids veto everything). `Gate::after` fallbacks registered after Warden are consulted
-only when Warden abstains. Checks with more than one argument are left entirely to your
-policies; guests and non-model arguments are never answered. Denials carry a translatable
-message (`warden::warden.unauthorized`, shipped in English and Spanish).
+> 📌 **Rules:**
+> - `forbid()` beats every Warden grant.
+> - By default, Warden answers **after** your policies — policies always win.
+> - Set `warden.gate.run_before_policies` to make forbids veto everything.
+> - Checks with more than one argument are left to your policies.
+> - Guests and non-model arguments are never answered by Warden.
 
-## Granting & forbidding
+---
+
+## 🎁 Granting & Forbidding
 
 ```php
 use ElPandaPe\Warden\Facades\Warden;
 
-Warden::allow($user)->to('ban-users');            // simple permission
-Warden::allow($user)->to('edit', Post::class);    // every post
-Warden::allow($user)->to('edit', $post);          // one post
-Warden::allow($user)->everything();               // wildcard
-Warden::allow($user)->toOwn(Post::class);         // only what they own
-Warden::allowEveryone()->to('browse');            // everyone
+// Simple permission
+Warden::allow($user)->to('ban-users');
 
-Warden::assign('admin')->to($user);               // roles, created on the fly
-Warden::allow('admin')->to('audit');              // grant to a role by name
-Warden::sync($user)->roles(['editor', 'writer']); // declarative sync
+// Class-level
+Warden::allow($user)->to('edit', Post::class);
+
+// Instance-level
+Warden::allow($user)->to('edit', $post);
+
+// Wildcard
+Warden::allow($user)->everything();
+
+// Everyone
+Warden::allowEveryone()->to('browse');
+
+// Roles
+Warden::assign('admin')->to($user);
+Warden::allow('admin')->to('audit');
+
+// Declarative sync
+Warden::sync($user)->roles(['editor', 'writer']);
 ```
 
-✅ Do — forbid beats everything, use it for exceptions:
+### Best Practices
+
+✅ **Do** — use `forbid()` for exceptions:
 
 ```php
 Warden::allow($user)->to('view', Document::class);
 Warden::forbid($user)->to('view', $classifiedDocument);
 ```
 
-❌ Don't — don't model exceptions by scattering conditionals around your
-codebase; an explicit `forbid()` row is queryable, auditable and revocable
-(`Warden::unforbid($user)->to('view', $classifiedDocument)`).
-
-## Ownership
+❌ **Don't** — model exceptions with scattered conditionals; a `forbid()` row is queryable, auditable, and revocable:
 
 ```php
-Warden::allow($user)->toOwn(Post::class);            // any action on owned posts
-Warden::allow($user)->toOwn(Post::class, ['edit']);  // only these actions
-Warden::allow($user)->toOwnEverything();
+Warden::unforbid($user)->to('view', $classifiedDocument);
+```
 
-Warden::ownedVia('author_id');                       // global attribute
-Warden::ownedVia(Post::class, 'writer_id');          // per class
+---
+
+## 🏠 Ownership
+
+```php
+// All actions on owned posts
+Warden::allow($user)->toOwn(Post::class);
+
+// Only specific actions
+Warden::allow($user)->toOwn(Post::class, ['edit']);
+
+// Everything owned
+Warden::allow($user)->toOwnEverything();
+```
+
+### Configure ownership resolution
+
+```php
+// Global attribute
+Warden::ownedVia('author_id');
+
+// Per class
+Warden::ownedVia(Post::class, 'writer_id');
+
+// Closure (evaluated live, never cached)
 Warden::ownedVia(fn ($post, $user) => $post->team_id === $user->team_id);
 ```
 
-✅ Do — let ownership carry the common case and forbid the exceptions:
+### Best Practices
+
+✅ **Do** — let ownership carry the common case, forbid the exceptions:
 
 ```php
 Warden::allow($user)->toOwn(Post::class);
 Warden::forbid($user)->toOwn(Post::class, 'delete'); // owners still can't delete
 ```
 
-❌ Don't — don't reimplement ownership inside policies you'll have to keep in
-sync with your grants; `ownedVia()` is declared once and works everywhere.
+❌ **Don't** — reimplement ownership inside policies you'll have to keep in sync.
 
-## Scoped roles
+---
 
-The columns other packages left dead for years, alive: restrict a role to any model —
-no global `team_id` required, the context is whatever model you choose.
+## 🎯 Scoped Roles
+
+Restrict a role to any model — no global `team_id` required.
 
 ```php
 Warden::assign('editor')->on($orgOne)->to($user);   // editor only inside orgOne
 Warden::assign('editor')->on($orgTwo)->to($user);   // same role, second context
 Warden::retract('editor')->on($orgOne)->from($user); // leave one; without on(), all
-
-Warden::restrictedVia(Post::class, 'organization_id');           // membership by FK
-Warden::restrictedVia(fn ($entity, $context) => ...);            // or a closure
 ```
 
-A restricted role's grants apply when the checked entity **belongs to the context**:
-it is the context itself, or its `{context}_id` attribute points at it (convention,
-configurable per class or globally). Checks without an instance fail closed — a
-restricted editor is not a global editor. `on()` goes **before** `to()`: writes are
-immediate. Role membership checks (`isAn('editor')`) ignore restrictions by design.
+### Configure membership resolution
 
-✅ Do — model teams with the models you already have:
+```php
+Warden::restrictedVia(Post::class, 'organization_id');  // membership by FK
+Warden::restrictedVia(fn ($entity, $context) => ...); // or a closure
+```
+
+> 📌 A restricted role's grants apply when the checked entity **belongs to the context**. Checks without an instance fail closed. Role membership checks (`isAn('editor')`) ignore restrictions by design.
+
+### Best Practices
+
+✅ **Do** — model teams with the models you already have:
 
 ```php
 Warden::assign('admin')->on($project)->to($user);
@@ -210,96 +275,113 @@ $user->can('manage', $project);          // true: the entity IS the context
 $user->can('edit', $taskInProject);      // true: task->project_id points at it
 ```
 
-❌ Don't — don't fall back to one global role plus scattered `if ($user->org_id === …)`
-checks; the assignment carries its context, queryable and revocable per context.
+❌ **Don't** — fall back to one global role plus scattered `if ($user->org_id === …)` checks.
 
-## Multi-tenancy
+---
+
+## 🏢 Multi-tenancy
 
 ```php
-Warden::tenant()->to($tenantId);       // everything now scoped to this tenant
-Warden::tenant()->onceTo(9, fn () => ...); // temporary, exception-safe
-Warden::tenant()->onlyRelations();     // keep the permission catalog global
+Warden::tenant()->to($tenantId);                    // scope everything to this tenant
+Warden::tenant()->onceTo(9, fn () => ...);         // temporary, exception-safe
+Warden::tenant()->onlyRelations();                  // keep permission catalog global
 Warden::tenant()->dontScopeRoleGrants();
 ```
 
-Rows written without an active tenant are global: visible from every tenant. What a
-check sees with **no** active tenant is configurable (`warden.scope.null_behavior`:
-`'all'` sees everything, `'strict'` sees only global rows) — the semantic ambiguity
-that plagued the original is now an explicit choice. Wire a
-`Contracts\TenantResolver` in config to detect the tenant from session/JWT automatically.
+### Behavior with no active tenant
 
-**Writes always target one exact scope.** Reads fall back to global rows, but a write
-under tenant 5 creates, matches, or deletes tenant-5 rows only — a tenant-scoped
-`disallow()`, `unforbid()`, `retract()` or `sync()` never destroys a global rule, and a
-global write never gets absorbed by a same-named row inside some tenant.
+Configure `warden.scope.null_behavior`:
+- `'all'` — sees everything (global + all tenants)
+- `'strict'` — sees only global rows
 
-✅ Do — remove a global forbid where it lives: outside any tenant:
+> 📌 **Writes always target one exact scope.** A write under tenant 5 only affects tenant-5 rows. Global rules are only writable globally.
+
+### Best Practices
+
+✅ **Do** — remove a global forbid where it lives: outside any tenant:
 
 ```php
 Warden::tenant()->removeOnce(fn () => Warden::unforbid($user)->to('publish'));
 ```
 
-❌ Don't — don't expect `Warden::unforbid($user)->to('publish')` under a tenant to
-lift a **global** forbid; global rules are only writable globally, by design.
+❌ **Don't** — expect a tenant-scoped `unforbid()` to lift a **global** forbid.
 
-## Conditional permissions (ABAC)
+---
 
-Grants can carry conditions, written in the grammar your queries already use and
-evaluated on **every check**, cached or not:
+## 🔧 Conditional Permissions (ABAC)
+
+Grants can carry conditions, written in the grammar your queries already use:
 
 ```php
 Warden::allow($user)->to('view', Document::class)
     ->where('status', 'published')
-    ->orWhere(fn ($group) => $group->where('tier', '>=', 2)->whereColumn('owner_id', 'id'));
+    ->orWhere(fn ($group) => $group
+        ->where('tier', '>=', 2)
+        ->whereColumn('owner_id', 'id')
+    );
 ```
 
-- `where('column', $value)` compares an attribute of the checked entity; explicit
-  operators (`=`, `!=`, `<`, `<=`, `>`, `>=`) go in the middle, like Eloquent.
-- `whereColumn('owner_id', 'id')` compares against the **authority**'s attribute.
-- Precedence is SQL's: AND binds tighter than OR (`A or B and C` = `A or (B and C)`);
-  nest a closure to group explicitly.
-- Comparisons are strict — no PHP type juggling; numeric strings bridge to numbers.
-- A constrained grant **never matches instance-less checks** (`can('view')`,
-  `can('view', Document::class)`): conditions need an instance, so they fail closed.
-- The persisted shape is versioned and enum-discriminated; corrupt data fails closed.
+### Available operators
 
-✅ Do — grant broadly, constrain the sensitive part; different holders never share rows:
+| Method | Description |
+|---|---|
+| `where('col', 'value')` | Entity attribute equals value |
+| `where('col', '>=', 5)` | With explicit operator |
+| `whereColumn('owner_id', 'id')` | Compare against authority's attribute |
+| `orWhere(...)` | OR grouping |
+| `orWhere(fn)` | Nested closure grouping |
+
+> 📌 **Important:**
+> - Precedence is SQL's: `AND` binds tighter than `OR`.
+> - Comparisons are strict — no PHP type juggling.
+> - A constrained grant **never matches instance-less checks** (`can('view')`, `can('view', Document::class)`) — they fail closed.
+
+### Best Practices
+
+✅ **Do** — grant broadly, constrain the sensitive part:
 
 ```php
 Warden::allow('viewer')->to('view', Document::class)->where('status', 'published');
 Warden::forbid($user)->to('view', Document::class)->where('classified', true);
 ```
 
-❌ Don't — don't encode workflow logic as constraints (drafts visible on Tuesdays);
-constraints compare attributes. Complex rules belong in policies, which always win.
+❌ **Don't** — encode workflow logic as constraints (e.g., "drafts visible on Tuesdays"). Complex rules belong in policies.
 
-## Querying by permission
+---
 
-Checks answer "can X do Y?"; the data model can also answer **"over which rows?"** —
-as one composable, paginatable scope. Add the `QueriesByPermission` concern to the
-models being authorized:
+## 📊 Querying by Permission
+
+Checks answer "can X do Y?"; Warden can also answer **"over which rows?"**
 
 ```php
 use ElPandaPe\Warden\Concerns\QueriesByPermission;
 
+class Post extends Model
+{
+    use QueriesByPermission;
+}
+
+// Usage
 Post::whereCan($user, 'view')->latest()->paginate();
 ```
 
-Instance grants, class grants, wildcards, everyone-grants, role grants, forbids,
-tenancy, ownership (attribute-resolved) and **ABAC constraints all compile into the
-query**. What cannot become SQL fails closed, never open: closure-resolved ownership
-and restricted-role **grants** contribute no rows, restricted-role **forbids**
-over-block their whole shape, and constraint comparisons inside the query use the
-database engine's semantics (a case-insensitive collation may match more than the
-strict in-memory comparator; boolean values without a boolean cast match nothing,
-exactly like `can()`).
+Instance grants, class grants, wildcards, everyone-grants, role grants, forbids, tenancy, ownership, and **ABAC constraints all compile into the query**.
 
-✅ Do — drive index pages straight from authorization; no post-filtering, no N+1 checks.
+> ⚠️ What cannot become SQL fails closed: closure-resolved ownership and restricted-role grants contribute no rows.
 
-❌ Don't — don't `->get()->filter(fn ($p) => $user->can('view', $p))`; that's the N+1
-this scope exists to delete, and it breaks pagination counts.
+### Best Practices
 
-## Debugging with explain()
+✅ **Do** — drive index pages straight from authorization:
+
+```php
+Post::whereCan($user, 'view')->latest()->paginate();
+```
+
+❌ **Don't** — post-filter with `->get()->filter(fn ($p) => $user->can('view', $p))` — that's the N+1 this scope exists to delete.
+
+---
+
+## 🔍 Debugging with `explain()`
 
 ```php
 $why = Warden::explain($user, 'edit', $post);
@@ -311,65 +393,77 @@ $why->role;           // the role that carried it, when one did
 (string) $why;        // "Explicitly forbidden by permission [edit] via role [banned]."
 ```
 
-Always answered by the database engine — never from cache — so it diagnoses stale-cache
-gotchas too. Forbid precedence is absolute by contract; when it surprises someone,
-`explain()` names the exact row and role to fix.
+> 📌 Always answered by the database engine — never from cache — so it diagnoses stale-cache issues too.
 
-## Events
+---
 
-Every write dispatches a typed, `readonly` event with **hydrated models — never raw
-ids** (the payload asymmetry other packages document as a caveat doesn't exist here).
-Disable globally with `warden.events_enabled`.
+## 📡 Events
 
-| Event | Fired by | Payload |
+Every write dispatches a typed, `readonly` event with **hydrated models** (never raw IDs). Disable globally with `warden.events_enabled`.
+
+| Event | Fired By | Payload |
 |---|---|---|
-| `PermissionGranted` / `PermissionForbidden` | `allow()`, `forbid()` | `?Model $authority` (null = everyone), `Collection $permissions`, `$scope` |
-| `PermissionRevoked` / `PermissionUnforbidden` | `disallow()`, `unforbid()` — only when rows were removed | same shape |
+| `PermissionGranted` / `PermissionForbidden` | `allow()`, `forbid()` | `?Model $authority`, `Collection $permissions`, `$scope` |
+| `PermissionRevoked` / `PermissionUnforbidden` | `disallow()`, `unforbid()` | Same shape |
 | `RoleAssigned` / `RoleRetracted` | `assign()`, `retract()` | `Model $authority`, `Collection $roles`, `$scope`, `?Model $restrictedTo` |
-| `RolesSynced` / `PermissionsSynced` | `sync()` | `SyncResult` diff: `attached` / `detached` / `kept`, all hydrated |
-| `RoleCreated/Deleted`, `PermissionCreated/Deleted` | the model layer — every creation path counts | the model |
+| `RolesSynced` / `PermissionsSynced` | `sync()` | `SyncResult` diff: `attached` / `detached` / `kept` |
+| `RoleCreated/Deleted`, `PermissionCreated/Deleted` | Model layer | The model |
 
 ```php
+use ElPandaPe\Warden\Events\PermissionGranted;
+
 Event::listen(PermissionGranted::class, function (PermissionGranted $event) {
     audit('granted', $event->authority, $event->permissions->pluck('name'));
 });
 ```
 
-Pre-action events (`GrantingPermission`, `ForbiddingPermission`, `AssigningRole`) are
-**opt-in** via `warden.cancellable_events`: a listener returning `false` aborts the
-write before anything happens. `sync()` never fires nor honors them — its declarative
-diff events tell the whole story.
+### Pre-action events (opt-in)
 
-✅ Do — audit from events; they fire on every write path, always after cache
-invalidation, with symmetric payloads.
+Enable with `warden.cancellable_events`. A listener returning `false` aborts the write:
 
-❌ Don't — don't hang business rules off post-action events; if a write must be
-conditional, use the cancellable pre-action events (or just decide before calling).
+```php
+// GrantingPermission, ForbiddingPermission, AssigningRole
+```
 
-## Exceptions
+> 📌 `sync()` never fires nor honors pre-action events — its declarative diff events tell the whole story.
+
+---
+
+## ⚠️ Exceptions
 
 All typed, all catchable the Laravel way:
 
 ```php
-Warden::findRole('ghost');            // RoleDoesNotExist (a ModelNotFoundException)
+Warden::findRole('ghost');            // RoleDoesNotExist (ModelNotFoundException)
 Warden::findPermission('ghost');      // PermissionDoesNotExist
-Warden::authorize('publish', $post);  // UnauthorizedException (an AuthorizationException)
-config(['warden.models.role' => Foo::class]); // ConfigurationException, fail-fast
+Warden::authorize('publish', $post);  // UnauthorizedException (AuthorizationException)
 ```
 
-`UnauthorizedException` exposes `getRequiredPermissions()` / `getRequiredRoles()`, and
-its message is translatable (shipped in English and Spanish). Naming the missing
-permission or role in the message is **opt-in** (`warden.exceptions.display_*`):
-leaking your authorization model in 403 responses is a footgun, so the default stays
-generic.
+| Exception | Extends | Notes |
+|---|---|---|
+| `RoleDoesNotExist` | `ModelNotFoundException` | — |
+| `PermissionDoesNotExist` | `ModelNotFoundException` | — |
+| `UnauthorizedException` | `AuthorizationException` | `getRequiredPermissions()` / `getRequiredRoles()` |
+| `ConfigurationException` | — | Fail-fast on bad config |
 
-## Enums everywhere
+> 📌 `UnauthorizedException` messages are translatable (shipped in English and Spanish). Displaying the missing permission/role name in the message is **opt-in** via `warden.exceptions.display_*`.
 
-Every public signature that takes a permission or role name also takes a
-string-backed enum:
+---
+
+## 🔢 Enums
+
+Every public signature that takes a permission or role name also accepts a string-backed enum:
 
 ```php
-enum Permission: string { case EditSite = 'edit-site'; }
+enum Permission: string
+{
+    case EditSite = 'edit-site';
+}
+
+enum Role: string
+{
+    case Admin = 'admin';
+}
 
 Warden::allow($user)->to(Permission::EditSite);
 Warden::assign(Role::Admin)->to($user);
@@ -377,20 +471,14 @@ $user->isAn(Role::Admin);
 Warden::authorize(Permission::EditSite);
 ```
 
-## Caching
+---
 
-Enabled by default: the cached resolver stores one **minimal payload per authority**
-(every grant tuple that could ever apply to it) and answers checks in memory with the
-exact same semantics as the database engine — the whole test suite runs against both.
-The first check per authority costs three queries; the next thousand cost zero.
+## 💾 Caching
 
-Invalidation is automatic and O(1): every write through Warden bumps a version
-counter for the exact tenant scope it touched, so stale entries are orphaned, never
-hunted. Cold rebuilds take a lock when the store supports one (anti-stampede), and
-payloads are versioned so future fields never break old entries.
+Enabled by default. One minimal payload per authority, O(1) automatic invalidation, anti-stampede locking, Octane-safe.
 
 ```php
-// config/warden.php — a real store with a TTL:
+// config/warden.php
 'cache' => [
     'enabled' => true,
     'store' => 'default',
@@ -399,29 +487,32 @@ payloads are versioned so future fields never break old entries.
 ],
 ```
 
+### Manual invalidation
+
 ```php
-Warden::refresh();          // invalidate everything: an O(1) version bump
-Warden::refreshFor($user);  // drop one authority's payload
+Warden::refresh();          // O(1) version bump — invalidates everything
+Warden::refreshFor($user);  // Drop one authority's payload
 ```
 
-✅ Do — write through Warden and let invalidation take care of itself:
+### Best Practices
+
+✅ **Do** — write through Warden and let invalidation take care of itself:
 
 ```php
-Warden::disallow($user)->to('publish');   // the next check is already correct
+Warden::disallow($user)->to('publish');   // next check is already correct
 ```
 
-❌ Don't — the "I forgot to refresh the cache in prod" pattern: raw database edits
-(seeders, manual SQL) bypass invalidation by design. After hand-editing rows, call
-`Warden::refresh()` — or better, make the edit through the API.
+❌ **Don't** — raw database edits (seeders, manual SQL) bypass invalidation. After hand-editing rows, call `Warden::refresh()` — or better, make the edit through the API.
 
-One caveat: the in-memory matcher compares permission names **byte-exactly**, while a
-case-insensitive database collation (MySQL's default) may match `Edit` to `edit`.
-Use exact, consistent permission names — good practice with or without the cache.
+> ⚠️ The in-memory matcher compares permission names **byte-exactly**, while a case-insensitive database collation may match `Edit` to `edit`. Use exact, consistent names.
 
-## Testing your app
+---
+
+## 🧪 Testing
+
+### Fake mode
 
 ```php
-// Script verdicts without touching tables; unscripted checks fall to your policies.
 $fake = Warden::fake();
 $fake->allow('edit-site')->forbid('delete');
 
@@ -429,40 +520,65 @@ $fake->assertChecked('edit-site');
 $fake->assertGranted('edit-site');
 $fake->assertForbidden('delete');
 $fake->assertNothingChecked();
+```
 
-// Or arrange real rows tersely with the trait:
+### WithPermissions trait
+
+```php
 use ElPandaPe\Warden\Testing\WithPermissions;
 
 $this->allowUser($user, 'view', Document::class);
 $this->assignRoles($user, 'admin');
 ```
 
-Artisan ships too: `warden:install`, `warden:show [Class:id]`, `warden:cache-reset`,
-`warden:clean --dry-run`, and a `php artisan about` section.
+### Artisan commands
 
-## Optional middleware & Blade
+```bash
+php artisan warden:show [Class:id]       # Show permissions for an authority
+php artisan warden:cache-reset           # Reset cache
+php artisan warden:clean --dry-run       # Clean orphaned permissions
+```
 
-Off by default — flip `warden.register_middleware_aliases` /
-`warden.register_blade_directives`:
+---
+
+## 🛡️ Middleware & Blade
+
+Off by default. Enable via config:
+
+```php
+'warden.register_middleware_aliases' => true,
+'warden.register_blade_directives' => true,
+```
+
+### Middleware
 
 ```php
 Route::get('/admin', ...)->middleware('warden.role:admin,editor');      // any of
 Route::put('/site', ...)->middleware('warden.permission:edit-site');    // all of
 ```
 
+### Blade
+
 ```blade
-@forbidden('publish')  {{-- explicit denial — not the same as lacking it --}}
+@forbidden('publish')
     You are explicitly banned from publishing.
 @endforbidden
 ```
 
-Both throw/render through the same typed, translatable machinery as everything else.
+---
 
-## Schema & models
+## 🏗️ Schema & Models
 
-Four tables: `permissions` (the catalog), `roles`, `assigned_roles` (role ↔ authority)
-and `grants` (permission ↔ authority, with a `forbidden` flag — a grant row is exactly
-one concession or one prohibition). Any model can hold roles and permissions:
+Four tables:
+
+| Table | Purpose |
+|---|---|
+| `permissions` | The catalog |
+| `roles` | Role definitions |
+| `assigned_roles` | Role ↔ authority pivot |
+| `grants` | Permission ↔ authority (with `forbidden` flag) |
+
+Any model can hold roles and permissions:
 
 ```php
 use ElPandaPe\Warden\Concerns\HasRolesAndPermissions;
@@ -473,13 +589,16 @@ class User extends Authenticatable
 }
 ```
 
-Swap models through config — never by extending package internals:
+### Swap models via config
 
 ```php
-// ✅ Do — point the config at your model, keep the concern:
 // config/warden.php
-'models' => ['role' => App\Models\Role::class],
+'models' => [
+    'role' => App\Models\Role::class,
+],
+```
 
+```php
 // app/Models/Role.php
 class Role extends Model
 {
@@ -487,109 +606,92 @@ class Role extends Model
 }
 ```
 
-```php
-// ❌ Don't — don't hardcode package classes in relations or checks;
-// resolve them via config so swapped models keep working everywhere.
-$user->roles()->attach(ElPandaPe\Warden\Models\Role::first());
-```
+> 📌 **Never** hardcode package classes in relations. Always resolve via config.
 
-## Configuration
+---
 
-Everything lives in `config/warden.php`: models, table names, database connection,
-morph aliases, gate behavior, ownership, multi-tenancy scope semantics, cache, events
-and i18n-safe exception messages. Every key is documented in the file itself.
+## ⚙️ Configuration
 
-## Recipes
+Everything lives in `config/warden.php`:
 
-Small patterns for questions that come up repeatedly (many inherited from the
-original package's issue tracker).
+| Section | Controls |
+|---|---|
+| `models` | Swappable Role, Permission, Grant, AssignedRole models |
+| `tables` | Table names and database connection |
+| `morphs` | Morph aliases (`warden.role`, `warden.permission`) |
+| `gate` | Gate behavior (`run_before_policies`) |
+| `ownership` | Global/per-class ownership attribute |
+| `scope` | Multi-tenancy semantics |
+| `cache` | Store, prefix, TTL |
+| `events` | Enable/disable events, cancellable pre-action events |
+| `exceptions` | Display permission/role names in messages |
 
-**Authorize someone other than the authenticated user** — queue jobs, consoles,
-impersonation. Checks go through Laravel's Gate, so its own escape hatch works:
+---
+
+## 📖 Recipes
+
+### Authorize someone other than the current user
 
 ```php
 Gate::forUser($tenantUser)->allows('edit', $post);
-Warden::explain($tenantUser, 'edit', $post);   // diagnosis takes any authority
+Warden::explain($tenantUser, 'edit', $post);
 ```
 
-**Ownership through a pivot table** — when "owning" is a relation, not a column,
-declare it with a closure (evaluated live on every check, never cached):
+### Ownership through a pivot table
 
 ```php
-Warden::ownedVia(Business::class, fn ($business, $user) => $business->owners()->whereKey($user->getKey())->exists());
+Warden::ownedVia(Business::class, fn ($business, $user) =>
+    $business->owners()->whereKey($user->getKey())->exists()
+);
 Warden::allow($user)->toOwn(Business::class, ['manage']);
 ```
 
-Closure-resolved ownership cannot compile into `whereCan()` — those rows stay out
-of query results, fail-closed. Attribute-resolved ownership compiles fine.
+> ⚠️ Closure-resolved ownership cannot compile into `whereCan()`.
 
-**A default role for every new user** — there is deliberately no "role for
-everyone": a role everybody holds is just a set of global grants, which
-`Warden::allowEveryone()->to(...)` already models without a row per user. If you
-want the *membership* to be visible, assign it where users are born:
+### Default role for new users
 
 ```php
-// In your User model or an observer:
+// In your User model or observer:
 protected static function booted(): void
 {
     static::created(fn (User $user) => Warden::assign('member')->to($user));
 }
 ```
 
-**Landlord vs tenant databases** — point the warden tables at their own
-connection with `warden.connection`; the published migration honors it too
-(`Schema::connection(...)`), and the migration class is anonymous, so it never
-collides between landlord and tenant migration folders. The authority model may
-live on any other connection: checks only read its morph class and key.
+> 💡 There is no "role for everyone" by design. Use `Warden::allowEveryone()->to(...)` for global grants.
 
-**Roles grouped by tenant, in one query** — the pivot exposes the scope column:
+### Landlord vs tenant databases
 
-```php
-Warden::tenant()->removeOnce(fn () => $user->roles()->get()->groupBy('pivot.scope'));
-```
+Point warden tables at their own connection with `warden.connection`. The published migration honors it (`Schema::connection(...)`), and the migration class is anonymous to avoid collisions.
 
-**Replace a role instead of stacking it** — `sync()` declares the full
-(unrestricted) set; for one-off swaps, retract and assign are atomic enough:
+### Replace a role instead of stacking
 
 ```php
-Warden::sync($user)->roles(['editor']);          // declarative
-Warden::retract('viewer')->from($user);          // or surgical
+Warden::sync($user)->roles(['editor']);     // declarative
+Warden::retract('viewer')->from($user);       // or surgical
 Warden::assign('editor')->to($user);
 ```
 
-**Long-lived processes (tinker, Octane, queue workers)** — writes made through
-the API invalidate caches on their own. Only raw database edits need a manual
-`Warden::refresh()`. Tenant state and resolver memoization live in
-container-scoped bindings, so Octane requests and queue jobs reset themselves;
-a long tinker session is one lifecycle — call `Warden::tenant()->remove()` or
-`refresh()` yourself if you switch contexts mid-session.
+### Long-lived processes (Tinker, Octane, queues)
 
-## Migrating from silber/bouncer
+Writes through the API invalidate caches automatically. Only raw DB edits need `Warden::refresh()`. Tenant state lives in container-scoped bindings, so Octane requests and queue jobs reset themselves.
+
+---
+
+## 🔄 Migrating from silber/bouncer
 
 ```bash
 composer require elpandape/warden        # replaces silber/bouncer (conflict enforced)
-php artisan warden:upgrade --dry-run     # report
-php artisan warden:upgrade               # in-place schema transform
+php artisan warden:upgrade --dry-run       # report
+php artisan warden:upgrade                 # in-place schema transform
 vendor/bin/rector process app --config vendor/elpandape/warden/stubs/rector-silber-upgrade.php
 ```
 
-The fluent API is intentionally compatible, the schema upgrades in place (the
-original's `permissions` pivot becomes `grants`, its `abilities` becomes
-`permissions`, role morphs are rewritten), and the Rector set renames imports and
-calls. Full table of equivalences and caveats: **[UPGRADE.md](UPGRADE.md)**.
+The fluent API is intentionally compatible. The schema upgrades in place (`abilities` → `permissions`, `permissions` pivot → `grants`). See **UPGRADE.md** for the full equivalence table.
 
-## Contracts & deferred decisions
+---
 
-- **Forbid precedence is absolute.** A matching `forbid()` beats every grant from any
-  role, always — that is the model's security guarantee, not a missing feature. Forbid
-  narrowly (specific roles, entities or constraints), never on broad global roles you
-  then need exceptions to; `explain()` names the exact row and role when a denial
-  surprises you. A forbid-with-exceptions mechanism is a candidate for post-1.0.
-- **Multi-guard support** is formally deferred to the post-1.0 backlog: Warden
-  authorizes *models*, and any authenticatable model already works. If your guards
-  resolve different user models, each gets its own grants naturally.
-
-## Development
+## 🧪 Development
 
 No local PHP or Composer needed — everything runs through Docker:
 
@@ -597,13 +699,22 @@ No local PHP or Composer needed — everything runs through Docker:
 make build      # build the dev image
 make install    # composer install
 make ci         # pint + phpstan + rector + tests (100% coverage) + type coverage
-make test-dbs   # run the suite against MySQL 9 and Postgres 16
-make mutation   # mutation testing over the core, one pass per path
-make shell      # a shell inside the container
+make test-dbs   # run suite against MySQL 9 and Postgres 16
+make mutation   # mutation testing over the core
+make shell      # shell inside the container
 ```
 
-## Credits & license
+---
 
-Original concept and API design: [Joseph Silber](https://github.com/JosephSilber) —
-this project started as an evolution of his Bouncer and keeps his copyright notice.
-Licensed under the [MIT license](LICENSE.md).
+## 👤 Credits & License
+
+- **Original concept & API design:** [Joseph Silber](https://github.com/JosephSilber) — this project started as an evolution of his [Bouncer](https://github.com/JosephSilber/bouncer) and keeps his copyright notice.
+- **Maintainer:** [Carlos Mayorga](https://github.com/elpandape)
+
+Licensed under the [MIT License](LICENSE.md).
+
+---
+
+<p align="center">
+  <sub>Authorization that explains itself.</sub>
+</p>
