@@ -393,3 +393,12 @@ it('applies config-backed tenancy splits on fresh lifecycles', function (): void
     expect(app(Tenancy::class)->scopesCatalog())->toBeFalse()
         ->and(app(Tenancy::class)->scopesRoleGrants())->toBeFalse();
 });
+
+it('leaves the cache version alone when a write changes nothing', function (): void {
+    $this->warden->allow($this->user)->to('edit-site');
+    $version = Cache::store('array')->get('warden:v:a');
+
+    $this->warden->allow($this->user)->to('edit-site');
+
+    expect(Cache::store('array')->get('warden:v:a'))->toBe($version);
+});

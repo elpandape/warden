@@ -146,15 +146,19 @@ class GrantsPermissions
             forRoleGrant: $authority instanceof ($context->roleClass()),
         );
 
+        $wrote = false;
+
         foreach ($permissions as $permission) {
             // firstOrCreate self-heals concurrent races via createOrFirst on Laravel 12+.
-            $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
+            $grant = $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
                 'permission_id' => $this->modelKey($permission),
                 'entity_type' => $authority?->getMorphClass(),
                 'entity_id' => $authority?->getKey(),
                 'forbidden' => $this->forbidding,
                 'scope' => $scope,
             ]);
+
+            $wrote = $wrote || $grant->wasRecentlyCreated;
         }
 
         // Remembered so a fluent where() can refine this exact concession;
@@ -163,6 +167,13 @@ class GrantsPermissions
         $this->lastAuthority = $authority;
         $this->lastScope = $scope;
         $this->constraints = null;
+
+        // Removals already guard on their delete count: a write that wrote
+        // nothing announces nothing either. The chain state above still moves,
+        // so a fluent where() can refine the concession this call named.
+        if (! $wrote) {
+            return;
+        }
 
         $this->bumpCacheVersion($scope);
 

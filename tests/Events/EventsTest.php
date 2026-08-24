@@ -248,3 +248,23 @@ it('never cancels the writes a sync delegates', function (): void {
 
     expect($this->user->isAn('editor'))->toBeTrue();
 });
+
+it('stays silent when assigning a role the authority already holds', function (): void {
+    $this->warden->assign('editor')->to($this->user);
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->assign('editor')->to($this->user);
+
+    Event::assertNotDispatched(RoleAssigned::class);
+});
+
+it('stays silent when granting a permission the authority already has', function (): void {
+    $this->warden->allow($this->user)->to('edit-site');
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->allow($this->user)->to('edit-site');
+
+    Event::assertNotDispatched(PermissionGranted::class);
+});

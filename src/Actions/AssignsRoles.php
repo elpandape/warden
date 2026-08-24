@@ -83,11 +83,13 @@ class AssignsRoles
 
         $models = $this->resolveRoleModels($this->roles);
 
+        $wrote = false;
+
         foreach ($models as $role) {
             $roleKey = $this->modelKey($role);
 
             foreach ($targets as $authority) {
-                $assignedRole::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
+                $assignment = $assignedRole::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
                     'role_id' => $roleKey,
                     'entity_type' => $authority->getMorphClass(),
                     'entity_id' => $authority->getKey(),
@@ -95,7 +97,15 @@ class AssignsRoles
                     'restricted_to_id' => $this->restrictedTo?->getKey(),
                     'scope' => $scope,
                 ]);
+
+                $wrote = $wrote || $assignment->wasRecentlyCreated;
             }
+        }
+
+        // Removals already guard on their delete count: a write that wrote
+        // nothing announces nothing either.
+        if (! $wrote) {
+            return $this;
         }
 
         $this->bumpCacheVersion($scope);
