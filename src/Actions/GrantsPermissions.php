@@ -11,7 +11,6 @@ use ElPandaPe\Warden\Actions\Concerns\ResolvesPermissions;
 use ElPandaPe\Warden\Constraints\Builder;
 use ElPandaPe\Warden\Constraints\ConstraintSerializer;
 use ElPandaPe\Warden\Context;
-use ElPandaPe\Warden\Enums\LogicalOperator;
 use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\ForbiddingPermission;
 use ElPandaPe\Warden\Events\GrantingPermission;
@@ -278,7 +277,7 @@ class GrantsPermissions
             ->get();
 
         foreach ($candidates as $candidate) {
-            if ($this->optionsMatch($candidate->getAttribute('options'), $options)) {
+            if (ConstraintSerializer::sameRule($candidate->getAttribute('options'), $options)) {
                 return $candidate;
             }
         }
@@ -291,39 +290,6 @@ class GrantsPermissions
             'options' => $options,
             'scope' => $base->getAttribute('scope'),
         ]);
-    }
-
-    /**
-     * Strict, order-insensitive comparison: engines may reorder JSON object
-     * keys, but value types must match exactly — '1' and 1 are different
-     * constraints.
-     */
-    private function optionsMatch(mixed $stored, mixed $target): bool
-    {
-        return $this->normalizedOptions($stored) === $this->normalizedOptions($target);
-    }
-
-    private function normalizedOptions(mixed $value): mixed
-    {
-        if (! is_array($value)) {
-            return $value;
-        }
-
-        $normalized = array_map($this->normalizedOptions(...), $value);
-
-        if (array_is_list($normalized)) {
-            return $normalized;
-        }
-
-        // Nothing sits to the left of the first item, so both engines skip its
-        // operator: it must not distinguish one twin from another either.
-        if (is_array($normalized['i'] ?? null) && is_array($normalized['i'][0] ?? null)) {
-            $normalized['i'][0][0] = LogicalOperator::And->value;
-        }
-
-        ksort($normalized);
-
-        return $normalized;
     }
 
     /**

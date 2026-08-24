@@ -46,6 +46,19 @@ final class ConstraintSerializer
         return $group instanceof Group ? $group : null;
     }
 
+    /**
+     * Whether two stored option blobs name the same rule.
+     *
+     * Canonical form ignores what the engines ignore: object key order, which
+     * databases may reorder, and the first item's logical operator, which has
+     * nothing to its left. Value types stay load-bearing — '1' and 1 are
+     * different constraints.
+     */
+    public static function sameRule(mixed $first, mixed $second): bool
+    {
+        return self::canonical($first) === self::canonical($second);
+    }
+
     private static function constraint(mixed $shape): ?Constraint
     {
         if (! is_array($shape)) {
@@ -122,5 +135,26 @@ final class ConstraintSerializer
         }
 
         return new Group($constraints);
+    }
+
+    private static function canonical(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        $canonical = array_map(self::canonical(...), $value);
+
+        if (array_is_list($canonical)) {
+            return $canonical;
+        }
+
+        if (is_array($canonical['i'] ?? null) && is_array($canonical['i'][0] ?? null)) {
+            $canonical['i'][0][0] = LogicalOperator::And->value;
+        }
+
+        ksort($canonical);
+
+        return $canonical;
     }
 }

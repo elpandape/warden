@@ -312,3 +312,23 @@ it('fails closed when the stored conditions cannot be decoded at all', function 
 
     expect(Gate::forUser($this->user)->allows('view', $account))->toBeFalse();
 });
+
+it('answers whether two option blobs name the same rule', function (): void {
+    $plain = new Builder;
+    $plain->where('name', '=', 'Published');
+
+    $leadingOr = new Builder;
+    $leadingOr->orWhere('name', '=', 'Published');
+
+    $other = new Builder;
+    $other->where('name', '=', 'Draft');
+
+    expect(ConstraintSerializer::sameRule(
+        ConstraintSerializer::serialize($plain->group()),
+        ConstraintSerializer::serialize($leadingOr->group()),
+    ))->toBeTrue()
+        ->and(ConstraintSerializer::sameRule(
+            ConstraintSerializer::serialize($plain->group()),
+            ConstraintSerializer::serialize($other->group()),
+        ))->toBeFalse();
+});
