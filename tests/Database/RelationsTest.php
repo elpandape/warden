@@ -6,7 +6,9 @@ use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
+use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
+use ElPandaPe\Warden\Warden;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -76,4 +78,31 @@ it('selects pivot timestamps when the opt-in is enabled', function (): void {
 
     expect($user->roles()->getPivotColumns())->toContain('created_at', 'updated_at')
         ->and($user->permissions()->getPivotColumns())->toContain('created_at');
+});
+
+it('reaches the permission and the holder from a grant row', function (): void {
+    app(Warden::class)->allow($this->user)->to('edit-site');
+
+    $grant = Grant::query()->sole();
+
+    expect($grant->permission?->getAttribute('name'))->toBe('edit-site')
+        ->and($grant->entity?->is($this->user))->toBeTrue();
+});
+
+it('reaches the role and the holder from an assignment row', function (): void {
+    app(Warden::class)->assign('editor')->to($this->user);
+
+    $assignment = AssignedRole::query()->sole();
+
+    expect($assignment->role?->getAttribute('name'))->toBe('editor')
+        ->and($assignment->entity?->is($this->user))->toBeTrue()
+        ->and($assignment->restrictedTo)->toBeNull();
+});
+
+it('reaches the context a restricted assignment is pinned to', function (): void {
+    $org = Account::query()->create(['name' => 'Org'])->refresh();
+
+    app(Warden::class)->assign('editor')->on($org)->to($this->user);
+
+    expect(AssignedRole::query()->sole()->restrictedTo?->is($org))->toBeTrue();
 });

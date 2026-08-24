@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Models;
 
+use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Models\Concerns\ResolvesContext;
 use ElPandaPe\Warden\Support\Config;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphPivot;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
  * @property int $id
@@ -27,6 +31,24 @@ class Grant extends MorphPivot
     public function usesTimestamps(): bool
     {
         return Config::pivotTimestamps();
+    }
+
+    /**
+     * @return BelongsTo<Permission, $this>
+     */
+    public function permission(): BelongsTo
+    {
+        return $this->belongsTo(Context::resolve()->permissionClass(), 'permission_id');
+    }
+
+    /**
+     * The holder. Null by design: a grant with no entity applies to everyone.
+     *
+     * @return MorphTo<Model, $this>
+     */
+    public function entity(): MorphTo
+    {
+        return $this->morphTo(__FUNCTION__, 'entity_type', 'entity_id');
     }
 
     /**
