@@ -334,6 +334,7 @@ Warden::allow($user)->to('view', Document::class)
 > 📌 **Important:**
 > - Precedence is SQL's: `AND` binds tighter than `OR`.
 > - Comparisons are strict — no PHP type juggling.
+> - A **boolean** value matches only a column the model casts to `bool`, and such a column matches only a boolean. Either mismatch never matches — in checks and in queries alike — so the `where('classified', true)` below needs `'classified' => 'bool'` in the model's `$casts`.
 > - A constrained grant **never matches instance-less checks** (`can('view')`, `can('view', Document::class)`) — they fail closed.
 
 ### Best Practices

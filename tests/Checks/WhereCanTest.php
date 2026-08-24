@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\BoolCastAccount;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Eloquent\Model;
@@ -228,4 +229,10 @@ it('blocks only the pinned row when a forbid cannot be expressed in sql', functi
     $this->warden->refresh();
 
     expect(Account::query()->whereCan($this->user, 'view')->pluck('name')->all())->toBe(['Two']);
+});
+
+it('compiles an impossible predicate for a non-boolean value on a bool-cast column', function (): void {
+    $this->warden->allow($this->user)->to('view', BoolCastAccount::class)->where('user_id', '=', 'true');
+
+    expect(BoolCastAccount::query()->whereCan($this->user, 'view')->toSql())->toContain('0 = 1');
 });

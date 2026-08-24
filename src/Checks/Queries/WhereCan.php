@@ -308,12 +308,10 @@ final readonly class WhereCan
         }
 
         if ($constraint instanceof ValueConstraint) {
-            // The strict comparator only matches booleans through a boolean
-            // cast; without one the engine's coercion would fail open.
-            $bool = is_bool($constraint->value)
-                && ! $model->hasCast($constraint->column, ['bool', 'boolean']);
-
-            if ($bool) {
+            // The strict comparator matches a boolean only through a boolean
+            // cast, and only a boolean through one. Either mismatch can never
+            // match in memory, so neither may let the engine coerce in SQL.
+            if (is_bool($constraint->value) !== $model->hasCast($constraint->column, ['bool', 'boolean'])) {
                 return $query->whereIn($model->getQualifiedKeyName(), []);
             }
 
