@@ -157,10 +157,7 @@ final class Context
 
         $class = Relation::getMorphedModel($contextType) ?? $contextType;
 
-        $resolver = $this->restrictionMap[$class]
-            ?? $this->restrictionMap['*']
-            ?? Support\Config::restrictionsDefaultAttribute()
-            ?? Str::snake(class_basename($class)).'_id';
+        $resolver = $this->restrictionResolverFor($class);
 
         if ($resolver instanceof Closure) {
             $context = is_subclass_of($class, Model::class)
@@ -278,6 +275,21 @@ final class Context
         if ($alias !== null) {
             Relation::morphMap([$alias => $this->modelClass($key)]);
         }
+    }
+
+    /**
+     * How a role restriction resolves for a context class: an attribute name,
+     * or a closure. Takes a class or a morph alias, because the caller usually
+     * holds a stored restricted_to_type and no instance.
+     */
+    public function restrictionResolverFor(string $contextClass): string|Closure
+    {
+        $class = Relation::getMorphedModel($contextClass) ?? $contextClass;
+
+        return $this->restrictionMap[$class]
+            ?? $this->restrictionMap['*']
+            ?? Support\Config::restrictionsDefaultAttribute()
+            ?? Str::snake(class_basename($class)).'_id';
     }
 
     /**

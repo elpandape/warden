@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
@@ -258,4 +259,11 @@ it('leaves restricted assignments alone when syncing roles', function (): void {
     expect(AssignedRole::query()->whereNotNull('restricted_to_id')->count())->toBe(1)
         ->and(AssignedRole::query()->whereNull('restricted_to_id')->count())->toBe(0)
         ->and(Gate::forUser($this->user)->allows('edit', projectIn($this->orgOne)))->toBeTrue();
+});
+
+it('exposes how a restriction resolves for a context class', function (): void {
+    $context = app(Context::class);
+
+    expect($context->restrictionResolverFor(Account::class))->toBe('account_id')
+        ->and($context->restrictionResolverFor('warden.role'))->toBe('role_id');
 });
