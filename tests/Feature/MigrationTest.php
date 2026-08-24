@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Testing\Schema as WardenSchema;
 use Illuminate\Support\Facades\Schema;
 
 use function ElPandaPe\Warden\Tests\Database\wardenMigration;
@@ -65,4 +66,16 @@ it('honors custom table names from the config', function (): void {
         ->and(Schema::hasTable('permissions'))->toBeFalse();
 
     $migration->down();
+});
+
+it('raises and drops the tables through a supported entry point', function (): void {
+    WardenSchema::up();
+
+    expect(Schema::hasTable('permissions'))->toBeTrue()
+        ->and(Schema::hasTable('grants'))->toBeTrue();
+
+    WardenSchema::down();
+
+    expect(Schema::hasTable('permissions'))->toBeFalse()
+        ->and(Schema::hasTable('grants'))->toBeFalse();
 });

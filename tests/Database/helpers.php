@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Tests\Database;
 
+use ElPandaPe\Warden\Testing\Schema as WardenSchema;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -21,13 +22,11 @@ function dropWardenTables(): void
     }
 }
 
-function migrateWardenTables(): Migration
+function migrateWardenTables(): void
 {
     dropWardenTables();
 
-    /** @var Migration $migration */
-    $migration = require __DIR__.'/../../database/migrations/create_warden_tables.php.stub';
-    $migration->up();
+    WardenSchema::up();
 
     foreach (['users', 'accounts'] as $table) {
         Schema::create($table, function (Blueprint $blueprint) use ($table): void {
@@ -43,6 +42,4 @@ function migrateWardenTables(): Migration
             $blueprint->timestamps();
         });
     }
-
-    return $migration;
 }
