@@ -29,7 +29,7 @@ function cachedPayloadKey(User $authority): string
 {
     return implode(':', [
         'warden',
-        'p2',
+        'p3',
         app(CacheKeyVersioner::class)->segment(),
         $authority->getMorphClass(),
         (string) $authority->getKey(),
@@ -60,7 +60,7 @@ function grantTuple(array $overrides = []): array
  */
 function seedCachedPayload(User $authority, array $grants): void
 {
-    Cache::store('array')->put(cachedPayloadKey($authority), ['v' => 2, 'grants' => $grants], 60);
+    Cache::store('array')->put(cachedPayloadKey($authority), ['v' => 3, 'grants' => $grants], 60);
 }
 
 /**

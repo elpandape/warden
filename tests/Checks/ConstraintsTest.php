@@ -9,6 +9,7 @@ use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
@@ -297,4 +298,17 @@ it('shares one twin whichever operator leads the group', function (): void {
     $this->warden->allow($other)->to('view', Account::class)->orWhere('name', '=', 'Published');
 
     expect(Permission::query()->where('name', 'view')->whereNotNull('options')->count())->toBe(1);
+});
+
+it('fails closed when the stored conditions cannot be decoded at all', function (): void {
+    $account = Account::query()->create(['name' => 'Published'])->refresh();
+
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', '=', 'Published');
+
+    expect(Gate::forUser($this->user)->allows('view', $account))->toBeTrue();
+
+    DB::table('permissions')->whereNotNull('options')->update(['options' => '{not json']);
+    $this->warden->refresh();
+
+    expect(Gate::forUser($this->user)->allows('view', $account))->toBeFalse();
 });

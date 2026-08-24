@@ -94,7 +94,9 @@ final readonly class DatabaseResolver implements Resolver
      */
     private function passesConstraints(Model $permission, Model|string|null $entity, Model $authority, bool $forbidden): bool
     {
-        $options = $permission->getAttribute('options');
+        // Ask the column, not the cast: an undecodable blob casts to null and
+        // would read as "no conditions", widening the grant to every row.
+        $options = $permission->getAttributes()['options'] ?? null;
 
         if ($options === null) {
             return true;

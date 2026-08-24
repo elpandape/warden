@@ -205,7 +205,7 @@ final readonly class WhereCan
             $conditions[] = fn (Builder $query): Builder => $query->where($model->qualifyColumn($attribute), $key);
         }
 
-        $options = $candidate->getAttribute('options');
+        $options = $candidate->getAttributes()['options'] ?? null;
 
         if ($options !== null) {
             $group = ConstraintSerializer::deserialize($options);

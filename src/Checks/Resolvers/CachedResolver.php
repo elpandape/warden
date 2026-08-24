@@ -23,11 +23,11 @@ use Illuminate\Database\Eloquent\Model;
  * semantics as the database engine. The payload is versioned so v0.8 fields
  * (constraints, role restrictions) extend it without breaking old entries.
  *
- * @phpstan-type GrantTuple array{key: int|string, name: string, entity_type: string|null, entity_id: int|string|null, only_owned: bool, forbidden: bool, options: array<array-key, mixed>|null, restricted_to_type: string|null, restricted_to_id: int|string|null}
+ * @phpstan-type GrantTuple array{key: int|string, name: string, entity_type: string|null, entity_id: int|string|null, only_owned: bool, forbidden: bool, options: string|null, restricted_to_type: string|null, restricted_to_id: int|string|null}
  */
 final class CachedResolver implements Resolver
 {
-    private const int PAYLOAD_VERSION = 2;
+    private const int PAYLOAD_VERSION = 3;
 
     private const int LOCK_SECONDS = 10;
 
@@ -268,6 +268,8 @@ final class CachedResolver implements Resolver
                 continue;
             }
 
+            $rawOptions = $permission->getAttributes()['options'] ?? null;
+
             $tuples[] = [
                 'key' => $permissionKey,
                 'name' => $permission->name,
@@ -275,7 +277,7 @@ final class CachedResolver implements Resolver
                 'entity_id' => $permission->entity_id,
                 'only_owned' => $permission->only_owned,
                 'forbidden' => $forbidden,
-                'options' => $permission->options,
+                'options' => is_string($rawOptions) ? $rawOptions : null,
                 'restricted_to_type' => $contextType,
                 'restricted_to_id' => $contextId,
             ];

@@ -183,7 +183,7 @@ it('stores a versioned payload with the fields v0.8 will need', function (): voi
     $payload = Cache::store('array')->get(cachedPayloadKey($this->user));
 
     expect($payload)->toBeArray()
-        ->and($payload['v'])->toBe(2)
+        ->and($payload['v'])->toBe(3)
         ->and($payload['grants'][0])->toHaveKeys([
             'key', 'name', 'entity_type', 'entity_id', 'only_owned',
             'forbidden', 'options', 'restricted_to_type', 'restricted_to_id',
@@ -297,7 +297,7 @@ it('discards payloads whose grant list is corrupted', function (): void {
     $this->warden->allow($this->user)->to('edit-site');
     Gate::forUser($this->user)->allows('edit-site');
 
-    Cache::store('array')->put(cachedPayloadKey($this->user), ['v' => 2, 'grants' => 'junk'], 60);
+    Cache::store('array')->put(cachedPayloadKey($this->user), ['v' => 3, 'grants' => 'junk'], 60);
     app()->forgetScopedInstances();
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
