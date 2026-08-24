@@ -16,6 +16,8 @@ use ElPandaPe\Warden\Events\ForbiddingPermission;
 use ElPandaPe\Warden\Events\GrantingPermission;
 use ElPandaPe\Warden\Events\PermissionForbidden;
 use ElPandaPe\Warden\Events\PermissionGranted;
+use ElPandaPe\Warden\Events\PermissionRevoked;
+use ElPandaPe\Warden\Events\PermissionUnforbidden;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
@@ -218,6 +220,9 @@ class GrantsPermissions
         $grantClass = Context::resolve()->grantClass();
         $options = ConstraintSerializer::serialize($this->builder()->group());
 
+        /** @var list<array{0: Model, 1: Model}> $repointed */
+        $repointed = [];
+
         foreach ($this->lastGranted as $index => $permission) {
             $twin = $this->twinWithOptions($permission, $options);
 
@@ -252,9 +257,20 @@ class GrantsPermissions
             }
 
             $this->lastGranted[$index] = $twin;
+            $repointed[] = [$permission, $twin];
         }
 
         $this->bumpCacheVersion($this->lastScope);
+
+        // A narrowing chain is two writes: the audit trail says so, in order,
+        // rather than leaving the unconstrained grant as the last word.
+        $this->dispatchWardenEvent($this->forbidding
+            ? new PermissionUnforbidden($this->lastAuthority, new Collection(array_column($repointed, 0)), $this->lastScope)
+            : new PermissionRevoked($this->lastAuthority, new Collection(array_column($repointed, 0)), $this->lastScope));
+
+        $this->dispatchWardenEvent($this->forbidding
+            ? new PermissionForbidden($this->lastAuthority, new Collection(array_column($repointed, 1)), $this->lastScope)
+            : new PermissionGranted($this->lastAuthority, new Collection(array_column($repointed, 1)), $this->lastScope));
 
         return $this;
     }

@@ -22,6 +22,7 @@ use ElPandaPe\Warden\Events\RolesSynced;
 use ElPandaPe\Warden\Events\UnforbiddingPermission;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
+use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Facades\Event;
@@ -304,4 +305,22 @@ it('lets cancellable listeners abort a retract before anything is deleted', func
     $this->warden->retract('editor')->from($this->user);
 
     expect($this->user->isAn('editor'))->toBeTrue();
+});
+
+it('announces the re-point when a chain narrows a grant', function (): void {
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', '=', 'Published');
+
+    Event::assertDispatched(PermissionRevoked::class, 1);
+    Event::assertDispatched(PermissionGranted::class, 2);
+});
+
+it('announces the re-point on the forbid polarity too', function (): void {
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->forbid($this->user)->to('view', Account::class)->where('name', '=', 'Published');
+
+    Event::assertDispatched(PermissionUnforbidden::class, 1);
+    Event::assertDispatched(PermissionForbidden::class, 2);
 });
