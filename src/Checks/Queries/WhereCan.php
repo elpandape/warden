@@ -175,7 +175,8 @@ final readonly class WhereCan
     /**
      * The row conditions one candidate imposes, or null when the candidate
      * cannot be expressed for this side: an inexpressible grant is skipped
-     * (fail-closed), an inexpressible forbid blocks every shape-matching row.
+     * (fail-closed), an inexpressible forbid keeps the conditions collected so
+     * far, so a forbid pinned to one record blocks that record and not the table.
      */
     private function branch(Model $candidate, Model $model, Model $authority, bool $blocking): ?Closure
     {
@@ -193,13 +194,13 @@ final readonly class WhereCan
 
             if ($attribute === null) {
                 // Closure-resolved ownership cannot become SQL.
-                return $blocking ? $this->always() : null;
+                return $this->inexpressible($conditions, $blocking);
             }
 
             $key = $authority->getKey();
 
             if (! is_int($key) && ! is_string($key)) {
-                return $blocking ? $this->always() : null; // @codeCoverageIgnore
+                return $this->inexpressible($conditions, $blocking); // @codeCoverageIgnore
             }
 
             $conditions[] = fn (Builder $query): Builder => $query->where($model->qualifyColumn($attribute), $key);
@@ -212,12 +213,38 @@ final readonly class WhereCan
 
             if (! $group instanceof Group) {
                 // Undecidable constraints: same doctrine as the resolvers.
-                return $blocking ? $this->always() : null;
+                return $this->inexpressible($conditions, $blocking);
             }
 
             $conditions[] = fn (Builder $query): Builder => $this->compile($query, $group, $model, $authority);
         }
 
+        return $this->all($conditions);
+    }
+
+    /**
+     * A branch warden cannot express in SQL still keeps the row conditions it
+     * already collected: a forbid pinned to one record must block that record,
+     * never the whole table.
+     *
+     * @param  list<Closure(Builder<Model>): Builder<Model>>  $conditions
+     */
+    private function inexpressible(array $conditions, bool $blocking): ?Closure
+    {
+        if (! $blocking) {
+            return null;
+        }
+
+        $conditions[] = fn (Builder $query): Builder => $query->whereRaw('1 = 1');
+
+        return $this->all($conditions);
+    }
+
+    /**
+     * @param  list<Closure(Builder<Model>): Builder<Model>>  $conditions
+     */
+    private function all(array $conditions): Closure
+    {
         if ($conditions === []) {
             return $this->always();
         }

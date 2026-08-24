@@ -6,6 +6,7 @@ use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
@@ -214,4 +215,17 @@ it('treats boolean constraints without a cast as impossible, like can()', functi
     // The strict comparator can never match int 1 to bool true: parity is empty.
     expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0);
     expect($this->user)->toQueryExactlyWhatItCanCheck('view');
+});
+
+it('blocks only the pinned row when a forbid cannot be expressed in sql', function (): void {
+    $one = Account::query()->create(['name' => 'One'])->refresh();
+    Account::query()->create(['name' => 'Two'])->refresh();
+
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $this->warden->forbid($this->user)->to('view', $one)->where('name', '=', 'One');
+
+    DB::table('permissions')->whereNotNull('options')->update(['options' => '{not json']);
+    $this->warden->refresh();
+
+    expect(Account::query()->whereCan($this->user, 'view')->pluck('name')->all())->toBe(['Two']);
 });
