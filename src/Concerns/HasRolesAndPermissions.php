@@ -70,7 +70,7 @@ trait HasRolesAndPermissions
         $unique = array_values(array_unique(array_map(Name::of(...), $roles)));
 
         if ($this->relationLoaded('roles')) {
-            return $this->loadedRoleNames()->intersect($unique)->count() === count($unique);
+            return $this->loadedRoleNames()->unique()->intersect($unique)->count() === count($unique);
         }
 
         return $this->roles()->whereIn('name', $unique)->distinct()->count('name') === count($unique);
