@@ -17,20 +17,6 @@ beforeEach(function (): void {
     $this->user = User::query()->create(['name' => 'Joseph']);
 });
 
-/**
- * The gold standard: whereCan() must return exactly the rows can() allows.
- */
-function assertQueryMatchesChecks(User $user, string $permission): void
-{
-    $queryable = Account::query()->whereCan($user, $permission)->pluck('id')->sort()->values()->all();
-
-    $checkable = Account::query()->get()
-        ->filter(fn (Model $account): bool => Gate::forUser($user)->allows($permission, $account))
-        ->pluck('id')->sort()->values()->all();
-
-    expect($queryable)->toBe($checkable);
-}
-
 it('returns the rows a class-wide grant covers, minus forbids', function (): void {
     $one = Account::query()->create(['name' => 'One'])->refresh();
     Account::query()->create(['name' => 'Two'])->refresh();
@@ -38,8 +24,8 @@ it('returns the rows a class-wide grant covers, minus forbids', function (): voi
     $this->warden->allow($this->user)->to('view', Account::class);
     $this->warden->forbid($this->user)->to('view', $one);
 
-    expect(Account::query()->whereCan($this->user, 'view')->pluck('name')->all())->toBe(['Two']);
-    assertQueryMatchesChecks($this->user, 'view');
+    expect(Account::query()->whereCan($this->user, 'view')->pluck('name')->all())->toBe(['Two'])
+        ->and($this->user)->toQueryExactlyWhatItCanCheck('view');
 });
 
 it('returns instance grants, wildcard grants and everyone-grants', function (): void {
@@ -50,22 +36,22 @@ it('returns instance grants, wildcard grants and everyone-grants', function (): 
     $this->warden->allowEveryone()->to('browse', Account::class);
 
     expect(Account::query()->whereCan($this->user, 'edit')->pluck('name')->all())->toBe(['Mine'])
-        ->and(Account::query()->whereCan($this->user, 'browse')->count())->toBe(2);
-    assertQueryMatchesChecks($this->user, 'edit');
+        ->and(Account::query()->whereCan($this->user, 'browse')->count())->toBe(2)
+        ->and($this->user)->toQueryExactlyWhatItCanCheck('edit');
 
     // The full wildcard widens every check, and the query follows.
     $this->warden->allow($this->user)->everything();
 
     expect(Account::query()->whereCan($this->user, 'edit')->count())->toBe(2)
-        ->and(Account::query()->whereCan($this->user, 'anything')->count())->toBe(2);
-    assertQueryMatchesChecks($this->user, 'edit');
+        ->and(Account::query()->whereCan($this->user, 'anything')->count())->toBe(2)
+        ->and($this->user)->toQueryExactlyWhatItCanCheck('edit');
 });
 
 it('returns nothing without a matching grant', function (): void {
     Account::query()->create(['name' => 'One']);
 
-    expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0);
-    assertQueryMatchesChecks($this->user, 'view');
+    expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0)
+        ->and($this->user)->toQueryExactlyWhatItCanCheck('view');
 });
 
 it('compiles ownership grants to the owner attribute', function (): void {
@@ -74,8 +60,8 @@ it('compiles ownership grants to the owner attribute', function (): void {
 
     $this->warden->allow($this->user)->toOwn(Account::class, 'edit');
 
-    expect(Account::query()->whereCan($this->user, 'edit')->pluck('name')->all())->toBe(['Mine']);
-    assertQueryMatchesChecks($this->user, 'edit');
+    expect(Account::query()->whereCan($this->user, 'edit')->pluck('name')->all())->toBe(['Mine'])
+        ->and($this->user)->toQueryExactlyWhatItCanCheck('edit');
 });
 
 it('excludes ownership grants resolved by closures, fail-closed', function (): void {
@@ -98,8 +84,8 @@ it('compiles constraints with sql precedence', function (): void {
         ->orWhere('name', 'Draft')->whereColumn('user_id', 'id');
 
     expect(Account::query()->whereCan($this->user, 'view')->pluck('id')->sort()->values()->all())
-        ->toBe([$published->getKey(), $ownDraft->getKey()]);
-    assertQueryMatchesChecks($this->user, 'view');
+        ->toBe([$published->getKey(), $ownDraft->getKey()])
+        ->and($this->user)->toQueryExactlyWhatItCanCheck('view');
 });
 
 it('blocks shape rows entirely when a forbid is inexpressible', function (): void {
@@ -124,8 +110,8 @@ it('honors role grants and tenancy', function (): void {
 
     $this->warden->tenant()->to(2);
 
-    expect(Account::query()->whereCan($this->user, 'edit')->count())->toBe(0);
-    assertQueryMatchesChecks($this->user, 'edit');
+    expect(Account::query()->whereCan($this->user, 'edit')->count())->toBe(0)
+        ->and($this->user)->toQueryExactlyWhatItCanCheck('edit');
 });
 
 it('excludes restricted role assignments, fail-closed', function (): void {
@@ -184,8 +170,8 @@ it('compiles nested groups and impossible authority columns', function (): void 
         })
         ->where('user_id', 5);
 
-    expect(Account::query()->whereCan($this->user, 'view')->pluck('id')->all())->toBe([$match->getKey()]);
-    assertQueryMatchesChecks($this->user, 'view');
+    expect(Account::query()->whereCan($this->user, 'view')->pluck('id')->all())->toBe([$match->getKey()])
+        ->and($this->user)->toQueryExactlyWhatItCanCheck('view');
 
     // An unreadable authority attribute compiles to an impossible condition.
     $this->warden->disallow($this->user)->to('view', Account::class);
@@ -216,8 +202,8 @@ it('keeps empty constraint groups from erasing forbid branches', function (): vo
         // Intentionally empty: passes trivially, must still block in SQL.
     });
 
-    expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0);
-    assertQueryMatchesChecks($this->user, 'view');
+    expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0)
+        ->and($this->user)->toQueryExactlyWhatItCanCheck('view');
 });
 
 it('treats boolean constraints without a cast as impossible, like can()', function (): void {
@@ -227,5 +213,5 @@ it('treats boolean constraints without a cast as impossible, like can()', functi
 
     // The strict comparator can never match int 1 to bool true: parity is empty.
     expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0);
-    assertQueryMatchesChecks($this->user, 'view');
+    expect($this->user)->toQueryExactlyWhatItCanCheck('view');
 });

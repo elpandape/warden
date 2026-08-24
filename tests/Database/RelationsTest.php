@@ -63,7 +63,7 @@ it('does not use pivot timestamps by default', function (): void {
 });
 
 it('declares no cast on entity ids so uuid and ulid keys survive', function (): void {
-    // A hardcoded int cast here is the original package's #626 bug.
+    // A hardcoded int cast here would truncate uuid and ulid keys.
     expect((new Permission)->getCasts())->not->toHaveKey('entity_id');
 });
 

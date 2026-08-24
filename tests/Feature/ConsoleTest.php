@@ -10,22 +10,7 @@ use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
-
-/**
- * Point config/database publish targets at a throwaway directory.
- */
-function privateInstallPath(Illuminate\Foundation\Application $app): string
-{
-    $dir = sys_get_temp_dir().'/warden-install-'.getmypid().'-'.uniqid();
-    mkdir($dir.'/migrations', recursive: true);
-    $app->useConfigPath($dir);
-    $app->useDatabasePath($dir);
-
-    // publishes() resolved absolute targets at boot: re-register them.
-    new ElPandaPe\Warden\WardenServiceProvider($app)->boot();
-
-    return $dir;
-}
+use function ElPandaPe\Warden\Tests\privateInstallPath;
 
 beforeEach(function (): void {
     migrateWardenTables();

@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
+use function ElPandaPe\Warden\Tests\projectIn;
 
 beforeEach(function (): void {
     migrateWardenTables();
@@ -25,11 +26,6 @@ beforeEach(function (): void {
 
     $this->warden->allow('editor')->to('edit', Account::class);
 });
-
-function projectIn(Account $org): Account
-{
-    return Account::query()->create(['name' => 'Project', 'account_id' => $org->getKey()])->refresh();
-}
 
 it('holds the same role in several contexts at once', function (): void {
     $this->warden->assign('editor')->on($this->orgOne)->to($this->user);

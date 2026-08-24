@@ -8,12 +8,12 @@ use ElPandaPe\Warden\Http\Middleware\RequiresRole;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use ElPandaPe\Warden\WardenServiceProvider;
-use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Blade;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
+use function ElPandaPe\Warden\Tests\requestAs;
 
 beforeEach(function (): void {
     migrateWardenTables();
@@ -21,14 +21,6 @@ beforeEach(function (): void {
     $this->warden = app(Warden::class);
     $this->user = User::query()->create(['name' => 'Joseph']);
 });
-
-function requestAs(?User $user): Request
-{
-    $request = Request::create('/');
-    $request->setUserResolver(fn (): ?User => $user);
-
-    return $request;
-}
 
 it('registers aliases and directives only when opted in', function (): void {
     expect(app(Router::class)->getMiddleware())->not->toHaveKey('warden.role');

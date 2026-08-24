@@ -7,3 +7,10 @@ parameters:
         - tests/Fixtures
     checkOctaneCompatibility: true
     checkModelProperties: true
+    ignoreErrors:
+        # NarrowSignatureAuthority deliberately narrows isA()/isAll() to string:
+        # it is the fixture that proves ChecksRoles normalizes enums before the call.
+        -
+            identifier: argument.type
+            message: '#NarrowSignatureAuthority::is(A|All)\(\) expects string, BackedEnum\|string given#'
+            path: src/Concerns/HasRolesAndPermissions.php

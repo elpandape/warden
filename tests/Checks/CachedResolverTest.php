@@ -15,18 +15,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
+use function ElPandaPe\Warden\Tests\cachedPayloadKey;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
-
-function cachedPayloadKey(User $authority): string
-{
-    return implode(':', [
-        'warden',
-        'p2',
-        app(CacheKeyVersioner::class)->segment(),
-        $authority->getMorphClass(),
-        (string) $authority->getKey(),
-    ]);
-}
 
 beforeEach(function (): void {
     migrateWardenTables();
@@ -71,7 +61,7 @@ it('serves checks from the cached payload without new queries', function (): voi
 
     DB::enableQueryLog();
 
-    // The issue #430 shape: N checks after the first one cost zero queries.
+    // Every check after the first must cost zero queries, whatever the permission.
     foreach (range(1, 25) as $i) {
         Gate::forUser($this->user)->allows('edit-site');
         Gate::forUser($this->user)->allows('other-permission');

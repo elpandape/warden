@@ -2,13 +2,9 @@
 
 declare(strict_types=1);
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Schema;
 
-function wardenMigration(): Migration
-{
-    return require __DIR__.'/../../database/migrations/create_warden_tables.php.stub';
-}
+use function ElPandaPe\Warden\Tests\Database\wardenMigration;
 
 beforeEach(function (): void {
     foreach (['custom_grants', 'custom_assigned_roles', 'custom_roles', 'custom_permissions'] as $table) {
