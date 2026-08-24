@@ -24,5 +24,6 @@ final readonly class PermissionRevoked
         public ?Model $authority,
         public Collection $permissions,
         public int|string|null $scope,
+        public ?Model $actor = null,
     ) {}
 }

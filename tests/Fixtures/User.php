@@ -8,6 +8,9 @@ use ElPandaPe\Warden\Concerns\HasRolesAndPermissions;
 use ElPandaPe\Warden\Concerns\QueriesByPermission;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
+/**
+ * @property string|null $name
+ */
 class User extends Authenticatable
 {
     use HasRolesAndPermissions;

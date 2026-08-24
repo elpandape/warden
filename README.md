@@ -410,9 +410,9 @@ Every write dispatches a typed, `readonly` event with **hydrated models** (never
 
 | Event | Fired By | Payload |
 |---|---|---|
-| `PermissionGranted` / `PermissionForbidden` | `allow()`, `forbid()` | `?Model $authority`, `Collection $permissions`, `$scope` |
+| `PermissionGranted` / `PermissionForbidden` | `allow()`, `forbid()` | `?Model $authority`, `Collection $permissions`, `$scope`, `?Model $actor` |
 | `PermissionRevoked` / `PermissionUnforbidden` | `disallow()`, `unforbid()` | Same shape |
-| `RoleAssigned` / `RoleRetracted` | `assign()`, `retract()` | `Model $authority`, `Collection $roles`, `$scope`, `?Model $restrictedTo` |
+| `RoleAssigned` / `RoleRetracted` | `assign()`, `retract()` | `Model $authority`, `Collection $roles`, `$scope`, `?Model $restrictedTo`, `?Model $actor` |
 | `RolesSynced` / `PermissionsSynced` | `sync()` | `SyncResult` diff: `attached` / `detached` / `kept` |
 | `RoleCreated/Deleted`, `PermissionCreated/Deleted` | Model layer | The model |
 
@@ -420,8 +420,21 @@ Every write dispatches a typed, `readonly` event with **hydrated models** (never
 use ElPandaPe\Warden\Events\PermissionGranted;
 
 Event::listen(PermissionGranted::class, function (PermissionGranted $event) {
-    audit('granted', $event->authority, $event->permissions->pluck('name'));
+    // $authority receives the permission; $actor is who granted it.
+    audit('granted', $event->actor, $event->authority, $event->permissions->pluck('name'));
 });
+```
+
+`$actor` defaults to the authenticated user. Queues, console commands and impersonation are cases only your application can answer, so point `warden.actor_resolver` at a class implementing `Contracts\ActorResolver`:
+
+```php
+final class CurrentActor implements ActorResolver
+{
+    public function resolve(): ?Model
+    {
+        return Context::actingUser() ?? Auth::user();
+    }
+}
 ```
 
 ### Pre-action events (opt-in)
@@ -430,7 +443,10 @@ Enable with `warden.cancellable_events`. A listener returning `false` aborts the
 
 ```php
 // GrantingPermission, ForbiddingPermission, AssigningRole
+// RevokingPermission, UnforbiddingPermission, RetractingRole
 ```
+
+> 📌 A pre-action event covers the **whole call**, not one item of it. `allow($user)->to(['a', 'b'])` announces both names in one event, and a listener returning `false` aborts **both**: there is no way to veto one and keep the other. Split the call if you need per-item decisions.
 
 > 📌 `sync()` never fires nor honors pre-action events — its declarative diff events tell the whole story.
 

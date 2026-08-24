@@ -124,8 +124,8 @@ class RevokesPermissions
             $this->bumpCacheVersion($scope);
 
             $this->dispatchWardenEvent($this->forbidden
-                ? new PermissionUnforbidden($authority, new Collection($permissionModels), $scope)
-                : new PermissionRevoked($authority, new Collection($permissionModels), $scope));
+                ? new PermissionUnforbidden($authority, new Collection($permissionModels), $scope, $this->actor())
+                : new PermissionRevoked($authority, new Collection($permissionModels), $scope, $this->actor()));
         }
 
         return $this;

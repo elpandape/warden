@@ -27,6 +27,23 @@ final class WardenServiceProvider extends ServiceProvider
 
         $this->app->singleton(Warden::class);
 
+        // Scoped: who is acting changes between Octane requests and queue jobs.
+        $actor = function (Application $app): Contracts\ActorResolver {
+            $resolver = $app->make(Repository::class)->get('warden.actor_resolver');
+
+            $instance = is_string($resolver) && is_subclass_of($resolver, Contracts\ActorResolver::class)
+                ? $app->make($resolver)
+                : null;
+
+            return $instance instanceof Contracts\ActorResolver ? $instance : new Events\Actors\AuthenticatedActor;
+        };
+
+        if ((bool) $this->app->make(Repository::class)->get('warden.octane.register_reset_listener', true)) {
+            $this->app->scoped(Contracts\ActorResolver::class, $actor);
+        } else {
+            $this->app->singleton(Contracts\ActorResolver::class, $actor);
+        }
+
         $tenancy = function (Application $app): Tenancy\Tenancy {
             $resolver = $app->make(Repository::class)->get('warden.scope.tenant_resolver');
 

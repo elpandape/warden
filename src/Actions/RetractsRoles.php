@@ -130,7 +130,7 @@ class RetractsRoles
             if ($deleted > 0) {
                 $this->bumpCacheVersion($scope);
                 $this->dispatchWardenEvent(
-                    new RoleRetracted($authority, new Collection($models), $scope, $this->restrictedTo),
+                    new RoleRetracted($authority, new Collection($models), $scope, $this->restrictedTo, $this->actor()),
                 );
             }
         }

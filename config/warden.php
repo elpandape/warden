@@ -84,6 +84,10 @@ return [
     // Opt-in: pre-action events where a listener returning false aborts the write.
     'cancellable_events' => false,
 
+    // A class implementing Contracts\ActorResolver to name who performs a write.
+    // Defaults to the authenticated user; override for queues, console and impersonation.
+    'actor_resolver' => null,
+
     'titles' => [
         'autogenerate' => true,
     ],

@@ -324,3 +324,35 @@ it('announces the re-point on the forbid polarity too', function (): void {
     Event::assertDispatched(PermissionUnforbidden::class, 1);
     Event::assertDispatched(PermissionForbidden::class, 2);
 });
+
+it('carries the acting user in write events', function (): void {
+    $admin = User::query()->create(['name' => 'Admin']);
+    $this->actingAs($admin);
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->allow($this->user)->to('edit-site');
+    $this->warden->assign('editor')->to($this->user);
+
+    Event::assertDispatched(PermissionGranted::class, fn (PermissionGranted $event): bool => $event->actor?->is($admin) === true);
+    Event::assertDispatched(RoleAssigned::class, fn (RoleAssigned $event): bool => $event->actor?->is($admin) === true);
+});
+
+it('leaves the actor null when nobody is acting', function (): void {
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->allow($this->user)->to('edit-site');
+
+    Event::assertDispatched(PermissionGranted::class, fn (PermissionGranted $event): bool => ! $event->actor instanceof Illuminate\Database\Eloquent\Model);
+});
+
+it('names the actor through a configured resolver', function (): void {
+    $auditor = User::query()->create(['name' => 'Auditor']);
+    config()->set('warden.actor_resolver', ElPandaPe\Warden\Tests\Fixtures\FixedActorResolver::class);
+
+    Event::fake(WARDEN_EVENTS);
+
+    app(Warden::class)->allow($this->user)->to('edit-site');
+
+    Event::assertDispatched(PermissionGranted::class, fn (PermissionGranted $event): bool => $event->actor?->is($auditor) === true);
+});

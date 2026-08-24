@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Events\Concerns;
 
+use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Support\Config;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Event;
 
 trait DispatchesEvents
@@ -36,5 +38,13 @@ trait DispatchesEvents
         // false does come through at runtime: that is the whole contract.
         /** @phpstan-ignore notIdentical.alwaysTrue */
         return app(Dispatcher::class)->until($event) !== false;
+    }
+
+    /**
+     * Who is performing this write, as the application defines it.
+     */
+    private function actor(): ?Model
+    {
+        return app(ActorResolver::class)->resolve();
     }
 }

@@ -25,5 +25,6 @@ final readonly class RoleRetracted
         public Collection $roles,
         public int|string|null $scope,
         public ?Model $restrictedTo = null,
+        public ?Model $actor = null,
     ) {}
 }

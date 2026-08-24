@@ -179,8 +179,8 @@ class GrantsPermissions
         $this->bumpCacheVersion($scope);
 
         $this->dispatchWardenEvent($this->forbidding
-            ? new PermissionForbidden($authority, new Collection($permissions), $scope)
-            : new PermissionGranted($authority, new Collection($permissions), $scope));
+            ? new PermissionForbidden($authority, new Collection($permissions), $scope, $this->actor())
+            : new PermissionGranted($authority, new Collection($permissions), $scope, $this->actor()));
     }
 
     /**
@@ -265,12 +265,12 @@ class GrantsPermissions
         // A narrowing chain is two writes: the audit trail says so, in order,
         // rather than leaving the unconstrained grant as the last word.
         $this->dispatchWardenEvent($this->forbidding
-            ? new PermissionUnforbidden($this->lastAuthority, new Collection(array_column($repointed, 0)), $this->lastScope)
-            : new PermissionRevoked($this->lastAuthority, new Collection(array_column($repointed, 0)), $this->lastScope));
+            ? new PermissionUnforbidden($this->lastAuthority, new Collection(array_column($repointed, 0)), $this->lastScope, $this->actor())
+            : new PermissionRevoked($this->lastAuthority, new Collection(array_column($repointed, 0)), $this->lastScope, $this->actor()));
 
         $this->dispatchWardenEvent($this->forbidding
-            ? new PermissionForbidden($this->lastAuthority, new Collection(array_column($repointed, 1)), $this->lastScope)
-            : new PermissionGranted($this->lastAuthority, new Collection(array_column($repointed, 1)), $this->lastScope));
+            ? new PermissionForbidden($this->lastAuthority, new Collection(array_column($repointed, 1)), $this->lastScope, $this->actor())
+            : new PermissionGranted($this->lastAuthority, new Collection(array_column($repointed, 1)), $this->lastScope, $this->actor()));
 
         return $this;
     }

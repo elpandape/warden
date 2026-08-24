@@ -21,5 +21,6 @@ final readonly class PermissionsSynced
         public SyncResult $changes,
         public int|string|null $scope,
         public bool $forbidden,
+        public ?Model $actor = null,
     ) {}
 }

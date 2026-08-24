@@ -111,7 +111,7 @@ class AssignsRoles
         $this->bumpCacheVersion($scope);
 
         foreach ($targets as $authority) {
-            $this->dispatchWardenEvent(new RoleAssigned($authority, new Collection($models), $scope, $this->restrictedTo));
+            $this->dispatchWardenEvent(new RoleAssigned($authority, new Collection($models), $scope, $this->restrictedTo, $this->actor()));
         }
 
         return $this;
