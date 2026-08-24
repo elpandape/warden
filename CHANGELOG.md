@@ -3,6 +3,51 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v1.0.2 — Constraint and query engine fixes (2026-08-24)
+
+### Fixed
+
+- An unreadable `permissions.options` blob no longer reads as "no conditions". The
+  three engines now read the column rather than the array cast, which turned
+  undecodable JSON into `null` and widened a constrained grant to every row. The
+  serializer's `json_validate()` branch fails closed in each pass's safe direction.
+- A forbid that cannot be expressed in SQL keeps the row conditions already collected,
+  so a forbid pinned to one record blocks that record instead of excluding the whole
+  table from `whereCan()`.
+- A non-boolean value compared against a `bool`-cast column now compiles to the same
+  impossible predicate as the reverse mismatch. Only one of the two directions was
+  guarded, so `can()` and `whereCan()` could disagree.
+
+### Changed
+
+- Cache payload version raised to 3: entries hold the raw options blob rather than a
+  decoded array. Existing entries are orphaned rather than misread, as the versioning
+  headroom promises.
+- The constraints section of the README now states that a boolean value matches only a
+  `bool`-cast column, and such a column only a boolean, next to the example that needs it.
+
+## v1.0.1 — Authorization correctness fixes (2026-08-24)
+
+### Fixed
+
+- `isAll()` no longer miscounts a role held twice. The eager-loaded path intersected a
+  collection that could contain duplicates and compared counts, so an authority holding
+  one role twice was **confirmed for a role it did not hold**, and could also be denied
+  a role it did hold. The query path already counted distinct names.
+- Re-running a constrained grant with a leading `or` no longer mints a second catalog
+  row. Nothing sits to the left of a group's first item and neither engine reads its
+  operator, so it no longer distinguishes one twin from another. Rows already stored
+  keep their bytes.
+- `assign()->to()` and `allow()->to()` no longer bump the cache version when
+  `firstOrCreate()` wrote nothing.
+
+### Changed
+
+- A repeated write that changes no row no longer dispatches `RoleAssigned`,
+  `PermissionGranted` or `PermissionForbidden`. Listeners that relied on receiving these
+  for a no-op will stop seeing them. This matches `retract()` and `revoke()`, which
+  already guarded on their delete count.
+
 ## v1.0.0 — Renamed to Warden (2026-08-18)
 
 The package is now `elpandape/warden`. Nothing about the behaviour changed: this
