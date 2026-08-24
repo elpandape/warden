@@ -11,6 +11,7 @@ use ElPandaPe\Warden\Actions\Concerns\ResolvesPermissions;
 use ElPandaPe\Warden\Constraints\Builder;
 use ElPandaPe\Warden\Constraints\ConstraintSerializer;
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Enums\LogicalOperator;
 use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\ForbiddingPermission;
 use ElPandaPe\Warden\Events\GrantingPermission;
@@ -299,9 +300,17 @@ class GrantsPermissions
 
         $normalized = array_map($this->normalizedOptions(...), $value);
 
-        if (! array_is_list($normalized)) {
-            ksort($normalized);
+        if (array_is_list($normalized)) {
+            return $normalized;
         }
+
+        // Nothing sits to the left of the first item, so both engines skip its
+        // operator: it must not distinguish one twin from another either.
+        if (is_array($normalized['i'] ?? null) && is_array($normalized['i'][0] ?? null)) {
+            $normalized['i'][0][0] = LogicalOperator::And->value;
+        }
+
+        ksort($normalized);
 
         return $normalized;
     }

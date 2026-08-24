@@ -289,3 +289,12 @@ it('keeps type-distinct constraints on distinct twins', function (): void {
     // '1' and 1 are different constraints: two rows, never a shared twin.
     expect(Permission::query()->where('name', 'view')->count())->toBe(2);
 });
+
+it('shares one twin whichever operator leads the group', function (): void {
+    $other = User::query()->create(['name' => 'Ana']);
+
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', '=', 'Published');
+    $this->warden->allow($other)->to('view', Account::class)->orWhere('name', '=', 'Published');
+
+    expect(Permission::query()->where('name', 'view')->whereNotNull('options')->count())->toBe(1);
+});
