@@ -158,3 +158,18 @@ it('rejects role and permission models without usable keys', function (): void {
         ->and(fn () => $this->warden->allow($this->user)->to([new ElPandaPe\Warden\Tests\Fixtures\KeylessPermission]))
         ->toThrow(InvalidArgumentException::class, 'int or string key');
 });
+
+it('reports how many assignment rows a retract removed', function (): void {
+    $this->warden->assign('editor')->to($this->user);
+
+    expect($this->warden->retract('editor')->from($this->user)->retractedCount())->toBe(1);
+});
+
+it('reports zero when a retract matched nothing at its write scope', function (): void {
+    $this->warden->assign('editor')->to($this->user);
+
+    $this->warden->tenant()->to(5);
+
+    expect($this->warden->retract('editor')->from($this->user)->retractedCount())->toBe(0)
+        ->and($this->user->fresh()?->isA('editor'))->toBeTrue();
+});

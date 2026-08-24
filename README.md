@@ -296,6 +296,12 @@ Configure `warden.scope.null_behavior`:
 
 > 📌 **Writes always target one exact scope.** A write under tenant 5 only affects tenant-5 rows. Global rules are only writable globally.
 
+Reads and deletes are therefore asymmetric: a check under tenant 5 answers *global **or** tenant 5*, while `retract()` and `disallow()` delete tenant-5 rows only. So a retract under a tenant can succeed and leave the authority still holding the role globally. `retract()->from()` exposes `retractedCount()` for callers that need to tell the cases apart:
+
+```php
+$removed = Warden::retract('editor')->from($user)->retractedCount();  // rows deleted at this scope
+```
+
 ### Best Practices
 
 ✅ **Do** — remove a global forbid where it lives: outside any tenant:

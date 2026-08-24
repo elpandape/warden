@@ -29,6 +29,8 @@ class RetractsRoles
 
     private bool $retracted = false;
 
+    private int $retractedCount = 0;
+
     /**
      * @param  string|array<int, mixed>|Model|BackedEnum  $roles
      */
@@ -53,11 +55,24 @@ class RetractsRoles
     }
 
     /**
+     * Assignment rows this retract actually deleted.
+     *
+     * Reads answer "global or this tenant"; deletes target this tenant only, so
+     * a count of zero can mean the authority still holds the role globally, and
+     * a non-zero count does not promise the role is gone everywhere.
+     */
+    public function retractedCount(): int
+    {
+        return $this->retractedCount;
+    }
+
+    /**
      * @param  Model|array<int, mixed>  $authorities
      */
     public function from(Model|array $authorities): static
     {
         $this->retracted = true;
+        $this->retractedCount = 0;
         $context = Context::resolve();
         $roleClass = $context->roleClass();
         $assignedRole = $context->assignedRoleClass();
@@ -86,6 +101,7 @@ class RetractsRoles
         $scope = app(Tenancy::class)->writeScope();
 
         foreach ($this->normalizeAuthorities($authorities) as $authority) {
+            /** @var int $deleted */
             $deleted = $assignedRole::query()
                 ->withoutGlobalScope(TenantScope::class)
                 ->whereIn('role_id', $keys)
@@ -101,6 +117,8 @@ class RetractsRoles
                     },
                 )
                 ->delete();
+
+            $this->retractedCount += $deleted;
 
             if ($deleted > 0) {
                 $this->bumpCacheVersion($scope);
