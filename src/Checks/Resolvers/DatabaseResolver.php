@@ -34,15 +34,17 @@ final readonly class DatabaseResolver implements Resolver
         $roleKeys = $this->effectiveRoleKeys($authority, $entity);
 
         // Forbidden always wins: check it before any grant.
-        [$forbiddenBy] = $this->firstMatch($authority, $permission, $entity, $owned, $roleKeys, forbidden: true);
+        [$forbiddenBy, , $forbiddenRow] = $this->firstMatch($authority, $permission, $entity, $owned, $roleKeys, forbidden: true);
 
         if ($forbiddenBy !== null) {
-            return Verdict::forbidden($forbiddenBy);
+            return Verdict::forbidden($forbiddenBy, $forbiddenRow);
         }
 
-        [$grantedBy, $rejected] = $this->firstMatch($authority, $permission, $entity, $owned, $roleKeys, forbidden: false);
+        [$grantedBy, $rejected, $grantedRow, $rejectedRow] = $this->firstMatch($authority, $permission, $entity, $owned, $roleKeys, forbidden: false);
 
-        return $grantedBy === null ? Verdict::abstained($rejected) : Verdict::granted($grantedBy);
+        return $grantedBy === null
+            ? Verdict::abstained($rejected, $rejectedRow)
+            : Verdict::granted($grantedBy, $grantedRow);
     }
 
     /**
@@ -51,7 +53,7 @@ final readonly class DatabaseResolver implements Resolver
      * failed" are different diagnoses.
      *
      * @param  list<int|string>  $roleKeys
-     * @return array{0: int|string|null, 1: list<int|string>}
+     * @return array{0: int|string|null, 1: list<int|string>, 2: ?Model, 3: ?Model}
      */
     private function firstMatch(
         Model $authority,
@@ -82,6 +84,7 @@ final readonly class DatabaseResolver implements Resolver
         // applying; constraints evaluate per candidate, in specificity order.
         /** @var list<int|string> $rejected */
         $rejected = [];
+        $rejectedRow = null;
 
         foreach ($query->get() as $candidate) {
             $key = $candidate->getKey();
@@ -92,14 +95,15 @@ final readonly class DatabaseResolver implements Resolver
 
             if (! $this->passesConstraints($candidate, $entity, $authority, $forbidden)) {
                 $rejected[] = $key;
+                $rejectedRow ??= $candidate;
 
                 continue;
             }
 
-            return [$key, $rejected];
+            return [$key, $rejected, $candidate, $rejectedRow];
         }
 
-        return [null, $rejected];
+        return [null, $rejected, null, $rejectedRow];
     }
 
     /**

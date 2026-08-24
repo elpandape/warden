@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Checks;
 
+use Illuminate\Database\Eloquent\Model;
+
 final readonly class Verdict
 {
     /**
@@ -14,24 +16,25 @@ final readonly class Verdict
         private bool $forbidden,
         public int|string|null $permissionKey,
         public array $rejectedKeys = [],
+        public ?Model $permission = null,
     ) {}
 
-    public static function granted(int|string $permissionKey): self
+    public static function granted(int|string $permissionKey, ?Model $permission = null): self
     {
-        return new self(granted: true, forbidden: false, permissionKey: $permissionKey);
+        return new self(granted: true, forbidden: false, permissionKey: $permissionKey, permission: $permission);
     }
 
-    public static function forbidden(int|string|null $permissionKey = null): self
+    public static function forbidden(int|string|null $permissionKey = null, ?Model $permission = null): self
     {
-        return new self(granted: false, forbidden: true, permissionKey: $permissionKey);
+        return new self(granted: false, forbidden: true, permissionKey: $permissionKey, permission: $permission);
     }
 
     /**
      * @param  list<int|string>  $rejectedKeys
      */
-    public static function abstained(array $rejectedKeys = []): self
+    public static function abstained(array $rejectedKeys = [], ?Model $rejected = null): self
     {
-        return new self(granted: false, forbidden: false, permissionKey: null, rejectedKeys: $rejectedKeys);
+        return new self(granted: false, forbidden: false, permissionKey: null, rejectedKeys: $rejectedKeys, permission: $rejected);
     }
 
     public function isGranted(): bool

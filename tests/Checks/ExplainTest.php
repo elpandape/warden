@@ -140,3 +140,12 @@ it('still reports no matching grant when no row matched the shape at all', funct
     expect($why->cause)->toBe(Cause::NoMatchingGrant)
         ->and($why->permission)->toBeNull();
 });
+
+it('does not re-read the row the resolver already decided on', function (): void {
+    $this->warden->allow($this->user)->to('edit-site');
+
+    Illuminate\Support\Facades\DB::enableQueryLog();
+    $this->warden->explain($this->user, 'edit-site');
+
+    expect(Illuminate\Support\Facades\DB::getQueryLog())->toHaveCount(4);
+});

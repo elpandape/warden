@@ -35,12 +35,7 @@ final readonly class Explainer
 
             // A row whose condition failed is a different diagnosis from no row
             // at all, and it can be named.
-            $rejected = $verdict->rejectedKeys === []
-                ? null
-                : $this->context->permissionClass()::query()
-                    ->withoutGlobalScope(TenantScope::class)
-                    ->whereKey($verdict->rejectedKeys[0])
-                    ->first();
+            $rejected = $verdict->permission;
 
             return new AuthorizationExplanation(
                 $verdict,
@@ -49,11 +44,9 @@ final readonly class Explainer
             );
         }
 
-        // The decisive row, visible regardless of the current tenant filter.
-        $decisive = $this->context->permissionClass()::query()
-            ->withoutGlobalScope(TenantScope::class)
-            ->whereKey($verdict->permissionKey)
-            ->first();
+        // The row the resolver just decided on: re-reading it by key would
+        // return the same row it already matched, one query later.
+        $decisive = $verdict->permission;
 
         [$cause, $role] = $this->source($authority, $verdict, $entity);
 

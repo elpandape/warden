@@ -395,10 +395,26 @@ $why = Warden::explain($user, 'edit', $post);
 
 $why->allowed();      // bool
 $why->cause;          // Cause::ForbiddenViaRole, Cause::GrantedDirectly, …
-$why->permission;     // the decisive catalog row
+$why->permission;     // the decisive catalog row, when one decided
 $why->role;           // the role that carried it, when one did
 (string) $why;        // "Explicitly forbidden by permission [edit] via role [banned]."
 ```
+
+Which of `permission` and `role` are populated depends on the cause:
+
+| Cause | `allowed()` | `permission` | `role` |
+|---|---|---|---|
+| `GrantedDirectly` | `true` | the row | — |
+| `GrantedViaRole` | `true` | the row | the role |
+| `GrantedToEveryone` | `true` | the row | — |
+| `ForbiddenDirectly` | `false` | the row | — |
+| `ForbiddenViaRole` | `false` | the row | the role |
+| `ForbiddenToEveryone` | `false` | the row | — |
+| `ConditionsNotMet` | `false` | the row whose conditions failed | — |
+| `NoMatchingGrant` | `false` | — | — |
+| `NotApplicable` | `false` | — | — |
+
+> 📌 `ConditionsNotMet` and `NoMatchingGrant` are different answers: the first names a row that matched the shape and whose conditions did not hold for this record, the second means nothing matched at all. Both leave Warden abstaining so your policies decide.
 
 > 📌 Always answered by the database engine — never from cache — so it diagnoses stale-cache issues too.
 
