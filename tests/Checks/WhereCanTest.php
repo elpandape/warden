@@ -236,3 +236,19 @@ it('compiles an impossible predicate for a non-boolean value on a bool-cast colu
 
     expect(BoolCastAccount::query()->whereCan($this->user, 'view')->toSql())->toContain('0 = 1');
 });
+
+it('fails closed instead of emitting sql for an ownership column the table lacks', function (): void {
+    $this->warden->allow($this->user)->toOwn(User::class, 'edit');
+
+    expect(User::query()->whereCan($this->user, 'edit')->count())->toBe(0)
+        ->and(Gate::forUser($this->user)->allows('edit', $this->user))->toBeFalse();
+});
+
+it('blocks every row when an inexpressible ownership forbid is in force', function (): void {
+    Account::query()->create(['name' => 'One'])->refresh();
+
+    $this->warden->allow($this->user)->to('view', User::class);
+    $this->warden->forbid($this->user)->toOwn(User::class, 'view');
+
+    expect(User::query()->whereCan($this->user, 'view')->count())->toBe(0);
+});

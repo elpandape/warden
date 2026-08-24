@@ -336,10 +336,36 @@ final readonly class WhereCan
     /**
      * The ownership attribute for this model, or null when a closure decides.
      */
+    /**
+     * The column ownership compiles to, or null when it cannot become SQL.
+     *
+     * A closure cannot, and neither can an attribute the table does not have:
+     * the resolver falls back to a default name for every model, registered or
+     * not, so emitting it unchecked turns a misconfiguration into a driver
+     * error where can() merely denies.
+     */
     private function ownershipAttribute(Model $model): ?string
     {
         $resolver = $this->context->ownershipResolverFor($model);
 
-        return is_string($resolver) ? $resolver : null;
+        if (! is_string($resolver)) {
+            return null;
+        }
+
+        return $this->hasColumn($model, $resolver) ? $resolver : null;
+    }
+
+    private function hasColumn(Model $model, string $column): bool
+    {
+        // Memoised for the hot path. A schema does not change within a process,
+        // so unlike request-scoped state this one is safe to keep.
+        /** @var array<string, bool> $columns */
+        static $columns = [];
+
+        $key = $model::class.'.'.$column;
+
+        return $columns[$key] ??= $model->getConnection()
+            ->getSchemaBuilder()
+            ->hasColumn($model->getTable(), $column);
     }
 }
