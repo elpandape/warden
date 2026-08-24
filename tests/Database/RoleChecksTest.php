@@ -37,6 +37,13 @@ it('treats duplicated role names as one requirement', function (): void {
     expect($this->user->isAll('admin', 'admin'))->toBeTrue();
 });
 
+it('still confirms a role the authority holds twice', function (): void {
+    $this->user->roles()->attach(Role::query()->where('name', 'admin')->first());
+    $this->user->load('roles');
+
+    expect($this->user->isAll('admin'))->toBeTrue();
+});
+
 it('does not let a role held twice cover for a role that is missing', function (): void {
     $this->user->roles()->attach(Role::query()->where('name', 'admin')->first());
     $this->user->load('roles');
