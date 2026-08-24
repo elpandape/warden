@@ -34,19 +34,24 @@ final readonly class DatabaseResolver implements Resolver
         $roleKeys = $this->effectiveRoleKeys($authority, $entity);
 
         // Forbidden always wins: check it before any grant.
-        $forbiddenBy = $this->firstMatch($authority, $permission, $entity, $owned, $roleKeys, forbidden: true);
+        [$forbiddenBy] = $this->firstMatch($authority, $permission, $entity, $owned, $roleKeys, forbidden: true);
 
         if ($forbiddenBy !== null) {
             return Verdict::forbidden($forbiddenBy);
         }
 
-        $grantedBy = $this->firstMatch($authority, $permission, $entity, $owned, $roleKeys, forbidden: false);
+        [$grantedBy, $rejected] = $this->firstMatch($authority, $permission, $entity, $owned, $roleKeys, forbidden: false);
 
-        return $grantedBy === null ? Verdict::abstained() : Verdict::granted($grantedBy);
+        return $grantedBy === null ? Verdict::abstained($rejected) : Verdict::granted($grantedBy);
     }
 
     /**
+     * The first candidate a condition did not turn down, and the keys of the
+     * ones it did: "no row matched" and "a row matched but its condition
+     * failed" are different diagnoses.
+     *
      * @param  list<int|string>  $roleKeys
+     * @return array{0: int|string|null, 1: list<int|string>}
      */
     private function firstMatch(
         Model $authority,
@@ -55,7 +60,7 @@ final readonly class DatabaseResolver implements Resolver
         bool $owned,
         array $roleKeys,
         bool $forbidden,
-    ): int|string|null {
+    ): array {
         $permissionClass = $this->context->permissionClass();
         $permissionModel = new $permissionClass;
 
@@ -75,17 +80,26 @@ final readonly class DatabaseResolver implements Resolver
 
         // Resolve through Eloquent so global scopes on custom models keep
         // applying; constraints evaluate per candidate, in specificity order.
+        /** @var list<int|string> $rejected */
+        $rejected = [];
+
         foreach ($query->get() as $candidate) {
+            $key = $candidate->getKey();
+
+            if (! is_int($key) && ! is_string($key)) {
+                continue; // @codeCoverageIgnore
+            }
+
             if (! $this->passesConstraints($candidate, $entity, $authority, $forbidden)) {
+                $rejected[] = $key;
+
                 continue;
             }
 
-            $key = $candidate->getKey();
-
-            return is_int($key) || is_string($key) ? $key : null;
+            return [$key, $rejected];
         }
 
-        return null;
+        return [null, $rejected];
     }
 
     /**

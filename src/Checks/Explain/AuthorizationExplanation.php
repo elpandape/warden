@@ -36,6 +36,7 @@ final readonly class AuthorizationExplanation implements Stringable
             Cause::ForbiddenDirectly => "Explicitly forbidden by {$subject}, held directly.",
             Cause::ForbiddenViaRole => "Explicitly forbidden by {$subject}{$via}.",
             Cause::ForbiddenToEveryone => "Explicitly forbidden by {$subject}, applied to everyone.",
+            Cause::ConditionsNotMet => "Denied by {$subject}: its conditions did not hold for this record.",
             Cause::NoMatchingGrant => 'No matching grant: Warden abstains, app policies decide.',
             Cause::NotApplicable => 'Not a Warden question: the entity is not a model.',
         };

@@ -12,6 +12,7 @@ enum Cause: string
     case ForbiddenDirectly = 'forbidden-directly';
     case ForbiddenViaRole = 'forbidden-via-role';
     case ForbiddenToEveryone = 'forbidden-to-everyone';
+    case ConditionsNotMet = 'conditions-not-met';
     case NoMatchingGrant = 'no-matching-grant';
     case NotApplicable = 'not-applicable';
 }

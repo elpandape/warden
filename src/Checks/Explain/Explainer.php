@@ -29,9 +29,23 @@ final readonly class Explainer
                 || $entity === '*'
                 || is_subclass_of($entity, Model::class);
 
+            if (! $applicable) {
+                return new AuthorizationExplanation($verdict, Cause::NotApplicable);
+            }
+
+            // A row whose condition failed is a different diagnosis from no row
+            // at all, and it can be named.
+            $rejected = $verdict->rejectedKeys === []
+                ? null
+                : $this->context->permissionClass()::query()
+                    ->withoutGlobalScope(TenantScope::class)
+                    ->whereKey($verdict->rejectedKeys[0])
+                    ->first();
+
             return new AuthorizationExplanation(
                 $verdict,
-                $applicable ? Cause::NoMatchingGrant : Cause::NotApplicable,
+                $rejected instanceof Model ? Cause::ConditionsNotMet : Cause::NoMatchingGrant,
+                $rejected,
             );
         }
 

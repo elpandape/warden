@@ -6,10 +6,14 @@ namespace ElPandaPe\Warden\Checks;
 
 final readonly class Verdict
 {
+    /**
+     * @param  list<int|string>  $rejectedKeys  candidates a condition turned down
+     */
     private function __construct(
         private bool $granted,
         private bool $forbidden,
         public int|string|null $permissionKey,
+        public array $rejectedKeys = [],
     ) {}
 
     public static function granted(int|string $permissionKey): self
@@ -22,9 +26,12 @@ final readonly class Verdict
         return new self(granted: false, forbidden: true, permissionKey: $permissionKey);
     }
 
-    public static function abstained(): self
+    /**
+     * @param  list<int|string>  $rejectedKeys
+     */
+    public static function abstained(array $rejectedKeys = []): self
     {
-        return new self(granted: false, forbidden: false, permissionKey: null);
+        return new self(granted: false, forbidden: false, permissionKey: null, rejectedKeys: $rejectedKeys);
     }
 
     public function isGranted(): bool

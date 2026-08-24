@@ -119,3 +119,24 @@ it('never blames a restricted role outside its context', function (): void {
     expect($why->cause)->toBe(Cause::ForbiddenViaRole)
         ->and($why->role?->getAttribute('name'))->toBe('auditor');
 });
+
+it('says the condition failed instead of reporting no matching grant', function (): void {
+    $draft = Account::query()->create(['name' => 'Draft'])->refresh();
+
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', '=', 'Published');
+
+    $why = $this->warden->explain($this->user, 'view', $draft);
+
+    expect($why->cause)->toBe(Cause::ConditionsNotMet)
+        ->and($why->permission?->getAttribute('name'))->toBe('view')
+        ->and((string) $why)->toBe('Denied by permission [view]: its conditions did not hold for this record.');
+});
+
+it('still reports no matching grant when no row matched the shape at all', function (): void {
+    $account = Account::query()->create(['name' => 'Any'])->refresh();
+
+    $why = $this->warden->explain($this->user, 'view', $account);
+
+    expect($why->cause)->toBe(Cause::NoMatchingGrant)
+        ->and($why->permission)->toBeNull();
+});
