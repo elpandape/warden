@@ -11,6 +11,8 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
+use ElPandaPe\Warden\Events\RevokingPermission;
+use ElPandaPe\Warden\Events\UnforbiddingPermission;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
@@ -64,11 +66,34 @@ class RevokesPermissions
     }
 
     /**
+     * The pre-event announces the scope the delete will actually target —
+     * computable without side effects: a string authority names a role.
+     *
+     * @param  string|array<int, mixed>|Model|BackedEnum  $permissions
+     */
+    private function permitsRemoval(string|array|Model|BackedEnum $permissions, Model|string|null $entity, bool $onlyOwned): bool
+    {
+        $roleAuthority = is_string($this->authority)
+            || $this->authority instanceof (Context::resolve()->roleClass());
+
+        $scope = app(Tenancy::class)->writeScope(forRoleGrant: $roleAuthority);
+        $names = $this->permissionNames($permissions);
+
+        return $this->eventPermits($this->forbidden
+            ? new UnforbiddingPermission($this->authority, $names, $entity, $scope, $onlyOwned)
+            : new RevokingPermission($this->authority, $names, $entity, $scope, $onlyOwned));
+    }
+
+    /**
      * @param  string|array<int, mixed>|Model|BackedEnum  $permissions
      */
     private function revoke(string|array|Model|BackedEnum $permissions, Model|string|null $entity, bool $onlyOwned): static
     {
         $context = Context::resolve();
+
+        if (! $this->permitsRemoval($permissions, $entity, $onlyOwned)) {
+            return $this;
+        }
 
         // Resolve first: revoking from a role that does not exist must fail fast.
         $authority = $this->authority === null

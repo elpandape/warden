@@ -12,11 +12,14 @@ use ElPandaPe\Warden\Events\PermissionGranted;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\PermissionsSynced;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
+use ElPandaPe\Warden\Events\RetractingRole;
+use ElPandaPe\Warden\Events\RevokingPermission;
 use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Events\RolesSynced;
+use ElPandaPe\Warden\Events\UnforbiddingPermission;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\User;
@@ -267,4 +270,38 @@ it('stays silent when granting a permission the authority already has', function
     $this->warden->allow($this->user)->to('edit-site');
 
     Event::assertNotDispatched(PermissionGranted::class);
+});
+
+it('lets cancellable listeners abort a revoke before anything is deleted', function (): void {
+    config()->set('warden.cancellable_events', true);
+    $this->warden->allow($this->user)->to('publish');
+
+    Event::listen(RevokingPermission::class, fn (RevokingPermission $event): bool => false);
+
+    $this->warden->disallow($this->user)->to('publish');
+
+    expect($this->user->can('publish'))->toBeTrue();
+});
+
+it('lets cancellable listeners abort an unforbid before anything is deleted', function (): void {
+    config()->set('warden.cancellable_events', true);
+    $this->warden->allow($this->user)->to('publish');
+    $this->warden->forbid($this->user)->to('publish');
+
+    Event::listen(UnforbiddingPermission::class, fn (UnforbiddingPermission $event): bool => false);
+
+    $this->warden->unforbid($this->user)->to('publish');
+
+    expect($this->user->can('publish'))->toBeFalse();
+});
+
+it('lets cancellable listeners abort a retract before anything is deleted', function (): void {
+    config()->set('warden.cancellable_events', true);
+    $this->warden->assign('editor')->to($this->user);
+
+    Event::listen(RetractingRole::class, fn (RetractingRole $event): bool => false);
+
+    $this->warden->retract('editor')->from($this->user);
+
+    expect($this->user->isAn('editor'))->toBeTrue();
 });

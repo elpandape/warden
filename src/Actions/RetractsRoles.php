@@ -8,6 +8,7 @@ use BackedEnum;
 use ElPandaPe\Warden\Actions\Concerns\NormalizesRoles;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
+use ElPandaPe\Warden\Events\RetractingRole;
 use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Tenancy\Tenancy;
@@ -100,7 +101,13 @@ class RetractsRoles
         // Deletes target the exact write scope: global assignments survive tenant retracts.
         $scope = app(Tenancy::class)->writeScope();
 
-        foreach ($this->normalizeAuthorities($authorities) as $authority) {
+        $targets = $this->normalizeAuthorities($authorities);
+
+        if (! $this->eventPermits(new RetractingRole($this->roles, $targets, $scope, $this->restrictedTo))) {
+            return $this;
+        }
+
+        foreach ($targets as $authority) {
             /** @var int $deleted */
             $deleted = $assignedRole::query()
                 ->withoutGlobalScope(TenantScope::class)

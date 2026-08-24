@@ -149,4 +149,23 @@ trait ResolvesPermissions
             'entity_id' => $this->modelKey($entity),
         ];
     }
+
+    /**
+     * @param  string|array<int, mixed>|Model|BackedEnum  $permissions
+     * @return list<string>
+     */
+    private function permissionNames(string|array|Model|BackedEnum $permissions): array
+    {
+        $names = [];
+
+        foreach ($this->normalizePermissions($permissions) as $permission) {
+            $name = $permission instanceof Model ? $permission->getAttribute('name') : $permission;
+
+            if (is_string($name)) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
 }
