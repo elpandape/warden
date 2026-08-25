@@ -66,10 +66,13 @@ return [
         'column_type' => 'integer',
         // A class implementing Contracts\TenantResolver to detect the active tenant.
         'tenant_resolver' => null,
+        // Read once, when tenancy is first resolved: changing them afterwards
+        // needs the container instance refreshed to take effect.
         // Keep the role/permission catalog global; scope only the pivots.
         'only_relations' => false,
         // Set to false to keep grants held by roles global across tenants.
         'role_grants' => true,
+        // null_behavior above is re-read live, unlike these two.
     ],
 
     'cache' => [

@@ -159,6 +159,8 @@ Gate::authorize('edit', $post);     // throws on deny
 > - Set `warden.gate.run_before_policies` to make forbids veto everything.
 > - Checks with more than one argument are left to your policies.
 > - Guests and non-model arguments are never answered by Warden.
+> - `Warden::can()` inside a policy **recurses through the Gate**. Ask the resolver directly — `app(Contracts\Resolver::class)` — when a policy needs Warden's own answer.
+> - With `warden.gate.register` off, Warden abstains from every Gate answer, so a loose permission with no policy behind it reads as denied. `Warden::can()` still answers; `$user->can()` does not.
 
 ---
 
@@ -304,6 +306,15 @@ Reads and deletes are therefore asymmetric: a check under tenant 5 answers *glob
 $removed = Warden::retract('editor')->from($user)->retractedCount();  // rows deleted at this scope
 ```
 
+
+> ⚠️ **The scope rule is warden's, not Eloquent's.** `TenantScope` filters reads and stamps creates; it does not isolate writes. `$permission->delete()` and `$role->delete()` reach rows in every tenant, and the foreign keys cascade below Eloquent entirely. Remove rows through warden's own verbs, or through `warden:clean`.
+
+> ⚠️ **Pivot tenancy is a plain predicate, not a registered scope**, so `withoutGlobalScopes()` does not lift it. Widen deliberately with `Warden::tenant()->removeOnce(...)`, which is the supported escape hatch.
+
+> 📌 **A role is global unless the write mints a tenant one.** Under an active tenant, `allow('editor')` attaches to a global `editor` if one exists, rather than creating a tenant-scoped twin. Roles are looked up by name and scope; a tenant twin only exists once something writes it.
+
+> 📌 `Tenancy::writeScope()` takes `forRoleGrant`, and it defaults to `false`. A bare call therefore reports the scope of an authority grant; ask with `forRoleGrant: true` when the holder is a role, or the answer describes a different write than the one you meant.
+
 ### Best Practices
 
 ✅ **Do** — remove a global forbid where it lives: outside any tenant:
@@ -342,6 +353,8 @@ Warden::allow($user)->to('view', Document::class)
 > 📌 **Important:**
 > - Precedence is SQL's: `AND` binds tighter than `OR`.
 > - Comparisons are strict — no PHP type juggling.
+> - A **null** attribute satisfies no operator at all, `!=` included, and values whose types are not decidably comparable fail closed the same way. A **missing** attribute is different: under `Model::preventAccessingMissingAttributes()` it throws rather than failing closed.
+> - Constrained grants share one catalog row per distinct rule, so **editing a permission's options changes the rule for every holder of that shape**. Write a new condition instead of editing a shared row.
 > - A **boolean** value matches only a column the model casts to `bool`, and such a column matches only a boolean. Either mismatch never matches — in checks and in queries alike — so the `where('classified', true)` below needs `'classified' => 'bool'` in the model's `$casts`.
 > - A permission with **no entity** is only ever checked without an instance, so constraining one is refused: the shape that would make it match is the shape that rejects it.
 > - A constrained grant **never matches instance-less checks** (`can('view')`, `can('view', Document::class)`) — they fail closed.
@@ -378,6 +391,8 @@ Post::whereCan($user, 'view')->latest()->paginate();
 Instance grants, class grants, wildcards, everyone-grants, role grants, forbids, tenancy, ownership, and **ABAC constraints all compile into the query**.
 
 > ⚠️ What cannot become SQL fails closed: closure-resolved ownership and restricted-role grants contribute no rows.
+
+> ⚠️ **No Gate, no policies.** `whereCan()` answers from warden's own rows only. A policy that would have granted or denied a row is not consulted, so a query and a check can disagree wherever a policy has the last word.
 
 > ⚠️ **The trait is required.** Without it, `Post::whereCan($user, 'view')` never reaches Warden: Laravel reads it as a dynamic `where` against a column named `can`, and you get zero rows or a driver error instead of an answer.
 
@@ -622,6 +637,8 @@ Four tables:
 | `assigned_roles` | Role ↔ authority pivot |
 | `grants` | Permission ↔ authority (with `forbidden` flag) |
 
+> 📌 **Revoking removes the grant, never the catalog row.** The row is shared, so pruning it inline would destroy a rule other holders point at. `warden:clean` is the supported way to reclaim rows nothing points at, and `--duplicates` collapses rows that identify the same permission.
+
 > 📌 **Both pivot relations mix granted and forbidden rows.** `$role->permissions()` and `$permission->roles()` return every pivot row, whichever polarity it carries — filter to read one side:
 >
 > ```php
@@ -672,7 +689,7 @@ Everything lives in `config/warden.php`:
 | `models` | Swappable Role, Permission, Grant, AssignedRole models |
 | `tables` | Table names and database connection |
 | `morphs` | Morph aliases (`warden.role`, `warden.permission`) |
-| `gate` | Gate behavior (`run_before_policies`) |
+| `gate` | Gate behavior (`run_before_policies`, `register`) |
 | `ownership` | Global/per-class ownership attribute |
 | `scope` | Multi-tenancy semantics |
 | `cache` | Store, prefix, TTL |
