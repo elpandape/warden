@@ -127,7 +127,8 @@ final readonly class DatabaseResolver implements Resolver
         }
 
         if (! $entity instanceof Model) {
-            return false;
+            // Undecidable without an instance: same safe direction as above.
+            return $forbidden;
         }
 
         return $group->passes($entity, $authority);

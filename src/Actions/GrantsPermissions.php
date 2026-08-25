@@ -218,6 +218,17 @@ class GrantsPermissions
             throw new ConfigurationException('Constraints need a grant to refine: call to() or toOwn() first.');
         }
 
+        // A row with no entity is only ever a candidate for an instance-less
+        // check, and a condition can never be evaluated without an instance:
+        // the shape that makes it match is the shape that rejects it.
+        foreach ($this->lastGranted as $permission) {
+            if ($permission->getAttribute('entity_type') === null && ! (bool) $permission->getAttribute('only_owned')) {
+                throw new ConfigurationException(
+                    'Constraints need an entity to test: give the permission one, or drop the condition.',
+                );
+            }
+        }
+
         $grantClass = Context::resolve()->grantClass();
         $options = ConstraintSerializer::serialize($this->builder()->group());
 

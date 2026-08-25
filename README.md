@@ -190,6 +190,8 @@ Warden::allow('admin')->to('audit');
 Warden::sync($user)->roles(['editor', 'writer']);
 ```
 
+> 📌 **Assignments are one hop, and there is no role hierarchy.** `assign('editor')->to($role)` is accepted and writes a row, but holders of the outer role gain nothing: membership does not nest. Grant the union to the outer role, or assign both roles to the authority.
+
 ### Best Practices
 
 ✅ **Do** — use `forbid()` for exceptions:
@@ -341,6 +343,7 @@ Warden::allow($user)->to('view', Document::class)
 > - Precedence is SQL's: `AND` binds tighter than `OR`.
 > - Comparisons are strict — no PHP type juggling.
 > - A **boolean** value matches only a column the model casts to `bool`, and such a column matches only a boolean. Either mismatch never matches — in checks and in queries alike — so the `where('classified', true)` below needs `'classified' => 'bool'` in the model's `$casts`.
+> - A permission with **no entity** is only ever checked without an instance, so constraining one is refused: the shape that would make it match is the shape that rejects it.
 > - A constrained grant **never matches instance-less checks** (`can('view')`, `can('view', Document::class)`) — they fail closed.
 
 ### Best Practices
@@ -375,6 +378,8 @@ Post::whereCan($user, 'view')->latest()->paginate();
 Instance grants, class grants, wildcards, everyone-grants, role grants, forbids, tenancy, ownership, and **ABAC constraints all compile into the query**.
 
 > ⚠️ What cannot become SQL fails closed: closure-resolved ownership and restricted-role grants contribute no rows.
+
+> ⚠️ **The trait is required.** Without it, `Post::whereCan($user, 'view')` never reaches Warden: Laravel reads it as a dynamic `where` against a column named `can`, and you get zero rows or a driver error instead of an answer.
 
 ### Best Practices
 
@@ -616,6 +621,15 @@ Four tables:
 | `roles` | Role definitions |
 | `assigned_roles` | Role ↔ authority pivot |
 | `grants` | Permission ↔ authority (with `forbidden` flag) |
+
+> 📌 **Both pivot relations mix granted and forbidden rows.** `$role->permissions()` and `$permission->roles()` return every pivot row, whichever polarity it carries — filter to read one side:
+>
+> ```php
+> $role->permissions()->wherePivot('forbidden', false)->get();   // what it can do
+> $role->permissions()->wherePivot('forbidden', true)->get();    // what it is denied
+> ```
+
+> 📌 **Titles are generated once, on creation, and only when none was given.** A rename keeps the old title, and setting `title` to `null` on an update leaves it `null`. Recompute one deliberately with `Support\Titles\PermissionTitle::generate()` or `RoleTitle::generate()` — the same calls the hook makes.
 
 Any model can hold roles and permissions:
 

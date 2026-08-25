@@ -145,7 +145,7 @@ it('serves restricted roles and constraints from the cache engine', function ():
 
     $this->warden->assign('editor')->on($this->orgOne)->to($this->user);
     $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Project');
-    $this->warden->allow($this->user)->to('publish')->where('name', 'X');
+    $this->warden->allow($this->user)->to('publish', Account::class)->where('name', 'X');
 
     $inOne = projectIn($this->orgOne);
     $loose = Account::query()->create(['name' => 'Loose'])->refresh();

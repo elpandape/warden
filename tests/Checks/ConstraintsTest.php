@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Checks\Explain\Cause;
 use ElPandaPe\Warden\Constraints\Builder;
 use ElPandaPe\Warden\Constraints\ConstraintSerializer;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
@@ -274,11 +275,13 @@ it('never attaches a plain grant to a constrained twin', function (): void {
 });
 
 it('starts a fresh constraint set for each concession in a chain', function (): void {
-    $this->warden->allow($this->user)->to('alpha')->where('name', 'X')->to('beta');
+    $draft = Account::query()->create(['name' => 'Draft'])->refresh();
+
+    $this->warden->allow($this->user)->to('alpha', Account::class)->where('name', 'X')->to('beta', Account::class);
 
     // beta must not inherit alpha's constraints.
-    expect(Gate::forUser($this->user)->allows('beta'))->toBeTrue()
-        ->and(Gate::forUser($this->user)->allows('alpha'))->toBeFalse();
+    expect(Gate::forUser($this->user)->allows('beta', $draft))->toBeTrue()
+        ->and(Gate::forUser($this->user)->allows('alpha', $draft))->toBeFalse();
 });
 
 it('keeps type-distinct constraints on distinct twins', function (): void {
@@ -331,4 +334,42 @@ it('answers whether two option blobs name the same rule', function (): void {
             ConstraintSerializer::serialize($plain->group()),
             ConstraintSerializer::serialize($other->group()),
         ))->toBeFalse();
+});
+
+it('refuses to constrain a permission that has no entity', function (): void {
+    expect(fn (): mixed => $this->warden->allow($this->user)->to('export')->where('team_id', '=', 5))
+        ->toThrow(ConfigurationException::class);
+});
+
+it('blocks rather than abstains when an entity-less constrained forbid cannot be evaluated', function (): void {
+    $this->warden->forbid($this->user)->to('export');
+
+    // The shape the fluent API now refuses, reached the only way left: straight
+    // through the model, which is how an already-written row looks.
+    $builder = new Builder;
+    $builder->where('team_id', '=', 5);
+
+    Permission::query()->where('name', 'export')->update([
+        'options' => json_encode(ConstraintSerializer::serialize($builder->group())),
+    ]);
+    $this->warden->refresh();
+
+    expect($this->warden->explain($this->user, 'export')->cause)->toBe(Cause::ForbiddenDirectly);
+});
+
+it('blocks in the cached engine too, where a wildcard would otherwise grant', function (): void {
+    config()->set('warden.cache.enabled', true);
+
+    $this->warden->allowEveryone()->everything();
+    $this->warden->forbid($this->user)->to('export');
+
+    $builder = new Builder;
+    $builder->where('team_id', '=', 5);
+
+    Permission::query()->where('name', 'export')->update([
+        'options' => json_encode(ConstraintSerializer::serialize($builder->group())),
+    ]);
+    $this->warden->refresh();
+
+    expect(Gate::forUser($this->user)->allows('export'))->toBeFalse();
 });
