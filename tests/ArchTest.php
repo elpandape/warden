@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use function ElPandaPe\Warden\Tests\phpFilesOffending;
+
 arch('source uses strict types')
     ->expect('ElPandaPe\Warden')
     ->toUseStrictTypes();
@@ -15,23 +17,13 @@ arch('enums live in the Enums namespace')
     ->toBeEnums();
 
 it('leaves no doc block stranded above another', function (): void {
-    $stranded = [];
+    expect(phpFilesOffending('#\*/\s*\n\s*/\*\*#'))->toBeEmpty();
+});
 
-    foreach (['src', 'tests'] as $dir) {
-        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(__DIR__.'/../'.$dir));
+it('cites no tool-generated identifier in a comment', function (): void {
+    expect(phpFilesOffending('#(?://|\*)[^\n]*\b[0-9a-f]{12,}\b#'))->toBeEmpty();
+});
 
-        foreach ($files as $file) {
-            if (! $file instanceof SplFileInfo || $file->getExtension() !== 'php') {
-                continue;
-            }
-
-            $contents = file_get_contents($file->getPathname());
-
-            if (is_string($contents) && preg_match('#\*/\s*\n\s*/\*\*#', $contents) === 1) {
-                $stranded[] = $file->getFilename();
-            }
-        }
-    }
-
-    expect($stranded)->toBeEmpty();
+it('cites no ticket number in a comment', function (): void {
+    expect(phpFilesOffending('#(?://|\*)[^\n]*\s\#\d{2,}\b#'))->toBeEmpty();
 });

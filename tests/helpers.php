@@ -11,6 +11,9 @@ use ElPandaPe\Warden\WardenServiceProvider;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 
 function projectIn(Account $org): Account
 {
@@ -77,4 +80,32 @@ function privateInstallPath(Application $app): string
     new WardenServiceProvider($app)->boot();
 
     return $dir;
+}
+
+/**
+ * Files whose contents match a pattern, for the architectural comment rules.
+ *
+ * @return list<string>
+ */
+function phpFilesOffending(string $pattern): array
+{
+    $offenders = [];
+
+    foreach (['src', 'tests'] as $dir) {
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(__DIR__.'/../'.$dir));
+
+        foreach ($files as $file) {
+            if (! $file instanceof SplFileInfo || $file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $contents = file_get_contents($file->getPathname());
+
+            if (is_string($contents) && preg_match($pattern, $contents) === 1) {
+                $offenders[] = $file->getFilename();
+            }
+        }
+    }
+
+    return $offenders;
 }
