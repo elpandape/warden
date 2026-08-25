@@ -6,12 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor
 ## v2.0.0 — Identity, and rules that mean what they say (2026-08-25)
 
 The catalog tuple becomes a constraint instead of a convention, a narrowing chain edits its
-rule instead of stacking one beside it, and several defaults that used to widen silently now
-refuse. **Read the breaking changes before upgrading: an install carrying duplicate catalog
+rule instead of stacking one beside it, relation writes stop crossing tenants, and several
+defaults that used to widen silently now refuse. **Read the breaking changes before upgrading: an install carrying duplicate catalog
 rows cannot migrate until it resolves them.**
 
 ### Breaking
 
+- **Relation writes target one exact scope.** `detach()`, `sync()`, `toggle()`,
+  `syncWithoutDetaching()` and `updateExistingPivot()` on `roles()` and `permissions()` reached
+  every scope at once, so a call under one tenant destroyed another tenant's rows — including
+  the `forbidden` ones a check relied on. They now touch only what the write scope owns, and
+  `attach()` stamps it. Warden builds these relations itself, so a model overriding
+  `newMorphToMany()` no longer shapes them.
 - **`permissions` gains a unique index** over the name and a key carrying the rest of the
   identifying tuple. Resolve duplicates first with `warden:clean --duplicates`, which splits
   candidates in PHP because the options identity is defined there, re-points the losers'
@@ -46,13 +52,6 @@ rows cannot migrate until it resolves them.**
 ### Added
 
 - `warden:clean --duplicates` collapses catalog rows that identify the same permission.
-
-### Known limitation
-
-Relation writes — `detach()`, `sync()`, `toggle()` on `roles()` and `permissions()` — still
-ignore the tenant filter, because Laravel rebuilds their query from conditions a raw predicate
-never reaches. Both routes to fixing it were tried and reverted: see warden-001. Use the fluent
-verbs, which target one exact scope.
 
 ## v1.3.0 — Conditions that cannot fire (2026-08-25)
 
