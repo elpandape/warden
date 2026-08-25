@@ -7,10 +7,10 @@ namespace ElPandaPe\Warden\Checks\Resolvers;
 use ElPandaPe\Warden\Checks\Verdict;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\Resolver;
+use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Query\Builder as QueryBuilder;
 
 final readonly class DatabaseResolver implements Resolver
 {
@@ -75,9 +75,7 @@ final readonly class DatabaseResolver implements Resolver
                 /** @param Builder<Permission> $builder */
                 fn (Builder $builder) => $this->applyEntityPredicates($builder, $entity),
             )
-            ->whereExists(
-                fn (QueryBuilder $builder) => $this->applyGrantPredicates($builder, $authority, $permissionModel, $roleKeys, $forbidden),
-            )
+            ->whereExists($this->grantsHeld($authority, $permissionModel, $roleKeys, $forbidden))
             ->orderByRaw('entity_id is not null desc, entity_type is not null desc');
 
         // Resolve through Eloquent so global scopes on custom models keep
@@ -245,49 +243,35 @@ final readonly class DatabaseResolver implements Resolver
     }
 
     /**
+     * The grants that answer this check, as a subquery.
+     *
+     * Built through Eloquent so a swapped grant model's global scopes apply —
+     * including warden's own tenant scope, which this used to re-implement by
+     * hand and could therefore drift from.
+     *
      * @param  list<int|string>  $roleKeys
+     * @return Builder<Grant>
      */
-    private function applyGrantPredicates(
-        QueryBuilder $builder,
-        Model $authority,
-        Model $permissionModel,
-        array $roleKeys,
-        bool $forbidden,
-    ): void {
-        // Derive every reference from the actual models so overrides stay in sync.
-        $grants = (new ($this->context->grantClass()))->getTable();
-        $permissionKey = $permissionModel->getQualifiedKeyName();
+    private function grantsHeld(Model $authority, Model $permissionModel, array $roleKeys, bool $forbidden): Builder
+    {
+        $grantClass = $this->context->grantClass();
+        $grants = (new $grantClass)->getTable();
         $roleMorph = (new ($this->context->roleClass()))->getMorphClass();
 
-        $filter = app(\ElPandaPe\Warden\Tenancy\Tenancy::class)->readFilter();
-
-        $builder->from($grants)
-            ->whereColumn("{$grants}.permission_id", $permissionKey)
-            ->where("{$grants}.forbidden", $forbidden);
-
-        // The same read filter that scopes catalog and pivots, applied to raw grants.
-        if ($filter !== null && $filter[0] === 'both') {
-            $tenant = $filter[1];
-
-            $builder->where(function (QueryBuilder $q) use ($grants, $tenant): void {
-                $q->whereNull("{$grants}.scope")->orWhere("{$grants}.scope", $tenant);
-            });
-        } elseif ($filter !== null) {
-            $builder->whereNull("{$grants}.scope");
-        }
-
-        $builder
-            ->where(function (QueryBuilder $grant) use ($authority, $grants, $roleMorph, $roleKeys): void {
+        return $grantClass::query()
+            ->whereColumn("{$grants}.permission_id", $permissionModel->getQualifiedKeyName())
+            ->where('forbidden', $forbidden)
+            ->where(function (Builder $grant) use ($authority, $roleMorph, $roleKeys): void {
                 $grant
-                    ->where(function (QueryBuilder $direct) use ($authority, $grants): void {
-                        $direct->where("{$grants}.entity_type", $authority->getMorphClass())
-                            ->where("{$grants}.entity_id", $authority->getKey());
+                    ->where(function (Builder $direct) use ($authority): void {
+                        $direct->where('entity_type', $authority->getMorphClass())
+                            ->where('entity_id', $authority->getKey());
                     })
-                    ->orWhere(function (QueryBuilder $viaRole) use ($grants, $roleMorph, $roleKeys): void {
-                        $viaRole->where("{$grants}.entity_type", $roleMorph)
-                            ->whereIn("{$grants}.entity_id", $roleKeys);
+                    ->orWhere(function (Builder $viaRole) use ($roleMorph, $roleKeys): void {
+                        $viaRole->where('entity_type', $roleMorph)
+                            ->whereIn('entity_id', $roleKeys);
                     })
-                    ->orWhereNull("{$grants}.entity_id");
+                    ->orWhereNull('entity_id');
             });
     }
 }

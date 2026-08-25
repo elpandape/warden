@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\BoolCastAccount;
 use ElPandaPe\Warden\Tests\Fixtures\User;
@@ -147,7 +148,7 @@ it('skips corrupt constraint candidates and blocks corrupt forbids', function ()
     Account::query()->create(['name' => 'One'])->refresh();
 
     $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'One');
-    ElPandaPe\Warden\Models\Permission::query()->withoutGlobalScopes()
+    Permission::query()->withoutGlobalScopes()
         ->whereNotNull('options')->update(['options' => ['v' => 99, 'g' => 'junk']]);
 
     // Granted side: the undecidable candidate is skipped, nothing comes back.
@@ -155,7 +156,7 @@ it('skips corrupt constraint candidates and blocks corrupt forbids', function ()
 
     $this->warden->allow($this->user)->to('view', Account::class);
     $this->warden->forbid($this->user)->to('view', Account::class)->where('name', 'Two');
-    ElPandaPe\Warden\Models\Permission::query()->withoutGlobalScopes()
+    Permission::query()->withoutGlobalScopes()
         ->whereNotNull('options')->update(['options' => ['v' => 99, 'g' => 'junk']]);
 
     // Forbidden side: the undecidable forbid blocks every shape row.
@@ -251,4 +252,23 @@ it('blocks every row when an inexpressible ownership forbid is in force', functi
     $this->warden->forbid($this->user)->toOwn(User::class, 'view');
 
     expect(User::query()->whereCan($this->user, 'view')->count())->toBe(0);
+});
+
+it('hydrates only the catalog rows the authority could hold', function (): void {
+    $mine = Account::query()->create(['name' => 'Mine'])->refresh();
+
+    $this->warden->allow($this->user)->to('view', Account::class);
+
+    foreach (range(1, 20) as $id) {
+        Permission::query()->create(['name' => 'view', 'entity_type' => Account::class, 'entity_id' => $id]);
+    }
+
+    DB::enableQueryLog();
+    Account::query()->whereCan($this->user, 'view')->count();
+
+    $catalog = collect(DB::getQueryLog())
+        ->first(fn (array $entry): bool => str_contains($entry['query'], 'from "permissions"'));
+
+    expect($catalog['query'] ?? '')->toContain('exists')
+        ->and(Account::query()->whereCan($this->user, 'view')->pluck('name')->all())->toBe([$mine->name]);
 });

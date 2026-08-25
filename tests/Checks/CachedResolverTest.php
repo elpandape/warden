@@ -13,6 +13,7 @@ use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\BarePivot;
 use ElPandaPe\Warden\Tests\Fixtures\PlainCacheStore;
+use ElPandaPe\Warden\Tests\Fixtures\ScopedGrant;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Facades\Cache;
@@ -454,4 +455,23 @@ it('sweeps the grants a deleted role held, which no foreign key reaches', functi
     $role->delete();
 
     expect($held())->toBe(0);
+});
+
+it('honours a global scope on a swapped grant model, cached or not', function (): void {
+    $this->warden->allow($this->user)->to('edit-site');
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
+
+    config()->set('warden.models.grant', ScopedGrant::class);
+    app()->forgetInstance(Context::class);
+    app()->forgetInstance(Resolver::class);
+    $this->warden->refresh();
+
+    $cached = Gate::forUser($this->user)->allows('edit-site');
+
+    config()->set('warden.cache.enabled', false);
+    $uncached = Gate::forUser($this->user)->allows('edit-site');
+
+    expect($cached)->toBeFalse()
+        ->and($uncached)->toBeFalse();
 });

@@ -12,6 +12,7 @@ use ElPandaPe\Warden\Constraints\ValueConstraint;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\Constraint;
 use ElPandaPe\Warden\Enums\LogicalOperator;
+use ElPandaPe\Warden\Models\Grant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -40,7 +41,7 @@ final readonly class WhereCan
     {
         $model = $query->getModel();
 
-        $candidates = $this->candidates($model, $permission);
+        $candidates = $this->candidates($model, $permission, $authority);
         $granted = $this->activeKeys($authority, $candidates, forbidden: false);
         $forbidden = $this->activeKeys($authority, $candidates, forbidden: true);
 
@@ -98,7 +99,7 @@ final readonly class WhereCan
      *
      * @return Collection<int, Model>
      */
-    private function candidates(Model $model, string $permission): Collection
+    private function candidates(Model $model, string $permission, Model $authority): Collection
     {
         /** @var Collection<int, Model> */
         return $this->context->permissionClass()::query()
@@ -107,8 +108,49 @@ final readonly class WhereCan
                 $query->where('entity_type', '*')
                     ->orWhere('entity_type', $model->getMorphClass());
             })
+            ->whereExists($this->anyGrantHeld($authority))
             ->get()
             ->toBase();
+    }
+
+    /**
+     * Any grant of this row the authority could hold, in either polarity and
+     * including restricted assignments.
+     *
+     * Deliberately the UNION of what the two passes ask for: activeKeys()
+     * partitions it afterwards, with a fail-closed asymmetry that differs per
+     * pass. Narrowing here would drop forbid branches, which fails OPEN.
+     *
+     * @return Builder<Grant>
+     */
+    private function anyGrantHeld(Model $authority): Builder
+    {
+        $grantClass = $this->context->grantClass();
+        $grants = (new $grantClass)->getTable();
+        $permissions = (new ($this->context->permissionClass()))->getQualifiedKeyName();
+        $roleMorph = (new ($this->context->roleClass()))->getMorphClass();
+
+        $roleKeys = $this->context->assignedRoleClass()::query()
+            ->where('entity_type', $authority->getMorphClass())
+            ->where('entity_id', $authority->getKey())
+            ->toBase()
+            ->pluck('role_id')
+            ->all();
+
+        return $grantClass::query()
+            ->whereColumn("{$grants}.permission_id", $permissions)
+            ->where(function (Builder $grant) use ($authority, $roleMorph, $roleKeys): void {
+                $grant
+                    ->where(function (Builder $direct) use ($authority): void {
+                        $direct->where('entity_type', $authority->getMorphClass())
+                            ->where('entity_id', $authority->getKey());
+                    })
+                    ->orWhere(function (Builder $viaRole) use ($roleMorph, $roleKeys): void {
+                        $viaRole->where('entity_type', $roleMorph)
+                            ->whereIn('entity_id', $roleKeys);
+                    })
+                    ->orWhereNull('entity_id');
+            });
     }
 
     /**
