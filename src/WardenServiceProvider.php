@@ -105,12 +105,27 @@ final class WardenServiceProvider extends ServiceProvider
         \Illuminate\Support\Facades\Event::listen([
             'eloquent.created: *',
             'eloquent.updated: *',
+            'eloquent.deleting: *',
             'eloquent.deleted: *',
         ], function (string $event, array $payload): void {
             $model = $payload[0] ?? null;
 
-            if ($model instanceof Model) {
-                $this->app->make(Checks\Resolvers\CacheInvalidations::class)->markFrom($model);
+            if (! $model instanceof Model) {
+                return; // @codeCoverageIgnore
+            }
+
+            $invalidations = $this->app->make(Checks\Resolvers\CacheInvalidations::class);
+
+            if (str_starts_with($event, 'eloquent.deleting:')) {
+                $invalidations->prepareCascade($model);
+
+                return;
+            }
+
+            $invalidations->markFrom($model);
+
+            if (str_starts_with($event, 'eloquent.deleted:')) {
+                $invalidations->markCascade($model);
             }
         });
 

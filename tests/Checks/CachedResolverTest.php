@@ -8,6 +8,7 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\Resolver;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
+use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\BarePivot;
@@ -421,4 +422,36 @@ it('invalidates cached checks through a pivot model warden does not own', functi
     $this->user->permissions()->detach($permission);
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
+});
+
+it('invalidates cached checks in the tenants a cascade reached', function (): void {
+    $this->warden->tenant()->to(5);
+    $this->warden->allow($this->user)->to('edit-site');
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
+
+    // The catalog row is global, so it is deleted from outside the tenant —
+    // and the foreign key takes tenant 5's grant with it.
+    $this->warden->tenant()->remove();
+    Permission::query()->withoutGlobalScopes()->where('name', 'edit-site')->sole()->delete();
+
+    $this->warden->tenant()->to(5);
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
+});
+
+it('sweeps the grants a deleted role held, which no foreign key reaches', function (): void {
+    $this->warden->allow('editor')->to('edit-site');
+
+    $role = Role::query()->where('name', 'editor')->sole();
+    $held = fn (): int => Grant::query()->withoutGlobalScopes()
+        ->where('entity_type', $role->getMorphClass())
+        ->where('entity_id', $role->getKey())
+        ->count();
+
+    expect($held())->toBe(1);
+
+    $role->delete();
+
+    expect($held())->toBe(0);
 });
