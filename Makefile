@@ -1,7 +1,7 @@
 DC = docker compose
 PHP = $(DC) run --rm php
 
-.PHONY: build install update test test-cached coverage types stan lint lint-fix rector rector-fix mutation ci shell test-dbs
+.PHONY: build install update test test-cached coverage types stan lint lint-fix rector rector-fix mutation ci shell test-dbs release-check
 
 build: ## Build the dev image
 	$(DC) build php
@@ -58,3 +58,7 @@ test-dbs: ## Suite against MySQL & Postgres (waits for healthchecks)
 	$(DC) up -d --wait mysql postgres
 	$(PHP) sh -c "DB_CONNECTION=mysql DB_HOST=mysql DB_PORT=3306 DB_USERNAME=root DB_PASSWORD=secret DB_DATABASE=warden vendor/bin/pest --ci"
 	$(PHP) sh -c "DB_CONNECTION=pgsql DB_HOST=postgres DB_PORT=5432 DB_USERNAME=postgres DB_PASSWORD=secret DB_DATABASE=warden vendor/bin/pest --ci"
+
+release-check: ## Everything a tag must pass: ci plus both real engines
+	$(MAKE) ci
+	$(MAKE) test-dbs
