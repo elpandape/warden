@@ -3,6 +3,57 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v2.0.0 — Identity, and rules that mean what they say (2026-08-25)
+
+The catalog tuple becomes a constraint instead of a convention, a narrowing chain edits its
+rule instead of stacking one beside it, and several defaults that used to widen silently now
+refuse. **Read the breaking changes before upgrading: an install carrying duplicate catalog
+rows cannot migrate until it resolves them.**
+
+### Breaking
+
+- **`permissions` gains a unique index** over the name and a key carrying the rest of the
+  identifying tuple. Resolve duplicates first with `warden:clean --duplicates`, which splits
+  candidates in PHP because the options identity is defined there, re-points the losers'
+  grants, and drops any that would collide. The migration fails rather than resolving them
+  silently.
+- **A second `where()` on the same concession replaces the condition** instead of adding a
+  second rule whose union authorises both.
+- **A `where()` after a vetoed call throws.** The chain is forgotten when a call writes
+  nothing, rather than staying aimed at whatever it named before.
+- **`findPermission()` identifies by the tuple** and throws on an ambiguous name instead of
+  returning whichever row came first. It takes the entity and ownership shape.
+- **`disallow()` and `unforbid()` by name no longer remove constrained twins.** A twin is a
+  different rule; name it with its model to reach it, which the ownership variant now accepts.
+- **An unrecognised `warden.scope.null_behavior` throws** rather than reading as `all`.
+- **`retract()->on()` rejects an unsaved or keyless context**, as assigning already did.
+- **Generated titles split camel case**, so `viewAny` reads `View any`.
+- **The fake no longer answers entity-scoped checks with entity-less rules.**
+
+### Fixed
+
+- A duplicate catalog row widened a grant: re-pointing one row left the other's unconstrained
+  grant passing and the narrowing condition silently discarded.
+- The sync sweep deleted grants it could never have declared, because a name resolves to the
+  plain row while the sweep reached every shape.
+- A failure midway through a narrowing chain left the concession deleted and unreplaced. It
+  now runs in a transaction.
+- An empty group turned an unconstrained grant into a constrained one no class-level check
+  could match.
+- Morph aliases are registered from an in-code default, so a published config that dropped the
+  key stops orphaning every stored row.
+
+### Added
+
+- `warden:clean --duplicates` collapses catalog rows that identify the same permission.
+
+### Known limitation
+
+Relation writes — `detach()`, `sync()`, `toggle()` on `roles()` and `permissions()` — still
+ignore the tenant filter, because Laravel rebuilds their query from conditions a raw predicate
+never reaches. Both routes to fixing it were tried and reverted: see warden-001. Use the fluent
+verbs, which target one exact scope.
+
 ## v1.3.0 — Conditions that cannot fire (2026-08-25)
 
 ### Fixed
