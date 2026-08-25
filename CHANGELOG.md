@@ -3,6 +3,30 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v1.3.0 — Conditions that cannot fire (2026-08-25)
+
+### Fixed
+
+- An entity-less constrained forbid now blocks instead of abstaining, matching the branch
+  beside it. The README's "a constrained grant never matches instance-less checks" speaks
+  only of grants, so the forbid side was undocumented fail-open behaviour.
+
+### Changed
+
+- **Constraining a permission with no entity now throws.** It used to succeed and write a
+  row that could never match, leaving the holder with strictly less than omitting the
+  condition would have. Code that did this was already getting nothing; it now finds out
+  at the call site.
+
+### Documentation
+
+- The query trait is required: without it, `Model::whereCan()` never reaches Warden and
+  Laravel reads it as a dynamic `where` against a column named `can`.
+- Both pivot relations return granted and forbidden rows mixed, with the filter to read
+  one side.
+- Titles are generated once, on creation, and only when none was given.
+- Role assignments are one hop: warden has no role hierarchy.
+
 ## v1.2.0 — One reading doctrine (2026-08-25)
 
 ### Fixed
