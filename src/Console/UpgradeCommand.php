@@ -129,7 +129,7 @@ final class UpgradeCommand extends Command
         $warden->refresh();
 
         $this->components->info('Upgrade complete. Review indexes if you tuned them, then run your test suite.');
-        $this->components->info('Update code imports with the Rector set: see UPGRADE.md.');
+        $this->components->info('Update code imports with the Rector set: see MIGRATING-FROM-BOUNCER.md.');
 
         return self::SUCCESS;
     }

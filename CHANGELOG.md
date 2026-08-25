@@ -23,7 +23,7 @@ upgrading: an install carrying duplicate catalog rows cannot migrate until it re
   (`vendor:publish --tag=warden-migrations-v2`), which adds the column, computes the key for
   every row, and stops before the index if rows still identify the same permission — resolve
   those with `warden:clean --duplicates` and run it again. It fails rather than picking a
-  winner silently. See [UPGRADE.md](UPGRADE.md#from-warden-1x-to-20).
+  winner silently. See [UPGRADE.md](UPGRADE.md#from-1x-to-20).
 - **A second `where()` on the same concession replaces the condition** instead of adding a
   second rule whose union authorises both.
 - **A `where()` after a vetoed call throws.** The chain is forgotten when a call writes
@@ -70,7 +70,8 @@ upgrading: an install carrying duplicate catalog rows cannot migrate until it re
   the database engine uses — `Context::isOwnedBy()`, the constraint group,
   `Tenancy::readFilter()` — and a parity suite asserts the fake and the engine return the same
   verdict across the shapes a rule can take.
-- UPGRADE.md now covers warden 1.x → 2.0 beside the silber/bouncer path.
+- UPGRADE.md now carries the version-to-version guide, and the silber/bouncer migration
+  moves to MIGRATING-FROM-BOUNCER.md.
 
 ## v1.3.0 — Conditions that cannot fire (2026-08-25)
 
@@ -248,7 +249,7 @@ raising.
 
 Migrating from `silber/bouncer` is unaffected: `warden:upgrade` and
 `stubs/rector-silber-upgrade.php` target `elpandape/warden` directly — see
-[UPGRADE.md](UPGRADE.md).
+[MIGRATING-FROM-BOUNCER.md](MIGRATING-FROM-BOUNCER.md).
 
 
 ---
@@ -299,7 +300,7 @@ upgrade from the original.
   package's tracker kept receiving — authorizing another user, pivot-table
   ownership, a default role per new user, landlord/tenant databases, roles grouped
   by tenant, role replacement, and long-lived processes (tinker/Octane/queues).
-- UPGRADE.md states the scope of `bouncer:upgrade`: stable legacy schemas (>= 1.0);
+- MIGRATING-FROM-BOUNCER.md states the scope of `bouncer:upgrade`: stable legacy schemas (>= 1.0);
   ancient pre-1.0 rc schemas must migrate to upstream 1.0 first.
 
 ### Audit
@@ -355,7 +356,7 @@ upgrade from the original.
   (custom classes via `--role-morph`), never-evaluated legacy constraint blobs
   cleared to preserve real prior behavior, `--dry-run` report, atomic on
   Postgres/SQLite.
-- **[UPGRADE.md](UPGRADE.md)**: the full migration guide, equivalence tables, and a
+- **[MIGRATING-FROM-BOUNCER.md](MIGRATING-FROM-BOUNCER.md)**: the full migration guide, equivalence tables, and a
   ready-made Rector set (`stubs/rector-silber-upgrade.php`) that renames imports and
   calls in app code.
 - **Optional route middleware** (`bouncer.role:admin,editor` any-of,
