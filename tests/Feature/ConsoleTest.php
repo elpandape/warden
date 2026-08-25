@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
+use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
@@ -107,4 +108,36 @@ it('never publishes a duplicate migration on reinstall', function (): void {
     expect(glob($dir.'/migrations/*_create_warden_tables.php') ?: [])->toHaveCount(1);
 
     Illuminate\Support\Facades\File::deleteDirectory($dir);
+});
+
+it('leaves stranded grants alone unless asked to sweep them', function (): void {
+    $role = Role::query()->create(['name' => 'gone']);
+    app(Warden::class)->allow($role)->to('edit-site');
+
+    Role::query()->whereKey($role->getKey())->getQuery()->delete();
+
+    $stranded = fn (): int => Grant::query()->withoutGlobalScopes()
+        ->where('entity_type', $role->getMorphClass())
+        ->count();
+
+    expect($stranded())->toBe(1);
+
+    $this->artisan('warden:clean')->assertSuccessful();
+
+    expect($stranded())->toBe(1);
+
+    $this->artisan('warden:clean', ['--stranded' => true])->assertSuccessful();
+
+    expect($stranded())->toBe(0);
+});
+
+it('reports a morph alias no class maps to instead of deleting its grants', function (): void {
+    $role = Role::query()->create(['name' => 'gone']);
+    app(Warden::class)->allow($role)->to('edit-site');
+
+    Grant::query()->withoutGlobalScopes()->getQuery()->update(['entity_type' => 'nothing.maps.here']);
+
+    $this->artisan('warden:clean', ['--stranded' => true])->assertSuccessful();
+
+    expect(Grant::query()->withoutGlobalScopes()->count())->toBe(1);
 });

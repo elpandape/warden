@@ -5,11 +5,19 @@ declare(strict_types=1);
 namespace ElPandaPe\Warden\Checks\Resolvers;
 
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Contracts\ActorResolver;
+use ElPandaPe\Warden\Events\PermissionRevoked;
+use ElPandaPe\Warden\Events\PermissionUnforbidden;
+use ElPandaPe\Warden\Support\Config;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Event;
 
 /**
- * Decides when the cache counter moves. CacheKeyVersioner is the only thing
- * that moves it; every write path announces through here.
+ * What happens when rows change outside the fluent actions: the counter moves,
+ * and the writes nobody performed get announced. CacheKeyVersioner is still the
+ * only thing that touches the counter.
  */
 final class CacheInvalidations
 {
@@ -20,6 +28,9 @@ final class CacheInvalidations
 
     /** @var array<int, list<int|string|null>> */
     private array $cascading = [];
+
+    /** @var array<int, list<array{string|null, int|string|null, bool, int|string|null}>> */
+    private array $doomed = [];
 
     public function __construct(private readonly CacheKeyVersioner $versioner) {}
 
@@ -104,6 +115,10 @@ final class CacheInvalidations
             return; // @codeCoverageIgnore
         }
 
+        if ($model::class === $context->permissionClass()) {
+            $this->doomed[spl_object_id($model)] = $this->grantsPointingAt($key);
+        }
+
         $scopes = match ($model::class) {
             $context->permissionClass() => $this->scopesOf($context->grantClass(), 'permission_id', $key),
             $context->roleClass() => [
@@ -132,7 +147,67 @@ final class CacheInvalidations
 
         unset($this->cascading[$id]);
 
+        $this->announceCascade($model, $this->doomed[$id] ?? []);
+        unset($this->doomed[$id]);
+
         $this->sweepStrandedGrants($model);
+    }
+
+    /**
+     * @return list<array{string|null, int|string|null, bool, int|string|null}>
+     */
+    private function grantsPointingAt(int|string $permissionKey): array
+    {
+        $rows = Context::resolve()->grantClass()::query()
+            ->withoutGlobalScopes()
+            ->getQuery()
+            ->where('permission_id', $permissionKey)
+            ->get(['entity_type', 'entity_id', 'forbidden', 'scope']);
+
+        /** @var list<array{string|null, int|string|null, bool, int|string|null}> $grants */
+        $grants = $rows->map(fn (object $row): array => [
+            is_string($row->entity_type) ? $row->entity_type : null,
+            is_int($row->entity_id) || is_string($row->entity_id) ? $row->entity_id : null,
+            (bool) $row->forbidden,
+            is_int($row->scope) || is_string($row->scope) ? $row->scope : null,
+        ])->values()->all();
+
+        return $grants;
+    }
+
+    /**
+     * The cascade removed grants nobody asked to remove: say so, with the
+     * payload shape the write paths already publish.
+     *
+     * @param  list<array{string|null, int|string|null, bool, int|string|null}>  $grants
+     */
+    private function announceCascade(Model $model, array $grants): void
+    {
+        if ($grants === [] || ! Config::eventsEnabled()) {
+            return;
+        }
+
+        $actor = app(ActorResolver::class)->resolve();
+        $permissions = new Collection([$model]);
+
+        foreach ($grants as [$type, $id, $forbidden, $scope]) {
+            $authority = $this->hydrate($type, $id);
+
+            Event::dispatch($forbidden
+                ? new PermissionUnforbidden($authority, $permissions, $scope, $actor)
+                : new PermissionRevoked($authority, $permissions, $scope, $actor));
+        }
+    }
+
+    private function hydrate(?string $type, int|string|null $id): ?Model
+    {
+        if ($type === null || $id === null) {
+            return null;
+        }
+
+        $class = Relation::getMorphedModel($type) ?? $type;
+
+        return is_subclass_of($class, Model::class) ? $class::query()->find($id) : null;
     }
 
     /**

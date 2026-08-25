@@ -10,7 +10,9 @@ use Illuminate\Console\Command;
 
 final class CleanCommand extends Command
 {
-    protected $signature = 'warden:clean {--dry-run : Report what would be deleted without deleting}';
+    protected $signature = 'warden:clean
+        {--dry-run : Report what would be deleted without deleting}
+        {--stranded : Also delete grants whose authority row is gone}';
 
     protected $description = 'Delete unused permissions: catalog rows no grant points at';
 
@@ -50,10 +52,58 @@ final class CleanCommand extends Command
             },
         );
 
+        $stranded = (bool) $this->option('stranded') ? $this->sweepStranded($context) : 0;
+
         $warden->refresh();
 
         $this->components->info("Deleted {$deleted} unused permission(s).");
 
+        if ((bool) $this->option('stranded')) {
+            $this->components->info("Deleted {$stranded} stranded grant(s).");
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Grants whose authority no longer exists: a role or user deleted outside
+     * warden leaves them behind, and no foreign key reaches a morph pair.
+     *
+     * An alias that maps to no class is reported, never deleted — the class may
+     * simply not be loaded in this process.
+     */
+    private function sweepStranded(Context $context): int
+    {
+        $grantModel = new ($context->grantClass());
+        $deleted = 0;
+
+        $types = $context->grantClass()::query()->withoutGlobalScopes()->getQuery()
+            ->whereNotNull('entity_type')->distinct()->pluck('entity_type');
+
+        foreach ($types as $type) {
+            if (! is_string($type)) {
+                continue; // @codeCoverageIgnore
+            }
+
+            $class = \Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel($type) ?? $type;
+
+            if (! is_subclass_of($class, \Illuminate\Database\Eloquent\Model::class)) {
+                $this->components->warn("Skipping [{$type}]: no class maps to it here.");
+
+                continue;
+            }
+
+            $authority = new $class;
+
+            $deleted += (int) $context->grantClass()::query()->withoutGlobalScopes()->getQuery()
+                ->where('entity_type', $type)
+                ->whereNotExists(function (\Illuminate\Database\Query\Builder $query) use ($authority, $grantModel): void {
+                    $query->from($authority->getTable())
+                        ->whereColumn($authority->getQualifiedKeyName(), $grantModel->qualifyColumn('entity_id'));
+                })
+                ->delete();
+        }
+
+        return $deleted;
     }
 }

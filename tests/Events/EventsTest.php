@@ -356,3 +356,26 @@ it('names the actor through a configured resolver', function (): void {
 
     Event::assertDispatched(PermissionGranted::class, fn (PermissionGranted $event): bool => $event->actor?->is($auditor) === true);
 });
+
+it('announces the grants a permission delete took with it', function (): void {
+    $this->warden->allow($this->user)->to('edit-site');
+
+    Event::fake(WARDEN_EVENTS);
+
+    Permission::query()->where('name', 'edit-site')->sole()->delete();
+
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($this->user) === true
+        && $event->permissions->sole()->getAttribute('name') === 'edit-site');
+});
+
+it('announces a cascaded forbid as unforbidden, and an everyone-grant with no authority', function (): void {
+    $this->warden->forbid($this->user)->to('publish');
+    $this->warden->allowEveryone()->to('publish');
+
+    Event::fake(WARDEN_EVENTS);
+
+    Permission::query()->where('name', 'publish')->sole()->delete();
+
+    Event::assertDispatched(PermissionUnforbidden::class, fn (PermissionUnforbidden $event): bool => $event->authority?->is($this->user) === true);
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => ! $event->authority instanceof Illuminate\Database\Eloquent\Model);
+});
