@@ -583,6 +583,21 @@ $fake->assertForbidden('delete');
 $fake->assertNothingChecked();
 ```
 
+A scripted rule answers for every authority unless you narrow it. Each verb below narrows the rule scripted just before it, so they chain:
+
+```php
+$fake->allow('publish')->for($editor);                  // this authority only
+$fake->allow('edit', Post::class)->owned();             // only what they own
+$fake->allow('edit', Post::class)->where('status', 'draft');
+$fake->allow('edit', Post::class)->whereColumn('author_id', 'id');
+$fake->allow('publish')->inScope(5);                    // only inside tenant 5
+$fake->allow('*', '*');                                 // everything, everywhere
+```
+
+Ownership, conditions and tenancy are decided by the same pieces the database engine uses, and a test suite asserts the fake and the engine answer alike across the shapes a rule can take. Narrowing before scripting a rule throws.
+
+> 📌 **The fake is not looser than the engine.** A rule with no entity answers entity-less checks only, a condition abstains where it has no instance to read, and an unscripted check abstains so your app's policies still decide. Where the fake cannot express something, it denies rather than granting.
+
 ### WithPermissions trait
 
 ```php

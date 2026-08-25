@@ -3,6 +3,24 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v2.1.0 — A fake that means what the engine means (2026-08-25)
+
+### Added
+
+- **The fake can express what a real rule expresses.** `for()` binds a rule to one authority,
+  `owned()` to what that authority owns, `where()` / `whereColumn()` to a condition, and
+  `inScope()` to a tenant. The `*` permission and the `*` entity now answer the way the
+  catalog's wildcard rows do.
+- Ownership, conditions and tenancy are decided by the same pieces the database engine uses —
+  `Context::isOwnedBy()`, the constraint group, `Tenancy::readFilter()` — and a parity suite
+  asserts the fake and the engine return the same verdict across the shapes a rule can take.
+
+### Fixed
+
+- A scripted rule answered for every authority, so a fake could not say that the admin may
+  publish and the guest may not. It still does when no authority is named, which is the
+  documented default rather than an accident.
+
 ## v2.0.0 — Identity, and rules that mean what they say (2026-08-25)
 
 The catalog tuple becomes a constraint instead of a convention, a narrowing chain edits its
