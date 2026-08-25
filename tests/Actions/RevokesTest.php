@@ -83,3 +83,20 @@ it('revokes permissions given as models', function (): void {
 
     expect(Grant::query()->count())->toBe(0);
 });
+
+it('leaves a constrained twin alone when revoking by name', function (): void {
+    $secret = Account::query()->create(['name' => 'Secret'])->refresh();
+    $public = Account::query()->create(['name' => 'Public'])->refresh();
+
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $this->warden->forbid($this->user)->to('view', Account::class)->where('name', '=', 'Secret');
+
+    expect(Gate::forUser($this->user)->allows('view', $secret))->toBeFalse();
+
+    $this->warden->unforbid($this->user)->to('view', Account::class);
+
+    // A conditional prohibition is a different rule: lifting the plain one
+    // must not lift it too.
+    expect(Gate::forUser($this->user)->allows('view', $secret))->toBeFalse()
+        ->and(Gate::forUser($this->user)->allows('view', $public))->toBeTrue();
+});

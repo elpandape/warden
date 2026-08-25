@@ -76,9 +76,13 @@ trait ResolvesPermissions
             return $found;
         }
 
+        // A name identifies the plain row, never its constrained twins: a twin is
+        // a different rule, and removing it by name would lift a prohibition
+        // nobody asked to lift. Name the twin with its model to reach it.
         $query = $model::query()
             ->whereIn('name', $names)
-            ->where('only_owned', $onlyOwned);
+            ->where('only_owned', $onlyOwned)
+            ->whereNull('options');
 
         foreach ($this->entityAttributes($entity) as $column => $value) {
             $query->where($column, $value);

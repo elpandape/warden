@@ -10,6 +10,7 @@ use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\Plain;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -172,4 +173,20 @@ it('reports zero when a retract matched nothing at its write scope', function ()
 
     expect($this->warden->retract('editor')->from($this->user)->retractedCount())->toBe(0)
         ->and($this->user->fresh()?->isA('editor'))->toBeTrue();
+});
+
+it('sweeps only the grants a sync could have named', function (): void {
+    $post = Account::query()->create(['name' => 'Post'])->refresh();
+
+    $this->warden->allowEveryone()->to('delete', Account::class);
+    $this->warden->forbid($this->user)->to('delete', Account::class);
+    $this->warden->forbid($this->user)->to('publish');
+
+    expect(Gate::forUser($this->user)->allows('delete', $post))->toBeFalse();
+
+    // Names resolve to the plain rows only, so the sweep must not reach a
+    // denial it had no way to declare.
+    $this->warden->sync($this->user)->forbiddenPermissions(['publish']);
+
+    expect(Gate::forUser($this->user)->allows('delete', $post))->toBeFalse();
 });

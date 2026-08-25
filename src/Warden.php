@@ -208,15 +208,46 @@ final class Warden
     }
 
     /**
-     * Find a permission by name under the current tenant, or fail loudly.
-     * With entity-scoped shapes sharing a name, the first match is returned.
+     * Find a permission by the tuple that identifies it, or fail loudly.
+     *
+     * A name alone does not identify a row: the same name can exist plainly,
+     * over a class, over one record and as an ownership shape. Passing only a
+     * name therefore means the plain shape, and throws when the name is
+     * ambiguous rather than returning whichever row came first.
      */
-    public function findPermission(string|\BackedEnum $name): Model
-    {
+    public function findPermission(
+        string|\BackedEnum $name,
+        Model|string|null $entity = null,
+        bool $onlyOwned = false,
+    ): Model {
         $permission = Context::resolve()->permissionClass();
+        $resolved = Name::of($name);
 
-        return $permission::query()->where('name', Name::of($name))->first()
-            ?? throw PermissionDoesNotExist::named(Name::of($name));
+        $query = $permission::query()->where('name', $resolved)->where('only_owned', $onlyOwned);
+
+        if ($entity === null) {
+            $query->whereNull('entity_type');
+        } elseif ($entity === '*') {
+            $query->where('entity_type', '*');
+        } else {
+            $model = $entity instanceof Model ? $entity : new $entity;
+
+            if (! $model instanceof Model) {
+                throw PermissionDoesNotExist::named($resolved); // @codeCoverageIgnore
+            }
+
+            $query->where('entity_type', $model->getMorphClass());
+
+            $entity instanceof Model
+                ? $query->where('entity_id', $entity->getKey())
+                : $query->whereNull('entity_id');
+        }
+
+        $matches = $query->get();
+
+        return $matches->count() === 1
+            ? $matches->sole()
+            : throw PermissionDoesNotExist::named($resolved);
     }
 
     /**

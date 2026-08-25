@@ -42,7 +42,7 @@ class RevokesPermissions
      *
      * @param  string|array<int, mixed>|BackedEnum  $permissions
      */
-    public function toOwn(Model|string $entity, string|array|BackedEnum $permissions = '*'): static
+    public function toOwn(Model|string $entity, string|array|Model|BackedEnum $permissions = '*'): static
     {
         return $this->revoke($permissions, $entity, onlyOwned: true);
     }
@@ -50,7 +50,7 @@ class RevokesPermissions
     /**
      * @param  string|array<int, mixed>|BackedEnum  $permissions
      */
-    public function toOwnEverything(string|array|BackedEnum $permissions = '*'): static
+    public function toOwnEverything(string|array|Model|BackedEnum $permissions = '*'): static
     {
         return $this->toOwn('*', $permissions);
     }

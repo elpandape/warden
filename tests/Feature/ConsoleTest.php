@@ -141,3 +141,36 @@ it('reports a morph alias no class maps to instead of deleting its grants', func
 
     expect(Grant::query()->withoutGlobalScopes()->count())->toBe(1);
 });
+
+it('resolves duplicate catalog rows and re-points their grants', function (): void {
+    $warden = app(Warden::class);
+    $user = User::query()->create(['name' => 'Joseph']);
+    $other = User::query()->create(['name' => 'Ana']);
+
+    $warden->allow($user)->to('view');
+    $keeper = Permission::query()->sole();
+
+    // The duplicate the unique index now forbids, written the way an older
+    // install already has it: straight past the model.
+    $loserId = Permission::query()->getQuery()->insertGetId([
+        'name' => 'view', 'entity_type' => null, 'entity_id' => null,
+        'only_owned' => false, 'options' => null, 'scope' => null, 'identity_key' => 'stale',
+    ]);
+    Grant::query()->getQuery()->insert([
+        'permission_id' => $loserId, 'entity_type' => $other->getMorphClass(),
+        'entity_id' => $other->getKey(), 'forbidden' => false, 'scope' => null,
+    ]);
+
+    $this->artisan('warden:clean', ['--duplicates' => true])->assertSuccessful();
+
+    expect(Permission::query()->count())->toBe(1)
+        ->and(Grant::query()->where('permission_id', $keeper->getKey())->count())->toBe(2);
+});
+
+it('leaves a lone catalog row alone when collapsing duplicates', function (): void {
+    app(Warden::class)->allow(User::query()->create(['name' => 'Solo']))->to('view');
+
+    $this->artisan('warden:clean', ['--duplicates' => true])->assertSuccessful();
+
+    expect(Permission::query()->count())->toBe(1);
+});

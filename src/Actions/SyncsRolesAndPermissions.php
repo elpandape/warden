@@ -15,6 +15,7 @@ use ElPandaPe\Warden\Events\SyncResult;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Collection;
 
 class SyncsRolesAndPermissions
@@ -130,6 +131,8 @@ class SyncsRolesAndPermissions
             ->pluck('permission_id')
             ->all();
 
+        $permissionTable = (new ($context->permissionClass()))->getTable();
+
         $grantClass::query()
             ->withoutGlobalScope(TenantScope::class)
             ->where('entity_type', $authority->getMorphClass())
@@ -137,6 +140,15 @@ class SyncsRolesAndPermissions
             ->where('forbidden', $forbidden)
             ->where('scope', $scope)
             ->whereNotIn('permission_id', $keys)
+            // A name resolves to the plain row only, so the sweep reaches only
+            // what this call could have declared. An entity-scoped rule is not
+            // absent from the declaration: it was never expressible in it.
+            ->whereIn('permission_id', function (QueryBuilder $query) use ($permissionTable): void {
+                $query->select('id')->from($permissionTable)
+                    ->whereNull('entity_type')
+                    ->whereNull('options')
+                    ->where('only_owned', false);
+            })
             ->delete();
 
         foreach ($keys as $key) {

@@ -163,7 +163,7 @@ it('skips corrupt constraint candidates and blocks corrupt forbids', function ()
     expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0);
 });
 
-it('compiles nested groups and impossible authority columns', function (): void {
+it('compiles nested groups', function (): void {
     $match = Account::query()->create(['name' => 'X', 'user_id' => 5])->refresh();
     Account::query()->create(['name' => 'Y', 'user_id' => 5])->refresh();
 
@@ -175,9 +175,11 @@ it('compiles nested groups and impossible authority columns', function (): void 
 
     expect(Account::query()->whereCan($this->user, 'view')->pluck('id')->all())->toBe([$match->getKey()])
         ->and($this->user)->toQueryExactlyWhatItCanCheck('view');
+});
 
-    // An unreadable authority attribute compiles to an impossible condition.
-    $this->warden->disallow($this->user)->to('view', Account::class);
+it('compiles an unreadable authority column to an impossible condition', function (): void {
+    Account::query()->create(['name' => 'X', 'user_id' => 5])->refresh();
+
     $this->warden->allow($this->user)->to('view', Account::class)->whereColumn('user_id', 'missing_attr');
 
     expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0);

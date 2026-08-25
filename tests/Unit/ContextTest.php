@@ -3,7 +3,11 @@
 declare(strict_types=1);
 
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
+use ElPandaPe\Warden\Warden;
+
+use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
 it('resolves configured table names and falls back to the given name', function (): void {
     $context = Context::fromConfig(['tables' => ['roles' => 'custom_roles']]);
@@ -74,4 +78,43 @@ it('fails fast on empty configured table names', function (): void {
         ->not->toThrow(Exception::class)
         ->and(fn () => Context::resolve()->table('roles'))
         ->toThrow(ElPandaPe\Warden\Exceptions\ConfigurationException::class);
+});
+
+it('finds a permission by its tuple, not by name alone', function (): void {
+    migrateWardenTables();
+
+    $warden = app(Warden::class);
+    $user = User::query()->create(['name' => 'Joseph']);
+
+    $warden->allow($user)->to('view');
+    $warden->allow($user)->to('view', Account::class);
+
+    expect($warden->findPermission('view')->getAttribute('entity_type'))->toBeNull()
+        ->and($warden->findPermission('view', Account::class)->getAttribute('entity_type'))->toBe(Account::class);
+});
+
+it('refuses to guess when a name alone matches more than one shape', function (): void {
+    migrateWardenTables();
+
+    $warden = app(Warden::class);
+    $user = User::query()->create(['name' => 'Joseph']);
+
+    $warden->allow($user)->to('view', Account::class);
+
+    expect(fn (): mixed => $warden->findPermission('view'))
+        ->toThrow(ElPandaPe\Warden\Exceptions\PermissionDoesNotExist::class);
+});
+
+it('finds a permission pinned to one record, and the wildcard shape', function (): void {
+    migrateWardenTables();
+
+    $warden = app(Warden::class);
+    $user = User::query()->create(['name' => 'Joseph']);
+    $account = Account::query()->create(['name' => 'One'])->refresh();
+
+    $warden->allow($user)->to('view', $account);
+    $warden->allow($user)->to('audit', '*');
+
+    expect($warden->findPermission('view', $account)->getAttribute('entity_id'))->toBe($account->getKey())
+        ->and($warden->findPermission('audit', '*')->getAttribute('entity_type'))->toBe('*');
 });
