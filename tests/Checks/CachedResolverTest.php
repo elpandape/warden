@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 use ElPandaPe\Warden\Checks\Resolvers\CachedResolver;
 use ElPandaPe\Warden\Checks\Resolvers\CacheKeyVersioner;
+use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\Resolver;
 use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\BarePivot;
 use ElPandaPe\Warden\Tests\Fixtures\PlainCacheStore;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
@@ -206,7 +209,7 @@ it('falls back to a direct rebuild when the stampede lock times out', function (
 
     $resolver = new CachedResolver(
         app(Resolver::class),
-        ElPandaPe\Warden\Context::resolve(),
+        Context::resolve(),
         app(CacheKeyVersioner::class),
         lockWaitSeconds: 0,
     );
@@ -401,4 +404,21 @@ it('leaves the cache version alone when a write changes nothing', function (): v
     $this->warden->allow($this->user)->to('edit-site');
 
     expect(Cache::store('array')->get('warden:v:a'))->toBe($version);
+});
+
+it('invalidates cached checks through a pivot model warden does not own', function (): void {
+    config()->set('warden.models.grant', BarePivot::class);
+    app()->forgetInstance(Context::class);
+
+    $permission = Permission::query()->create(['name' => 'edit-site']);
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
+
+    $this->user->permissions()->attach($permission);
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
+
+    $this->user->permissions()->detach($permission);
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
 });

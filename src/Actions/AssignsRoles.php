@@ -69,50 +69,52 @@ class AssignsRoles
      */
     public function to(Model|array $authorities): static
     {
-        $this->assigned = true;
+        return $this->asOneWrite(function () use ($authorities): static {
+            $this->assigned = true;
 
-        $assignedRole = Context::resolve()->assignedRoleClass();
-        $targets = $this->normalizeAuthorities($authorities);
+            $assignedRole = Context::resolve()->assignedRoleClass();
+            $targets = $this->normalizeAuthorities($authorities);
 
-        // Assignments live in the exact current scope: lookup and creation agree.
-        $scope = app(Tenancy::class)->writeScope();
+            // Assignments live in the exact current scope: lookup and creation agree.
+            $scope = app(Tenancy::class)->writeScope();
 
-        if (! $this->eventPermits(new AssigningRole($this->roles, $targets, $scope, $this->restrictedTo))) {
-            return $this;
-        }
+            if (! $this->eventPermits(new AssigningRole($this->roles, $targets, $scope, $this->restrictedTo))) {
+                return $this;
+            }
 
-        $models = $this->resolveRoleModels($this->roles);
+            $models = $this->resolveRoleModels($this->roles);
 
-        $wrote = false;
+            $wrote = false;
 
-        foreach ($models as $role) {
-            $roleKey = $this->modelKey($role);
+            foreach ($models as $role) {
+                $roleKey = $this->modelKey($role);
+
+                foreach ($targets as $authority) {
+                    $assignment = $assignedRole::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
+                        'role_id' => $roleKey,
+                        'entity_type' => $authority->getMorphClass(),
+                        'entity_id' => $authority->getKey(),
+                        'restricted_to_type' => $this->restrictedTo?->getMorphClass(),
+                        'restricted_to_id' => $this->restrictedTo?->getKey(),
+                        'scope' => $scope,
+                    ]);
+
+                    $wrote = $wrote || $assignment->wasRecentlyCreated;
+                }
+            }
+
+            // A write that wrote nothing announces nothing, as removals already do.
+            if (! $wrote) {
+                return $this;
+            }
+
+            $this->bumpCacheVersion($scope);
 
             foreach ($targets as $authority) {
-                $assignment = $assignedRole::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
-                    'role_id' => $roleKey,
-                    'entity_type' => $authority->getMorphClass(),
-                    'entity_id' => $authority->getKey(),
-                    'restricted_to_type' => $this->restrictedTo?->getMorphClass(),
-                    'restricted_to_id' => $this->restrictedTo?->getKey(),
-                    'scope' => $scope,
-                ]);
-
-                $wrote = $wrote || $assignment->wasRecentlyCreated;
+                $this->dispatchWardenEvent(new RoleAssigned($authority, new Collection($models), $scope, $this->restrictedTo, $this->actor()));
             }
-        }
 
-        // A write that wrote nothing announces nothing, as removals already do.
-        if (! $wrote) {
             return $this;
-        }
-
-        $this->bumpCacheVersion($scope);
-
-        foreach ($targets as $authority) {
-            $this->dispatchWardenEvent(new RoleAssigned($authority, new Collection($models), $scope, $this->restrictedTo, $this->actor()));
-        }
-
-        return $this;
+        });
     }
 }

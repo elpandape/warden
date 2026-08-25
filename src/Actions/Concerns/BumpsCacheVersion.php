@@ -12,4 +12,18 @@ trait BumpsCacheVersion
     {
         app(CacheInvalidations::class)->mark($scope);
     }
+
+    /**
+     * One logical write: the action's own bump and the model hooks its rows
+     * fire describe the same thing, and coalesce to one.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $write
+     * @return T
+     */
+    private function asOneWrite(callable $write): mixed
+    {
+        return app(CacheInvalidations::class)->during($write);
+    }
 }

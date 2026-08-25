@@ -161,6 +161,10 @@ final class CachedResolver implements Resolver
      */
     private function build(Model $authority): array
     {
+        // Booleans are normalised where the tuple is built, not trusted from the
+        // model: grant and permission classes are swappable, the contract does
+        // not demand casts, and firstMatch() compares them strictly.
+
         $roleMorph = (new ($this->context->roleClass()))->getMorphClass();
         $authorityMorph = $authority->getMorphClass();
         $authorityKey = $authority->getKey();
@@ -242,7 +246,7 @@ final class CachedResolver implements Resolver
                     $contextId === null ? '' : (string) $contextId,
                 ]);
 
-                $pairs[$key] = [$grant->permission_id, $grant->forbidden, $contextType, $contextId];
+                $pairs[$key] = [$grant->permission_id, (bool) $grant->forbidden, $contextType, $contextId];
             }
         }
 
@@ -275,7 +279,7 @@ final class CachedResolver implements Resolver
                 'name' => $permission->name,
                 'entity_type' => $permission->entity_type,
                 'entity_id' => $permission->entity_id,
-                'only_owned' => $permission->only_owned,
+                'only_owned' => (bool) $permission->only_owned,
                 'forbidden' => $forbidden,
                 'options' => is_string($rawOptions) ? $rawOptions : null,
                 'restricted_to_type' => $contextType,

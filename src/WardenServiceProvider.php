@@ -99,6 +99,21 @@ final class WardenServiceProvider extends ServiceProvider
     {
         $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'warden');
 
+        // Listened for from outside the models: the pivot classes are swappable
+        // and warden's override contract asks only for a MorphPivot, so a trait
+        // on warden's own pivots would miss exactly the consumer who customised.
+        \Illuminate\Support\Facades\Event::listen([
+            'eloquent.created: *',
+            'eloquent.updated: *',
+            'eloquent.deleted: *',
+        ], function (string $event, array $payload): void {
+            $model = $payload[0] ?? null;
+
+            if ($model instanceof Model) {
+                $this->app->make(Checks\Resolvers\CacheInvalidations::class)->markFrom($model);
+            }
+        });
+
         // Optional borrowings, off by default: identity stays fluent-first.
         if (Config::registersMiddlewareAliases()) {
             $router = $this->app->make(\Illuminate\Routing\Router::class);

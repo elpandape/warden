@@ -72,69 +72,71 @@ class RetractsRoles
      */
     public function from(Model|array $authorities): static
     {
-        $this->retracted = true;
-        $this->retractedCount = 0;
-        $context = Context::resolve();
-        $roleClass = $context->roleClass();
-        $assignedRole = $context->assignedRoleClass();
+        return $this->asOneWrite(function () use ($authorities): static {
+            $this->retracted = true;
+            $this->retractedCount = 0;
+            $context = Context::resolve();
+            $roleClass = $context->roleClass();
+            $assignedRole = $context->assignedRoleClass();
 
-        $names = [];
-        /** @var list<Model> $models */
-        $models = [];
+            $names = [];
+            /** @var list<Model> $models */
+            $models = [];
 
-        foreach ($this->roles as $role) {
-            if ($role instanceof Model) {
-                $models[] = $this->assertModelOf($role, $roleClass, 'role');
-            } else {
-                $names[] = $role;
+            foreach ($this->roles as $role) {
+                if ($role instanceof Model) {
+                    $models[] = $this->assertModelOf($role, $roleClass, 'role');
+                } else {
+                    $names[] = $role;
+                }
             }
-        }
 
-        if ($names !== []) {
-            foreach ($roleClass::query()->whereIn('name', $names)->get() as $found) {
-                $models[] = $found;
+            if ($names !== []) {
+                foreach ($roleClass::query()->whereIn('name', $names)->get() as $found) {
+                    $models[] = $found;
+                }
             }
-        }
 
-        $keys = array_map($this->modelKey(...), $models);
+            $keys = array_map($this->modelKey(...), $models);
 
-        // Deletes target the exact write scope: global assignments survive tenant retracts.
-        $scope = app(Tenancy::class)->writeScope();
+            // Deletes target the exact write scope: global assignments survive tenant retracts.
+            $scope = app(Tenancy::class)->writeScope();
 
-        $targets = $this->normalizeAuthorities($authorities);
+            $targets = $this->normalizeAuthorities($authorities);
 
-        if (! $this->eventPermits(new RetractingRole($this->roles, $targets, $scope, $this->restrictedTo))) {
+            if (! $this->eventPermits(new RetractingRole($this->roles, $targets, $scope, $this->restrictedTo))) {
+                return $this;
+            }
+
+            foreach ($targets as $authority) {
+                /** @var int $deleted */
+                $deleted = $assignedRole::query()
+                    ->withoutGlobalScope(TenantScope::class)
+                    ->whereIn('role_id', $keys)
+                    ->where('entity_type', $authority->getMorphClass())
+                    ->where('entity_id', $authority->getKey())
+                    ->where('scope', $scope)
+                    ->when(
+                        $this->restrictedTo instanceof Model,
+                        /** @param Builder<Model> $query */
+                        function (Builder $query): void {
+                            $query->where('restricted_to_type', $this->restrictedTo?->getMorphClass())
+                                ->where('restricted_to_id', $this->restrictedTo?->getKey());
+                        },
+                    )
+                    ->delete();
+
+                $this->retractedCount += $deleted;
+
+                if ($deleted > 0) {
+                    $this->bumpCacheVersion($scope);
+                    $this->dispatchWardenEvent(
+                        new RoleRetracted($authority, new Collection($models), $scope, $this->restrictedTo, $this->actor()),
+                    );
+                }
+            }
+
             return $this;
-        }
-
-        foreach ($targets as $authority) {
-            /** @var int $deleted */
-            $deleted = $assignedRole::query()
-                ->withoutGlobalScope(TenantScope::class)
-                ->whereIn('role_id', $keys)
-                ->where('entity_type', $authority->getMorphClass())
-                ->where('entity_id', $authority->getKey())
-                ->where('scope', $scope)
-                ->when(
-                    $this->restrictedTo instanceof Model,
-                    /** @param Builder<Model> $query */
-                    function (Builder $query): void {
-                        $query->where('restricted_to_type', $this->restrictedTo?->getMorphClass())
-                            ->where('restricted_to_id', $this->restrictedTo?->getKey());
-                    },
-                )
-                ->delete();
-
-            $this->retractedCount += $deleted;
-
-            if ($deleted > 0) {
-                $this->bumpCacheVersion($scope);
-                $this->dispatchWardenEvent(
-                    new RoleRetracted($authority, new Collection($models), $scope, $this->restrictedTo, $this->actor()),
-                );
-            }
-        }
-
-        return $this;
+        });
     }
 }

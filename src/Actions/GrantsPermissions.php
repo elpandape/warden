@@ -135,51 +135,53 @@ class GrantsPermissions
      */
     protected function grant(array $permissions): void
     {
-        $context = Context::resolve();
-        $grantClass = $context->grantClass();
-        $authority = $this->authority === null
-            ? null
-            : $this->resolveAuthority($this->authority, createRole: true);
+        $this->asOneWrite(function () use ($permissions): void {
+            $context = Context::resolve();
+            $grantClass = $context->grantClass();
+            $authority = $this->authority === null
+                ? null
+                : $this->resolveAuthority($this->authority, createRole: true);
 
-        // Writes target one exact scope; role grants may stay global by configuration.
-        // The unscoped lookup keeps a same-named row in another scope from absorbing it.
-        $scope = app(Tenancy::class)->writeScope(
-            forRoleGrant: $authority instanceof ($context->roleClass()),
-        );
+            // Writes target one exact scope; role grants may stay global by configuration.
+            // The unscoped lookup keeps a same-named row in another scope from absorbing it.
+            $scope = app(Tenancy::class)->writeScope(
+                forRoleGrant: $authority instanceof ($context->roleClass()),
+            );
 
-        $wrote = false;
+            $wrote = false;
 
-        foreach ($permissions as $permission) {
-            // firstOrCreate self-heals concurrent races via createOrFirst on Laravel 12+.
-            $grant = $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
-                'permission_id' => $this->modelKey($permission),
-                'entity_type' => $authority?->getMorphClass(),
-                'entity_id' => $authority?->getKey(),
-                'forbidden' => $this->forbidding,
-                'scope' => $scope,
-            ]);
+            foreach ($permissions as $permission) {
+                // firstOrCreate self-heals concurrent races via createOrFirst on Laravel 12+.
+                $grant = $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
+                    'permission_id' => $this->modelKey($permission),
+                    'entity_type' => $authority?->getMorphClass(),
+                    'entity_id' => $authority?->getKey(),
+                    'forbidden' => $this->forbidding,
+                    'scope' => $scope,
+                ]);
 
-            $wrote = $wrote || $grant->wasRecentlyCreated;
-        }
+                $wrote = $wrote || $grant->wasRecentlyCreated;
+            }
 
-        // Remembered so a fluent where() can refine this exact concession;
-        // a fresh to() starts a fresh constraint set.
-        $this->lastGranted = $permissions;
-        $this->lastAuthority = $authority;
-        $this->lastScope = $scope;
-        $this->constraints = null;
+            // Remembered so a fluent where() can refine this exact concession;
+            // a fresh to() starts a fresh constraint set.
+            $this->lastGranted = $permissions;
+            $this->lastAuthority = $authority;
+            $this->lastScope = $scope;
+            $this->constraints = null;
 
-        // A write that wrote nothing announces nothing, as removals already
-        // do. The chain state above still moves, so where() can refine it.
-        if (! $wrote) {
-            return;
-        }
+            // A write that wrote nothing announces nothing, as removals already
+            // do. The chain state above still moves, so where() can refine it.
+            if (! $wrote) {
+                return;
+            }
 
-        $this->bumpCacheVersion($scope);
+            $this->bumpCacheVersion($scope);
 
-        $this->dispatchWardenEvent($this->forbidding
-            ? new PermissionForbidden($authority, new Collection($permissions), $scope, $this->actor())
-            : new PermissionGranted($authority, new Collection($permissions), $scope, $this->actor()));
+            $this->dispatchWardenEvent($this->forbidding
+                ? new PermissionForbidden($authority, new Collection($permissions), $scope, $this->actor())
+                : new PermissionGranted($authority, new Collection($permissions), $scope, $this->actor()));
+        });
     }
 
     /**
