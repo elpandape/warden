@@ -91,3 +91,13 @@ it('arranges real permissions through the testing trait', function (): void {
         ->and(Gate::forUser($this->user)->allows('view', $account))->toBeFalse()
         ->and($this->user->isAn('admin'))->toBeTrue();
 });
+
+it('does not answer an entity-scoped check with a rule that named no entity', function (): void {
+    $fake = $this->warden->fake();
+    $fake->allow('edit');
+
+    // Warden's own matrix: a permission with no entity answers instance-less
+    // checks only. The fake must not be looser than the thing it fakes.
+    expect(Gate::forUser($this->user)->allows('edit'))->toBeTrue()
+        ->and(Gate::forUser($this->user)->allows('edit', Account::class))->toBeFalse();
+});

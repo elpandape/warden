@@ -29,7 +29,7 @@ final class PermissionTitle
 
     private static function action(string $name): string
     {
-        return $name === '*' ? 'Manage' : Str::ucfirst(str_replace(['-', '_'], ' ', $name));
+        return $name === '*' ? 'Manage' : Str::ucfirst(str_replace(['-', '_'], ' ', Str::snake($name, ' ')));
     }
 
     private static function entity(string $entityType): string

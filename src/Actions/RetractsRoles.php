@@ -50,6 +50,18 @@ class RetractsRoles
             throw new ConfigurationException('Call on() before from(): retractions execute immediately.');
         }
 
+        // The same contract the assigning side keeps: an unsaved context cannot
+        // match a stored restriction, so accepting it only deletes nothing.
+        if (! $context->exists) {
+            throw new ConfigurationException('The restriction context must be a saved model.');
+        }
+
+        $key = $context->getKey();
+
+        if (! is_int($key) && ! is_string($key)) {
+            throw new ConfigurationException('The restriction context must have a usable key.');
+        }
+
         $this->restrictedTo = $context;
 
         return $this;

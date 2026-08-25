@@ -10,6 +10,6 @@ final class RoleTitle
 {
     public static function generate(string $name): string
     {
-        return Str::ucfirst(str_replace(['-', '_'], ' ', $name));
+        return Str::ucfirst(str_replace(['-', '_'], ' ', Str::snake($name, ' ')));
     }
 }

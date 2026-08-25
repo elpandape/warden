@@ -438,3 +438,18 @@ it('ignores an empty nested group instead of turning a grant into a constrained 
     // class-level check can still match.
     expect(Gate::forUser($this->user)->allows('view', Account::class))->toBeTrue();
 });
+
+it('refuses a group carrying the unimplemented negation instead of reading it as and', function (): void {
+    $account = Account::query()->create(['name' => 'X'])->refresh();
+
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', '=', 'X');
+
+    // A stored NOT is undecidable: the serializer already refuses it, and the
+    // evaluators must agree rather than quietly meaning AND.
+    Permission::query()->whereNotNull('options')->update([
+        'options' => json_encode(['v' => 1, 'g' => ['t' => 'group', 'i' => [['not', ['t' => 'value', 'c' => 'name', 'o' => '=', 'v' => 'X']]]]]),
+    ]);
+    $this->warden->refresh();
+
+    expect(Gate::forUser($this->user)->allows('view', $account))->toBeFalse();
+});

@@ -196,20 +196,22 @@ final class WardenServiceProvider extends ServiceProvider
         $aliases = $config->get('warden.morph_aliases');
         $models = $config->get('warden.models');
 
+        // The alias carries the same in-code default the model already has: a
+        // published config that dropped the key used to skip registration
+        // entirely, and every stored row then pointed at a name nothing mapped.
         $defaults = [
-            'permission' => Models\Permission::class,
-            'role' => Models\Role::class,
+            'permission' => ['alias' => 'warden.permission', 'model' => Models\Permission::class],
+            'role' => ['alias' => 'warden.role', 'model' => Models\Role::class],
         ];
 
         foreach ($defaults as $key => $default) {
-            $alias = is_array($aliases) ? ($aliases[$key] ?? null) : null;
+            $configured = is_array($aliases) ? ($aliases[$key] ?? null) : null;
+            $alias = is_string($configured) ? $configured : $default['alias'];
             $model = is_array($models) ? ($models[$key] ?? null) : null;
 
-            if (is_string($alias)) {
-                Relation::morphMap([
-                    $alias => is_string($model) && is_subclass_of($model, Model::class) ? $model : $default,
-                ]);
-            }
+            Relation::morphMap([
+                $alias => is_string($model) && is_subclass_of($model, Model::class) ? $model : $default['model'],
+            ]);
         }
     }
 }

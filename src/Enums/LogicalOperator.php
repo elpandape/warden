@@ -10,6 +10,10 @@ enum LogicalOperator: string
 {
     case And = 'and';
     case Or = 'or';
+    /**
+     * Reserved and unimplemented. The serializer refuses any payload carrying
+     * it, so a stored Not fails closed rather than quietly meaning And.
+     */
     case Not = 'not';
 
     public function combine(bool $carry, bool $operand): bool

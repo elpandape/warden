@@ -37,14 +37,15 @@ it('reads titles.autogenerate', function (): void {
     expect(Config::titlesAutogenerate())->toBeFalse();
 });
 
-it('normalizes scope.null_behavior to all or strict', function (): void {
+it('reads scope.null_behavior and refuses anything else', function (): void {
     expect(Config::scopeNullBehavior())->toBe('all');
 
     config()->set('warden.scope.null_behavior', 'strict');
     expect(Config::scopeNullBehavior())->toBe('strict');
 
     config()->set('warden.scope.null_behavior', 'nonsense');
-    expect(Config::scopeNullBehavior())->toBe('all');
+    expect(fn (): string => Config::scopeNullBehavior())
+        ->toThrow(ElPandaPe\Warden\Exceptions\ConfigurationException::class);
 });
 
 it('reads ownership.strict_mode_safe', function (): void {
@@ -72,4 +73,14 @@ it('reads octane.register_reset_listener', function (): void {
     config()->set('warden.octane.register_reset_listener', false);
 
     expect(Config::registersOctaneResetListener())->toBeFalse();
+});
+
+it('registers the morph aliases even when the published config dropped them', function (): void {
+    Illuminate\Database\Eloquent\Relations\Relation::morphMap([], merge: false);
+    config()->set('warden.morph_aliases', []);
+
+    app()->register(ElPandaPe\Warden\WardenServiceProvider::class, force: true);
+
+    expect(Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel('warden.role'))
+        ->toBe(ElPandaPe\Warden\Models\Role::class);
 });

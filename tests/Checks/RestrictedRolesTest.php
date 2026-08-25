@@ -244,6 +244,13 @@ it('rejects restriction contexts without a usable key', function (): void {
     $this->warden->assign('editor')->on($keyless);
 })->throws(ConfigurationException::class, 'usable key');
 
+it('rejects an unusable key when retracting too', function (): void {
+    $keyless = ElPandaPe\Warden\Tests\Fixtures\KeylessAccount::query()
+        ->create(['name' => 'Ghost']);
+
+    $this->warden->retract('editor')->on($keyless);
+})->throws(ConfigurationException::class, 'usable key');
+
 it('leaves restricted assignments alone when syncing roles', function (): void {
     $this->warden->assign('editor')->on($this->orgOne)->to($this->user);
 
@@ -266,4 +273,9 @@ it('exposes how a restriction resolves for a context class', function (): void {
 
     expect($context->restrictionResolverFor(Account::class))->toBe('account_id')
         ->and($context->restrictionResolverFor('warden.role'))->toBe('role_id');
+});
+
+it('refuses an unsaved context when retracting, as assigning already does', function (): void {
+    expect(fn (): mixed => $this->warden->retract('editor')->on(new Account)->from($this->user))
+        ->toThrow(ConfigurationException::class);
 });

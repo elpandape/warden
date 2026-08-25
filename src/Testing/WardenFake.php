@@ -131,8 +131,11 @@ final class WardenFake implements Resolver
 
     private function entityMatches(?string $ruleEntity, Model|string|null $entity): bool
     {
+        // Warden's own matrix: a rule with no entity answers instance-less
+        // checks only. A fake that is looser than the thing it fakes lets a
+        // test pass where production denies.
         if ($ruleEntity === null) {
-            return true;
+            return $entity === null;
         }
 
         if ($entity instanceof Model) {

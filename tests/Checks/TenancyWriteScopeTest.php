@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;

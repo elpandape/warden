@@ -118,3 +118,19 @@ it('finds a permission pinned to one record, and the wildcard shape', function (
     expect($warden->findPermission('view', $account)->getAttribute('entity_id'))->toBe($account->getKey())
         ->and($warden->findPermission('audit', '*')->getAttribute('entity_type'))->toBe('*');
 });
+
+it('refuses a null_behavior it does not recognise instead of silently widening', function (): void {
+    config()->set('warden.scope.null_behavior', 'strict-ish');
+
+    expect(fn (): mixed => ElPandaPe\Warden\Support\Config::scopeNullBehavior())
+        ->toThrow(ElPandaPe\Warden\Exceptions\ConfigurationException::class);
+});
+
+it('splits camel case when generating a title', function (): void {
+    $title = fn (string $name): string => ElPandaPe\Warden\Support\Titles\PermissionTitle::generate(
+        name: $name, entityType: null, entityId: null, onlyOwned: false,
+    );
+
+    expect($title('viewAny'))->toBe('View any')
+        ->and($title('ban-users'))->toBe('Ban users');
+});

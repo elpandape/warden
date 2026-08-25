@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElPandaPe\Warden\Support;
 
 use ElPandaPe\Warden\Enums\GateSlot;
+use ElPandaPe\Warden\Exceptions\ConfigurationException;
 
 final class Config
 {
@@ -44,7 +45,15 @@ final class Config
     {
         $value = config('warden.scope.null_behavior', 'all');
 
-        return $value === 'strict' ? 'strict' : 'all';
+        // Anything unrecognised used to read as 'all', which is the widening
+        // direction: a typo silently opened reads across every tenant.
+        if ($value !== 'all' && $value !== 'strict') {
+            throw new ConfigurationException(
+                'Unknown warden.scope.null_behavior ['.get_debug_type($value)."]: expected 'all' or 'strict'.",
+            );
+        }
+
+        return $value;
     }
 
     public static function ownershipStrictModeSafe(): bool
