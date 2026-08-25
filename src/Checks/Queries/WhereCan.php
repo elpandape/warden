@@ -308,9 +308,8 @@ final readonly class WhereCan
         }
 
         if ($constraint instanceof ValueConstraint) {
-            // The strict comparator matches a boolean only through a boolean
-            // cast, and only a boolean through one. Either mismatch can never
-            // match in memory, so neither may let the engine coerce in SQL.
+            // The strict comparator never matches across a cast mismatch, so
+            // neither direction may let the engine coerce it in SQL.
             if (is_bool($constraint->value) !== $model->hasCast($constraint->column, ['bool', 'boolean'])) {
                 return $query->whereIn($model->getQualifiedKeyName(), []);
             }
@@ -334,18 +333,14 @@ final readonly class WhereCan
     }
 
     /**
-     * The ownership attribute for this model, or null when a closure decides.
-     */
-    /**
      * The column ownership compiles to, or null when it cannot become SQL.
-     *
-     * A closure cannot, and neither can an attribute the table does not have:
-     * the resolver falls back to a default name for every model, registered or
-     * not, so emitting it unchecked turns a misconfiguration into a driver
-     * error where can() merely denies.
      */
     private function ownershipAttribute(Model $model): ?string
     {
+        if (! $this->context->resolvesOwnershipFor($model)) {
+            return null;
+        }
+
         $resolver = $this->context->ownershipResolverFor($model);
 
         if (! is_string($resolver)) {
@@ -357,8 +352,6 @@ final readonly class WhereCan
 
     private function hasColumn(Model $model, string $column): bool
     {
-        // Memoised for the hot path. A schema does not change within a process,
-        // so unlike request-scoped state this one is safe to keep.
         /** @var array<string, bool> $columns */
         static $columns = [];
 

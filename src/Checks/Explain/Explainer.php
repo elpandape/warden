@@ -33,8 +33,6 @@ final readonly class Explainer
                 return new AuthorizationExplanation($verdict, Cause::NotApplicable);
             }
 
-            // A row whose condition failed is a different diagnosis from no row
-            // at all, and it can be named.
             $rejected = $verdict->permission;
 
             return new AuthorizationExplanation(
@@ -44,8 +42,7 @@ final readonly class Explainer
             );
         }
 
-        // The row the resolver just decided on: re-reading it by key would
-        // return the same row it already matched, one query later.
+        // Re-reading it by key would return the row it already matched.
         $decisive = $verdict->permission;
 
         [$cause, $role] = $this->source($authority, $verdict, $entity);

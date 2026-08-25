@@ -102,8 +102,7 @@ class AssignsRoles
             }
         }
 
-        // Removals already guard on their delete count: a write that wrote
-        // nothing announces nothing either.
+        // A write that wrote nothing announces nothing, as removals already do.
         if (! $wrote) {
             return $this;
         }

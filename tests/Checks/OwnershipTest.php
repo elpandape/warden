@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
@@ -110,4 +111,31 @@ it('returns not-owned quietly for recently created models even when opted out', 
     $this->warden->allow($this->user)->toOwnEverything();
 
     expect(Gate::forUser($this->user)->allows('edit', $other))->toBeFalse();
+});
+
+it('says whether ownership resolves for a class at all', function (): void {
+    $context = app(Context::class);
+
+    expect($context->resolvesOwnershipFor(Account::class))->toBeTrue();
+});
+
+it('honours an explicit null default as no ownership for unregistered models', function (): void {
+    config()->set(['warden.ownership.default_attribute' => null]);
+    app()->forgetInstance(Context::class);
+
+    $context = app(Context::class);
+
+    expect($context->resolvesOwnershipFor(Account::class))->toBeFalse();
+});
+
+it('owns nothing when the default attribute is explicitly null', function (): void {
+    config()->set(['warden.ownership.default_attribute' => null]);
+    app()->forgetInstance(Context::class);
+
+    $mine = Account::query()->create(['name' => 'Mine', 'user_id' => $this->user->getKey()])->refresh();
+
+    app(Warden::class)->allow($this->user)->toOwn(Account::class, 'edit');
+
+    expect(Gate::forUser($this->user)->allows('edit', $mine))->toBeFalse()
+        ->and(Account::query()->whereCan($this->user, 'edit')->count())->toBe(0);
 });

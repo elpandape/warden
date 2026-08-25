@@ -169,9 +169,8 @@ class GrantsPermissions
         $this->lastScope = $scope;
         $this->constraints = null;
 
-        // Removals already guard on their delete count: a write that wrote
-        // nothing announces nothing either. The chain state above still moves,
-        // so a fluent where() can refine the concession this call named.
+        // A write that wrote nothing announces nothing, as removals already
+        // do. The chain state above still moves, so where() can refine it.
         if (! $wrote) {
             return;
         }
@@ -262,8 +261,7 @@ class GrantsPermissions
 
         $this->bumpCacheVersion($this->lastScope);
 
-        // A narrowing chain is two writes: the audit trail says so, in order,
-        // rather than leaving the unconstrained grant as the last word.
+        // A narrowing chain is two writes: the audit trail says so, in order.
         $this->dispatchWardenEvent($this->forbidding
             ? new PermissionUnforbidden($this->lastAuthority, new Collection(array_column($repointed, 0)), $this->lastScope, $this->actor())
             : new PermissionRevoked($this->lastAuthority, new Collection(array_column($repointed, 0)), $this->lastScope, $this->actor()));

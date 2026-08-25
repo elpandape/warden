@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Tests\Fixtures\User;
 
 it('resolves configured table names and falls back to the given name', function (): void {
     $context = Context::fromConfig(['tables' => ['roles' => 'custom_roles']]);
@@ -44,7 +45,9 @@ it('resolves the ownership attribute with a default', function (): void {
     expect(Context::fromConfig([])->ownershipAttribute())->toBe('user_id')
         ->and(Context::fromConfig(['ownership' => ['default_attribute' => 'owner_id']])->ownershipAttribute())->toBe('owner_id')
         ->and(Context::fromConfig(['ownership' => 'invalid'])->ownershipAttribute())->toBe('user_id')
-        ->and(Context::fromConfig(['ownership' => ['default_attribute' => 42]])->ownershipAttribute())->toBe('user_id');
+        ->and(Context::fromConfig(['ownership' => ['default_attribute' => 42]])->ownershipAttribute())->toBe('user_id')
+        ->and(Context::fromConfig(['ownership' => ['default_attribute' => null]])->ownershipAttribute())->toBeEmpty()
+        ->and(Context::fromConfig(['ownership' => ['default_attribute' => null]])->resolvesOwnershipFor(User::class))->toBeFalse();
 });
 
 it('ignores non-string entries in string maps', function (): void {

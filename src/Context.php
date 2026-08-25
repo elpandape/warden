@@ -39,7 +39,7 @@ final class Context
         private array $tables = [],
         private ?string $connection = null,
         private array $morphAliases = [],
-        private readonly string $ownershipAttribute = 'user_id',
+        private readonly ?string $ownershipAttribute = 'user_id',
         private array $modelOverrides = [],
     ) {}
 
@@ -54,7 +54,11 @@ final class Context
             tables: self::stringMap($config['tables'] ?? null),
             connection: self::stringOrNull($config['connection'] ?? null),
             morphAliases: self::stringMap($config['morph_aliases'] ?? null),
-            ownershipAttribute: self::stringOrNull($ownership['default_attribute'] ?? null) ?? 'user_id',
+            // An explicit null means unregistered models have no owner at all.
+            // A missing key, or a value that is not a name, means the default.
+            ownershipAttribute: array_key_exists('default_attribute', $ownership) && $ownership['default_attribute'] === null
+                ? null
+                : self::stringOrNull($ownership['default_attribute'] ?? null) ?? 'user_id',
             modelOverrides: self::stringMap($config['models'] ?? null),
         );
     }
@@ -97,9 +101,14 @@ final class Context
         return $this->morphAliases[$key] ?? null;
     }
 
+    /**
+     * The default ownership attribute. Frozen as non-nullable at 1.0, so when
+     * ownership is switched off it reports an empty name: ask
+     * resolvesOwnershipFor() before trusting it.
+     */
     public function ownershipAttribute(): string
     {
-        return $this->ownershipAttribute;
+        return $this->ownershipAttribute ?? '';
     }
 
     /**
@@ -174,6 +183,10 @@ final class Context
 
     public function isOwnedBy(Model $authority, Model $entity): bool
     {
+        if (! $this->resolvesOwnershipFor($entity)) {
+            return false;
+        }
+
         $resolver = $this->ownershipResolverFor($entity);
 
         if ($resolver instanceof Closure) {
@@ -300,7 +313,23 @@ final class Context
     {
         return $this->ownershipMap[$entity::class]
             ?? $this->ownershipMap['*']
-            ?? $this->ownershipAttribute;
+            ?? $this->ownershipAttribute
+            ?? '';
+    }
+
+    /**
+     * Whether ownership means anything for this class.
+     *
+     * The resolver above cannot answer it: its return type is frozen at 1.0 and
+     * has no way to say "none", so every model looks owned whether or not it is.
+     */
+    public function resolvesOwnershipFor(Model|string $entity): bool
+    {
+        $class = $entity instanceof Model ? $entity::class : $entity;
+
+        return isset($this->ownershipMap[$class])
+            || isset($this->ownershipMap['*'])
+            || $this->ownershipAttribute !== null;
     }
 
     /**
