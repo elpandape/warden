@@ -43,3 +43,13 @@ function migrateWardenTables(): void
         });
     }
 }
+
+function migrateLegacyCatalog(): void
+{
+    migrateWardenTables();
+
+    Schema::table('permissions', function (Blueprint $blueprint): void {
+        $blueprint->dropUnique('permissions_identity_unique');
+        $blueprint->dropColumn('identity_key');
+    });
+}

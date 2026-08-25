@@ -1,0 +1,110 @@
+<?php
+
+declare(strict_types=1);
+
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Support\PermissionIdentity;
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * Brings a pre-2.0 install up to the catalog identity. Safe to run again: it
+ * stops before the unique index when rows still identify the same permission,
+ * so the run that follows a `warden:clean --duplicates` finishes the job.
+ */
+return new class extends Migration
+{
+    public function up(): void
+    {
+        $tables = config('warden.tables', []);
+        $connection = config('warden.connection');
+
+        $schema = Schema::connection(is_string($connection) ? $connection : null);
+        $prefix = $schema->getConnection()->getTablePrefix();
+        $table = $tables['permissions'] ?? 'permissions';
+        $index = $prefix.'permissions_identity_unique';
+
+        if (! $schema->hasColumn($table, 'identity_key')) {
+            $schema->table($table, function (Blueprint $blueprint): void {
+                $blueprint->string('identity_key', 96)->default('');
+            });
+        }
+
+        $this->backfill($table);
+
+        $duplicates = $this->duplicates($table);
+
+        if ($duplicates > 0) {
+            throw new RuntimeException(
+                "Found {$duplicates} catalog row(s) that identify the same permission as another. "
+                .'Resolve them with `php artisan warden:clean --duplicates`, then run this migration again.',
+            );
+        }
+
+        if (! $schema->hasIndex($table, $index)) {
+            $schema->table($table, function (Blueprint $blueprint) use ($index): void {
+                $blueprint->unique(['name', 'identity_key'], $index);
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        $tables = config('warden.tables', []);
+        $connection = config('warden.connection');
+
+        $schema = Schema::connection(is_string($connection) ? $connection : null);
+        $prefix = $schema->getConnection()->getTablePrefix();
+        $table = $tables['permissions'] ?? 'permissions';
+        $index = $prefix.'permissions_identity_unique';
+
+        if ($schema->hasIndex($table, $index)) {
+            $schema->table($table, function (Blueprint $blueprint) use ($index): void {
+                $blueprint->dropUnique($index);
+            });
+        }
+
+        if ($schema->hasColumn($table, 'identity_key')) {
+            $schema->table($table, function (Blueprint $blueprint): void {
+                $blueprint->dropColumn('identity_key');
+            });
+        }
+    }
+
+    /**
+     * Written through the query builder: the model hook that computes this key
+     * on a save would also settle the scope, and an upgrade must not re-decide
+     * which tenant an existing row belongs to.
+     */
+    private function backfill(string $table): void
+    {
+        $permissionClass = Context::resolve()->permissionClass();
+
+        $permissionClass::query()->withoutGlobalScopes()
+            ->orderBy((new $permissionClass)->getKeyName())
+            ->chunk(500, function (mixed $rows) use ($table): void {
+                foreach ($rows as $row) {
+                    $this->connection($table)->where('id', $row->getKey())
+                        ->update(['identity_key' => PermissionIdentity::for($row)]);
+                }
+            });
+    }
+
+    private function duplicates(string $table): int
+    {
+        return $this->connection($table)
+            ->select('name', 'identity_key')
+            ->groupBy('name', 'identity_key')
+            ->havingRaw('count(*) > 1')
+            ->get()
+            ->count();
+    }
+
+    private function connection(string $table): Illuminate\Database\Query\Builder
+    {
+        $connection = config('warden.connection');
+
+        return Illuminate\Support\Facades\DB::connection(is_string($connection) ? $connection : null)->table($table);
+    }
+};

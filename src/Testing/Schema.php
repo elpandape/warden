@@ -27,10 +27,18 @@ final class Schema
         self::migration()->down(); // @phpstan-ignore method.notFound
     }
 
-    private static function migration(): Migration
+    /**
+     * The pre-2.0 catalog brought up to the identity the unique index needs.
+     */
+    public static function upgradeToV2(): void
+    {
+        self::migration('upgrade_warden_to_v2')->up(); // @phpstan-ignore method.notFound
+    }
+
+    private static function migration(string $name = 'create_warden_tables'): Migration
     {
         /** @var Migration $migration */
-        $migration = require __DIR__.'/../../database/migrations/create_warden_tables.php.stub';
+        $migration = require __DIR__."/../../database/migrations/{$name}.php.stub";
 
         return $migration;
     }
