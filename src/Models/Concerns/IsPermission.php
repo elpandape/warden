@@ -9,6 +9,7 @@ use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\PermissionIdentity;
 use ElPandaPe\Warden\Support\Titles\PermissionTitle;
 use ElPandaPe\Warden\Tenancy\AppliesPivotTenancy;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
@@ -57,6 +58,14 @@ trait IsPermission
                     onlyOwned: (bool) $permission->getAttribute('only_owned'),
                 ));
             }
+        });
+
+        static::saving(function (Model $permission): void {
+            // The scope is part of the identity, so it has to be settled before
+            // the key is computed rather than stamped afterwards.
+            BelongsToTenant::stampScope($permission, static::tenantCatalog());
+
+            $permission->setAttribute('identity_key', PermissionIdentity::for($permission));
         });
 
         // Lifecycle events fire at the model layer: every creation path counts.

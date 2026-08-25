@@ -9,6 +9,7 @@ use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Database\QueryException;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -105,4 +106,18 @@ it('reaches the context a restricted assignment is pinned to', function (): void
     app(Warden::class)->assign('editor')->on($org)->to($this->user);
 
     expect(AssignedRole::query()->sole()->restrictedTo?->is($org))->toBeTrue();
+});
+
+it('refuses a second catalog row with the same identity', function (): void {
+    Permission::query()->create(['name' => 'view', 'entity_type' => Account::class]);
+
+    expect(fn (): mixed => Permission::query()->create(['name' => 'view', 'entity_type' => Account::class]))
+        ->toThrow(QueryException::class);
+});
+
+it('still allows rows that differ only in their conditions', function (): void {
+    Permission::query()->create(['name' => 'view', 'entity_type' => Account::class]);
+    Permission::query()->create(['name' => 'view', 'entity_type' => Account::class, 'options' => ['v' => 1, 'g' => ['i' => [['and', []]]]]]);
+
+    expect(Permission::query()->where('name', 'view')->count())->toBe(2);
 });

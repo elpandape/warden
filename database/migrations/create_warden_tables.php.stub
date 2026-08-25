@@ -28,9 +28,16 @@ return new class extends Migration
             // ABAC constraints, serialized with a versioned shape.
             $table->json('options')->nullable();
             $table->integer('scope')->nullable()->index();
+            // The rest of the identifying tuple, with sentinels for the NULLs and a
+            // digest of the canonical options: a database cannot canonicalise them,
+            // and the nulls would otherwise count as distinct on every engine.
+            $table->string('identity_key', 96)->default('');
             $table->timestamps();
 
             $table->index(['entity_id', 'entity_type']);
+            // name stays a column so it compares under the collation the resolver
+            // reads it with; the rest rides in the key beside it.
+            $table->unique(['name', 'identity_key'], $prefix.'permissions_identity_unique');
         });
 
         $schema->create($tables['roles'] ?? 'roles', function (Blueprint $table) use ($prefix): void {

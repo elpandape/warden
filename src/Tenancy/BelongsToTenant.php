@@ -10,24 +10,30 @@ use Illuminate\Database\Eloquent\Model;
 
 trait BelongsToTenant
 {
+    /**
+     * An explicit null means "keep it global": only untouched rows are stamped,
+     * so whoever sets the scope first wins and the order of hooks stops mattering.
+     */
+    public static function stampScope(Model $model, bool $catalog): void
+    {
+        $tenancy = app(Tenancy::class);
+
+        if ($catalog && ! $tenancy->scopesCatalog()) {
+            return;
+        }
+
+        if (! array_key_exists('scope', $model->getAttributes())) {
+            $model->setAttribute('scope', $tenancy->current());
+        }
+    }
+
     protected static function bootBelongsToTenant(): void
     {
         $catalog = static::tenantCatalog();
 
         static::addGlobalScope(new TenantScope(catalog: $catalog));
 
-        static::creating(function (Model $model) use ($catalog): void {
-            $tenancy = app(Tenancy::class);
-
-            if ($catalog && ! $tenancy->scopesCatalog()) {
-                return;
-            }
-
-            // An explicit null means "keep it global": only stamp untouched rows.
-            if (! array_key_exists('scope', $model->getAttributes())) {
-                $model->setAttribute('scope', $tenancy->current());
-            }
-        });
+        static::creating(fn (Model $model) => self::stampScope($model, $catalog));
     }
 
     protected static function tenantCatalog(): bool

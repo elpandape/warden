@@ -59,6 +59,14 @@ final class ConstraintSerializer
         return self::canonical($first) === self::canonical($second);
     }
 
+    /**
+     * The canonical form the identity of a rule is defined by.
+     */
+    public static function canonicalOf(mixed $value): mixed
+    {
+        return self::canonical($value);
+    }
+
     private static function constraint(mixed $shape): ?Constraint
     {
         if (! is_array($shape)) {
