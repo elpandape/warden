@@ -3,43 +3,12 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
-## v2.2.0 — A way onto the 2.0 catalog (2026-08-25)
-
-### Added
-
-- **An upgrade migration for installs already on 1.x.** 2.0 writes an identity key on every
-  catalog save and a 1.x database has no column to hold it, so the first write after the
-  upgrade failed. Publish it with `vendor:publish --tag=warden-migrations-v2`: it adds the
-  column, computes the key for every existing row, and only then adds the unique index.
-- It stops before the index when rows still name the same rule — the state
-  `warden:clean --duplicates` needs — and finishes on the run that follows. `Testing\Schema`
-  exposes it as `upgradeToV2()` for packages that build the schema themselves.
-- UPGRADE.md now covers warden 1.x → 2.0 beside the silber/bouncer path.
-
-## v2.1.0 — A fake that means what the engine means (2026-08-25)
-
-### Added
-
-- **The fake can express what a real rule expresses.** `for()` binds a rule to one authority,
-  `owned()` to what that authority owns, `where()` / `whereColumn()` to a condition, and
-  `inScope()` to a tenant. The `*` permission and the `*` entity now answer the way the
-  catalog's wildcard rows do.
-- Ownership, conditions and tenancy are decided by the same pieces the database engine uses —
-  `Context::isOwnedBy()`, the constraint group, `Tenancy::readFilter()` — and a parity suite
-  asserts the fake and the engine return the same verdict across the shapes a rule can take.
-
-### Fixed
-
-- A scripted rule answered for every authority, so a fake could not say that the admin may
-  publish and the guest may not. It still does when no authority is named, which is the
-  documented default rather than an accident.
-
 ## v2.0.0 — Identity, and rules that mean what they say (2026-08-25)
 
 The catalog tuple becomes a constraint instead of a convention, a narrowing chain edits its
 rule instead of stacking one beside it, relation writes stop crossing tenants, and several
-defaults that used to widen silently now refuse. **Read the breaking changes before upgrading: an install carrying duplicate catalog
-rows cannot migrate until it resolves them.**
+defaults that used to widen silently now refuse. **Read the breaking changes before
+upgrading: an install carrying duplicate catalog rows cannot migrate until it resolves them.**
 
 ### Breaking
 
@@ -80,10 +49,28 @@ rows cannot migrate until it resolves them.**
   could match.
 - Morph aliases are registered from an in-code default, so a published config that dropped the
   key stops orphaning every stored row.
+- A scripted rule in the fake answered for every authority, so a fake could not say that the
+  admin may publish and the guest may not. It still does when no authority is named, which is
+  the documented default rather than an accident.
 
 ### Added
 
+- **An upgrade migration for installs already on 1.x.** 2.0 writes an identity key on every
+  catalog save and a 1.x database has no column to hold it. Publish it with
+  `vendor:publish --tag=warden-migrations-v2`: it adds the column, computes the key for every
+  existing row, and only then adds the unique index. It stops before the index when rows still
+  name the same rule — the state `warden:clean --duplicates` needs — and finishes on the run
+  that follows. `Testing\Schema` exposes it as `upgradeToV2()` for packages that build the
+  schema themselves.
 - `warden:clean --duplicates` collapses catalog rows that identify the same permission.
+- **The fake can express what a real rule expresses.** `for()` binds a rule to one authority,
+  `owned()` to what that authority owns, `where()` / `whereColumn()` to a condition, and
+  `inScope()` to a tenant. The `*` permission and the `*` entity now answer the way the
+  catalog's wildcard rows do. Ownership, conditions and tenancy are decided by the same pieces
+  the database engine uses — `Context::isOwnedBy()`, the constraint group,
+  `Tenancy::readFilter()` — and a parity suite asserts the fake and the engine return the same
+  verdict across the shapes a rule can take.
+- UPGRADE.md now covers warden 1.x → 2.0 beside the silber/bouncer path.
 
 ## v1.3.0 — Conditions that cannot fire (2026-08-25)
 
