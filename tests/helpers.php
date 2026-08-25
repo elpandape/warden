@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElPandaPe\Warden\Tests;
 
 use ElPandaPe\Warden\Checks\Resolvers\CacheKeyVersioner;
+use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\WardenServiceProvider;
@@ -108,4 +109,16 @@ function phpFilesOffending(string $pattern): array
     }
 
     return $offenders;
+}
+
+/**
+ * @return list<int|string|null>
+ */
+function assignedRoleScopes(): array
+{
+    return AssignedRole::query()
+        ->withoutGlobalScopes()
+        ->orderByRaw('scope is null desc, scope asc')
+        ->pluck('scope')
+        ->all();
 }

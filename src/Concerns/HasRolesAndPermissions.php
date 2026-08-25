@@ -30,7 +30,7 @@ trait HasRolesAndPermissions
         $assignedRole = $context->assignedRoleClass();
 
         $relation = $this
-            ->morphToMany($role, 'entity', $context->table('assigned_roles'), relatedPivotKey: 'role_id')
+            ->scopedMorphToMany($role, $context->table('assigned_roles'), 'entity_id', 'role_id', 'roles', inverse: false, roleGrant: false)
             ->using($assignedRole)
             ->withPivot(['scope', 'restricted_to_type', 'restricted_to_id']);
 

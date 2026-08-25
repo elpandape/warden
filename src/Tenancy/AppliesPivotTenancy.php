@@ -11,14 +11,53 @@ use Illuminate\Database\Query\Expression;
 trait AppliesPivotTenancy
 {
     /**
-     * Pivot joins do not inherit the model's global scope: filter them here.
+     * Warden builds the relation itself so pivot writes stay inside one scope;
+     * morphToMany() would hand back a relation that cannot express that.
      *
      * @template TRelated of Model
+     *
+     * @param  class-string<TRelated>  $related
+     * @return ScopedMorphToMany<TRelated, $this, \Illuminate\Database\Eloquent\Relations\MorphPivot>
+     */
+    protected function scopedMorphToMany(
+        string $related,
+        string $table,
+        string $foreignPivotKey,
+        string $relatedPivotKey,
+        string $relationName,
+        bool $inverse,
+        bool $roleGrant,
+    ): ScopedMorphToMany {
+        $instance = $this->newRelatedInstance($related);
+
+        /** @var ScopedMorphToMany<TRelated, $this, \Illuminate\Database\Eloquent\Relations\MorphPivot> $relation */
+        $relation = new ScopedMorphToMany(
+            $instance->newQuery(),
+            $this,
+            'entity',
+            $table,
+            $foreignPivotKey,
+            $relatedPivotKey,
+            $this->getKeyName(),
+            $instance->getKeyName(),
+            $relationName,
+            $inverse,
+        );
+
+        return $relation->writingWithin(
+            app(Tenancy::class)->writeScope(forRoleGrant: $roleGrant),
+        );
+    }
+
+    /**
+     * Pivot joins do not inherit the model's global scope: filter them here.
+     *
+     * @template TRelatedModel of Model
      * @template TDeclaring of Model
      * @template TPivot of \Illuminate\Database\Eloquent\Relations\MorphPivot
      *
-     * @param  MorphToMany<TRelated, TDeclaring, TPivot>  $relation
-     * @return MorphToMany<TRelated, TDeclaring, TPivot>
+     * @param  MorphToMany<TRelatedModel, TDeclaring, TPivot>  $relation
+     * @return MorphToMany<TRelatedModel, TDeclaring, TPivot>
      */
     protected function applyPivotTenancy(MorphToMany $relation, string $table): MorphToMany
     {

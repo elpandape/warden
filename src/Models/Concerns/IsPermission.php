@@ -34,7 +34,7 @@ trait IsPermission
         $grant = $context->grantClass();
 
         $relation = $this
-            ->morphedByMany($role, 'entity', $context->table('grants'), 'permission_id')
+            ->scopedMorphToMany($role, $context->table('grants'), 'permission_id', 'entity_id', 'roles', inverse: true, roleGrant: true)
             ->using($grant)
             ->withPivot(['forbidden', 'scope']);
 
