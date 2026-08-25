@@ -3,6 +3,24 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v1.2.0 — One reading doctrine (2026-08-25)
+
+### Fixed
+
+- The uncached resolver now honours a swapped grant model's global scopes. It built the
+  grants subquery on the raw query builder and re-implemented warden's tenant read filter
+  by hand, so a custom model's scopes were silently dropped and the copy could drift from
+  the scope it copied. Both engines now read grants the same way.
+
+### Changed
+
+- **`whereCan()` no longer hydrates the whole candidate catalog.** The candidate query is
+  narrowed to the rows the authority could actually hold. With a catalog of 201 rows for
+  one name and a single grant held, it hydrates 1 row instead of 201.
+- For a consumer who has swapped `warden.models.grant` **and** given it a global scope,
+  `can()` and `explain()` now exclude what that scope excludes, where they previously
+  ignored it. The narrowing fails closed and makes the two engines agree.
+
 ## v1.1.0 — Invalidation, events and diagnosis (2026-08-25)
 
 ### Added
