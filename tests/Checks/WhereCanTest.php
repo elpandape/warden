@@ -274,3 +274,18 @@ it('hydrates only the catalog rows the authority could hold', function (): void 
     expect($catalog['query'] ?? '')->toContain('exists')
         ->and(Account::query()->whereCan($this->user, 'view')->pluck('name')->all())->toBe([$mine->name]);
 });
+
+it('emits a real tautology for an empty group already stored', function (): void {
+    $one = Account::query()->create(['name' => 'One'])->refresh();
+
+    $this->warden->allow($this->user)->to('view', Account::class);
+
+    // The API refuses to write this now; a row from before it did still has to
+    // compile, and to compile to something the builder cannot drop.
+    Permission::query()->where('name', 'view')->update([
+        'options' => json_encode(['v' => 1, 'g' => ['t' => 'group', 'i' => []]]),
+    ]);
+    $this->warden->refresh();
+
+    expect(Account::query()->whereCan($this->user, 'view')->pluck('id')->all())->toBe([$one->getKey()]);
+});

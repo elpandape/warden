@@ -49,7 +49,15 @@ final class Builder
         if ($column instanceof Closure) {
             $nested = new self;
             $column($nested);
-            $this->items[] = [$logic, $nested->group()];
+            $group = $nested->group();
+
+            // An empty group says nothing, so it must not turn an unconstrained
+            // grant into a constrained one that no class check can match.
+            if ($group->isEmpty()) {
+                return $this;
+            }
+
+            $this->items[] = [$logic, $group];
 
             return $this;
         }

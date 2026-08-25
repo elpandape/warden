@@ -5,12 +5,14 @@ declare(strict_types=1);
 use ElPandaPe\Warden\Checks\Explain\Cause;
 use ElPandaPe\Warden\Constraints\Builder;
 use ElPandaPe\Warden\Constraints\ConstraintSerializer;
+use ElPandaPe\Warden\Events\GrantingPermission;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
@@ -372,4 +374,67 @@ it('blocks in the cached engine too, where a wildcard would otherwise grant', fu
     $this->warden->refresh();
 
     expect(Gate::forUser($this->user)->allows('export'))->toBeFalse();
+});
+
+it('does not aim a narrowing at the permission a vetoed call left behind', function (): void {
+    config()->set('warden.cancellable_events', true);
+
+    Event::listen(GrantingPermission::class, fn (GrantingPermission $event): bool => $event->permissions !== ['edit']);
+
+    // The second to() is vetoed, so there is nothing left to refine: saying so
+    // beats narrowing whichever concession the chain named before it.
+    expect(fn (): mixed => $this->warden->allow($this->user)
+        ->to('view', Account::class)
+        ->to('edit', Account::class)
+        ->where('name', '=', 'X'))->toThrow(ConfigurationException::class);
+
+    expect(Permission::query()->where('name', 'view')->whereNull('options')->exists())->toBeTrue();
+});
+
+it('replaces a condition instead of stacking a second rule beside it', function (): void {
+    $published = Account::query()->create(['name' => 'Published'])->refresh();
+    $draft = Account::query()->create(['name' => 'Draft'])->refresh();
+
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', '=', 'Published');
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', '=', 'Draft');
+
+    // The second chain edits the rule; it does not add a second one whose
+    // union authorises both.
+    expect(Gate::forUser($this->user)->allows('view', $draft))->toBeTrue()
+        ->and(Gate::forUser($this->user)->allows('view', $published))->toBeFalse();
+});
+
+it('leaves the concession untouched when a chain fails midway', function (): void {
+    $account = Account::query()->create(['name' => 'X'])->refresh();
+
+    $this->warden->allow($this->user)->to('view', Account::class);
+
+    expect(Gate::forUser($this->user)->allows('view', $account))->toBeTrue();
+
+    // Fail between the delete and the row that replaces it, which is the window
+    // the chain leaves open: without one, the concession is simply gone.
+    Event::listen('eloquent.creating: '.ElPandaPe\Warden\Models\Grant::class, function (): void {
+        throw new RuntimeException('interrupted');
+    });
+
+    try {
+        $this->warden->allow($this->user)->to('view', Account::class)->where('name', '=', 'X');
+    } catch (Throwable) {
+        // the chain failed, which is the point
+    }
+
+    expect(Gate::forUser($this->user)->allows('view', $account))->toBeTrue();
+});
+
+it('ignores an empty nested group instead of turning a grant into a constrained one', function (): void {
+    $account = Account::query()->create(['name' => 'X'])->refresh();
+
+    $this->warden->allow($this->user)->to('view', Account::class)
+        ->where(function (Builder $group): void {
+            // deliberately empty
+        });
+
+    // An empty group adds no condition, so the grant must stay the plain one a
+    // class-level check can still match.
+    expect(Gate::forUser($this->user)->allows('view', Account::class))->toBeTrue();
 });

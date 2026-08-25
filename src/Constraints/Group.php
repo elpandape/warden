@@ -47,6 +47,11 @@ final readonly class Group implements Constraint
         return $clause;
     }
 
+    public function isEmpty(): bool
+    {
+        return $this->items === [];
+    }
+
     public function toArray(): array
     {
         return [
