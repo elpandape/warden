@@ -3,6 +3,61 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v1.1.0 — Invalidation, events and diagnosis (2026-08-25)
+
+### Added
+
+- `Contracts\ActorResolver` names who performs a write. Every write event now carries
+  `?Model $actor`, filled in automatically, defaulting to the authenticated user and
+  overridable through `warden.actor_resolver` for queues, console and impersonation.
+- Cancellable pre-events for the removals: `RevokingPermission`, `UnforbiddingPermission`
+  and `RetractingRole`, matching the veto the write side already had.
+- `Cause::ConditionsNotMet` tells a rule whose conditions did not hold apart from no rule
+  at all, and names the row that decided.
+- `ConstraintSerializer::sameRule()` answers whether two option blobs describe the same
+  rule — the twin-identity comparison, previously private.
+- `Context::restrictionResolverFor()` mirrors the ownership accessor, and
+  `Context::resolvesOwnershipFor()` finally makes "this model has no owner" expressible.
+  An explicit `warden.ownership.default_attribute => null` is now honoured.
+- `Testing\Schema::up()/down()` gives dependent packages a loadable entry point to the
+  schema, which previously existed only as a publishable stub.
+- `Grant` and `AssignedRole` declare their relations: `permission()`, `role()`, `entity()`
+  and `restrictedTo()`.
+- `retract()->from()` reports `retractedCount()`.
+- `warden:clean --stranded` deletes grants whose authority row is gone.
+
+### Fixed
+
+- **Writes that never reach a fluent action now invalidate cached checks.** A model write,
+  a relation `attach()`/`detach()`, or a foreign-key cascade used to leave every cached
+  check answering the old value until the TTL expired. The cascade is predicted rather
+  than hooked — it runs inside the engine, where no model event fires — and its scopes are
+  read unscoped, because the tenant filter hides rows the cascade destroys anyway.
+- A permission delete now announces the grants it took with it, per authority and scope.
+- Deleting a role sweeps the grants it held: they hang off polymorphic columns no foreign
+  key reaches, so they outlived the role.
+- The cached engine no longer denies everything when the grant model is swapped for a bare
+  `MorphPivot`. Tuple booleans are normalised where the tuple is built rather than trusted
+  from a cast the override contract does not require, and an `int` zero never matched the
+  strict comparison.
+- `whereCan()` fails closed instead of emitting SQL for an ownership column the table does
+  not have, where `can()` merely denied — the two engines disagreed by a `QueryException`.
+- A narrowing chain announces its re-point instead of leaving the unconstrained grant as
+  the last word.
+- `explain()` no longer re-reads the row the resolver just decided on.
+
+### Changed
+
+- **A narrowing chain now emits `PermissionGranted`, `PermissionRevoked`,
+  `PermissionGranted`** where it emitted one grant event. A listener that appends to a
+  ledger is unaffected; one treating `PermissionGranted` as "state settled" must become
+  idempotent.
+- **Invalidation costs more per write.** A relation `attach()` of N rows now advances the
+  counter, where it previously advanced nothing and left a stale answer for the full TTL.
+  An action's write and the row hooks beneath it coalesce to one bump per scope.
+- Pre-action events cover the whole call: a listener returning `false` aborts every item in
+  it. Documented rather than changed.
+
 ## v1.0.2 — Constraint and query engine fixes (2026-08-24)
 
 ### Fixed
