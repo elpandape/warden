@@ -232,7 +232,10 @@ it('blocks only the pinned row when a forbid cannot be expressed in sql', functi
     $this->warden->refresh();
 
     expect(Account::query()->whereCan($this->user, 'view')->pluck('name')->all())->toBe(['Two']);
-});
+})->skip(
+    fn (): bool => DB::connection()->getDriverName() !== 'sqlite',
+    'Engines with a real json type reject the blob on write, so the row cannot exist there',
+);
 
 it('compiles an impossible predicate for a non-boolean value on a bool-cast column', function (): void {
     $this->warden->allow($this->user)->to('view', BoolCastAccount::class)->where('user_id', '=', 'true');
@@ -269,7 +272,8 @@ it('hydrates only the catalog rows the authority could hold', function (): void 
     Account::query()->whereCan($this->user, 'view')->count();
 
     $catalog = collect(DB::getQueryLog())
-        ->first(fn (array $entry): bool => str_contains($entry['query'], 'from "permissions"'));
+        ->first(fn (array $entry): bool => str_contains($entry['query'], 'permissions')
+            && str_contains($entry['query'], 'select'));
 
     expect($catalog['query'] ?? '')->toContain('exists')
         ->and(Account::query()->whereCan($this->user, 'view')->pluck('name')->all())->toBe([$mine->name]);

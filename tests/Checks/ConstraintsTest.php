@@ -316,7 +316,10 @@ it('fails closed when the stored conditions cannot be decoded at all', function 
     $this->warden->refresh();
 
     expect(Gate::forUser($this->user)->allows('view', $account))->toBeFalse();
-});
+})->skip(
+    fn (): bool => DB::connection()->getDriverName() !== 'sqlite',
+    'Engines with a real json type reject the blob on write, so the row cannot exist there',
+);
 
 it('answers whether two option blobs name the same rule', function (): void {
     $plain = new Builder;
