@@ -101,3 +101,30 @@ it('does not answer an entity-scoped check with a rule that named no entity', fu
     expect(Gate::forUser($this->user)->allows('edit'))->toBeTrue()
         ->and(Gate::forUser($this->user)->allows('edit', Account::class))->toBeFalse();
 });
+
+it('scripts a condition given as a column and a value', function (): void {
+    $fake = $this->warden->fake();
+    $mine = Account::query()->create(['name' => 'Mine', 'user_id' => $this->user->getKey()])->refresh();
+    $theirs = Account::query()->create(['name' => 'Theirs'])->refresh();
+
+    $fake->allow('edit', Account::class)->where('name', 'Mine');
+
+    expect(Gate::forUser($this->user)->allows('edit', $mine))->toBeTrue()
+        ->and(Gate::forUser($this->user)->allows('edit', $theirs))->toBeFalse();
+});
+
+it('scripts a condition comparing the entity against the authority', function (): void {
+    $fake = $this->warden->fake();
+    $mine = Account::query()->create(['name' => 'Mine', 'user_id' => $this->user->getKey()])->refresh();
+    $theirs = Account::query()->create(['name' => 'Theirs'])->refresh();
+
+    $fake->allow('edit', Account::class)->whereColumn('user_id', 'id');
+
+    expect(Gate::forUser($this->user)->allows('edit', $mine))->toBeTrue()
+        ->and(Gate::forUser($this->user)->allows('edit', $theirs))->toBeFalse();
+});
+
+it('refuses to narrow a rule that was never scripted', function (): void {
+    expect(fn () => $this->warden->fake()->for($this->user))
+        ->toThrow(LogicException::class, 'Script a rule with allow() or forbid() before narrowing it.');
+});
