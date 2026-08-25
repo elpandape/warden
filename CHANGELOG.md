@@ -3,6 +3,19 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v2.2.0 — A way onto the 2.0 catalog (2026-08-25)
+
+### Added
+
+- **An upgrade migration for installs already on 1.x.** 2.0 writes an identity key on every
+  catalog save and a 1.x database has no column to hold it, so the first write after the
+  upgrade failed. Publish it with `vendor:publish --tag=warden-migrations-v2`: it adds the
+  column, computes the key for every existing row, and only then adds the unique index.
+- It stops before the index when rows still name the same rule — the state
+  `warden:clean --duplicates` needs — and finishes on the run that follows. `Testing\Schema`
+  exposes it as `upgradeToV2()` for packages that build the schema themselves.
+- UPGRADE.md now covers warden 1.x → 2.0 beside the silber/bouncer path.
+
 ## v2.1.0 — A fake that means what the engine means (2026-08-25)
 
 ### Added
