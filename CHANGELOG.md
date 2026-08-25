@@ -37,10 +37,11 @@ rows cannot migrate until it resolves them.**
   `attach()` stamps it. Warden builds these relations itself, so a model overriding
   `newMorphToMany()` no longer shapes them.
 - **`permissions` gains a unique index** over the name and a key carrying the rest of the
-  identifying tuple. Resolve duplicates first with `warden:clean --duplicates`, which splits
-  candidates in PHP because the options identity is defined there, re-points the losers'
-  grants, and drops any that would collide. The migration fails rather than resolving them
-  silently.
+  identifying tuple. An existing install publishes and runs the upgrade migration
+  (`vendor:publish --tag=warden-migrations-v2`), which adds the column, computes the key for
+  every row, and stops before the index if rows still identify the same permission — resolve
+  those with `warden:clean --duplicates` and run it again. It fails rather than picking a
+  winner silently. See [UPGRADE.md](UPGRADE.md#from-warden-1x-to-20).
 - **A second `where()` on the same concession replaces the condition** instead of adding a
   second rule whose union authorises both.
 - **A `where()` after a vetoed call throws.** The chain is forgotten when a call writes

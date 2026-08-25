@@ -105,6 +105,8 @@ class User extends Authenticatable
 
 > 🔄 **Coming from silber/bouncer?** This package conflicts with it by design (same default tables). Run `php artisan warden:upgrade` to migrate the schema in place. See [UPGRADE.md](UPGRADE.md).
 
+> ⬆️ **Already on warden 1.x?** 2.0 adds a column and a unique index to `permissions`. Publish and run the upgrade migration — `vendor:publish --tag=warden-migrations-v2` then `migrate` — before the first write. See [UPGRADE.md](UPGRADE.md#from-warden-1x-to-20).
+
 ---
 
 ## ⚡ Quick Start
