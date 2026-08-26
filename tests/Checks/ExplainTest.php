@@ -129,7 +129,16 @@ it('says the condition failed instead of reporting no matching grant', function 
 
     expect($why->cause)->toBe(Cause::ConditionsNotMet)
         ->and($why->permission?->getAttribute('name'))->toBe('view')
-        ->and((string) $why)->toBe('Denied by permission [view]: its conditions did not hold for this record.');
+        ->and((string) $why)->toBe('Denied by permission [view]: a rule matched but its conditions were not satisfied.');
+});
+
+it('does not claim a record was involved when the check named a class', function (): void {
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', '=', 'Published');
+
+    $why = $this->warden->explain($this->user, 'view', Account::class);
+
+    expect($why->cause)->toBe(Cause::ConditionsNotMet)
+        ->and((string) $why)->not->toContain('this record');
 });
 
 it('still reports no matching grant when no row matched the shape at all', function (): void {
