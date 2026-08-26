@@ -168,6 +168,7 @@ final class WardenServiceProvider extends ServiceProvider
                 Console\CacheResetCommand::class,
                 Console\CleanCommand::class,
                 Console\UpgradeCommand::class,
+                Console\RetitleCommand::class,
             ]);
 
             \Illuminate\Foundation\Console\AboutCommand::add('Warden', fn (): array => [
