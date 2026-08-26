@@ -434,11 +434,11 @@ Which of `permission` and `role` are populated depends on the cause:
 | `ForbiddenDirectly` | `false` | the row | — |
 | `ForbiddenViaRole` | `false` | the row | the role |
 | `ForbiddenToEveryone` | `false` | the row | — |
-| `ConditionsNotMet` | `false` | the row whose conditions failed | — |
+| `ConditionsNotMet` | `false` | the row whose conditions were not satisfied | — |
 | `NoMatchingGrant` | `false` | — | — |
 | `NotApplicable` | `false` | — | — |
 
-> 📌 `ConditionsNotMet` and `NoMatchingGrant` are different answers: the first names a row that matched the shape and whose conditions did not hold for this record, the second means nothing matched at all. Both leave Warden abstaining so your policies decide.
+> 📌 `ConditionsNotMet` and `NoMatchingGrant` are different answers: the first names a row that matched the shape but whose conditions were not satisfied — they failed against the instance, or the check named a class and there was no instance to satisfy them with — while the second means nothing matched at all. Both leave Warden abstaining so your policies decide.
 
 > 📌 Always answered by the database engine — never from cache — so it diagnoses stale-cache issues too.
 

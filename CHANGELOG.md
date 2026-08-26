@@ -3,6 +3,25 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v2.0.1 — Titles left alone, an explanation that holds (2026-08-26)
+
+### Fixed
+
+- **A name Warden did not invent keeps its shape.** `2.0.0` ran `Str::snake()` over the
+  whole permission or role name, so `page:App\Filament\Pages\Settings` came back as
+  `Page: app\ filament\ pages\ settings` — a space after every backslash, the class
+  lowercased, and a title worse than the untouched name it replaced. The split now runs
+  only on a name made of letters, digits, hyphen and underscore: `viewAny` still reads
+  `View any`, and a name a consumer namespaced travels whole. Rows already titled by
+  `2.0.0` keep their wording; `warden:retitle` in `2.1.0` converges them.
+- **`ConditionsNotMet` stops naming a record the check never had.** A class check —
+  every listing, every "can this role update posts at all" question, every permission
+  grid — reaches that cause without an instance, because the resolver returns before
+  evaluating a single condition when there is nothing to evaluate against. The sentence
+  read as though a real evaluation had happened against a record that was never
+  involved. It now says a rule matched but its conditions were not satisfied, which
+  holds whether they failed or were never reachable. The verdict itself never changed.
+
 ## v2.0.0 — Identity, and rules that mean what they say (2026-08-25)
 
 The catalog tuple becomes a constraint instead of a convention, a narrowing chain edits its
