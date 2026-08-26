@@ -50,3 +50,20 @@ it('skips title generation when disabled by config', function (): void {
     expect(Role::query()->create(['name' => 'site-admin'])->title)->toBeNull()
         ->and(Permission::query()->create(['name' => 'edit'])->title)->toBeNull();
 });
+
+it('leaves a namespaced permission name alone instead of mangling it', function (): void {
+    expect(Permission::query()->create(['name' => 'page:App\\Filament\\Pages\\Settings'])->title)
+        ->toBe('Page:App\\Filament\\Pages\\Settings')
+        ->and(Permission::query()->create(['name' => 'App\\Models\\Post'])->title)
+        ->toBe('App\\Models\\Post');
+});
+
+it('leaves a namespaced role name alone', function (): void {
+    expect(Role::query()->create(['name' => 'tenant:Acme\\Team'])->title)->toBe('Tenant:Acme\\Team');
+});
+
+it('still splits camel case in a simple name', function (): void {
+    expect(Permission::query()->create(['name' => 'viewAny', 'entity_type' => 'App\\Models\\Post'])->title)
+        ->toBe('View any posts')
+        ->and(Role::query()->create(['name' => 'siteAdmin'])->title)->toBe('Site admin');
+});
