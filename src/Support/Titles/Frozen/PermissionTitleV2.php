@@ -2,11 +2,18 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Warden\Support\Titles;
+namespace ElPandaPe\Warden\Support\Titles\Frozen;
 
 use Illuminate\Support\Str;
 
-final class PermissionTitle
+/**
+ * Warden's permission titles as they stood in 2.0.0, transcribed and frozen.
+ *
+ * 2.0.0 split camel case by running Str::snake() over the whole name, which
+ * also mangled a name carrying a namespace. Both readings are here because a
+ * catalogue written by that release still carries them.
+ */
+final class PermissionTitleV2
 {
     public static function generate(
         string $name,
@@ -27,30 +34,9 @@ final class PermissionTitle
         };
     }
 
-    /**
-     * Every title Warden could have written for this tuple, current first.
-     *
-     * A consumer asks this before rewriting a stored title: a value in the list
-     * was Warden's to begin with, one outside it belongs to a person.
-     *
-     * @return list<string>
-     */
-    public static function generations(
-        string $name,
-        ?string $entityType,
-        int|string|null $entityId,
-        bool $onlyOwned,
-    ): array {
-        return array_values(array_unique([
-            self::generate($name, $entityType, $entityId, $onlyOwned),
-            Frozen\PermissionTitleV2::generate($name, $entityType, $entityId, $onlyOwned),
-            Frozen\PermissionTitleV1::generate($name, $entityType, $entityId, $onlyOwned),
-        ]));
-    }
-
     private static function action(string $name): string
     {
-        return $name === '*' ? 'Manage' : Words::humanize($name);
+        return $name === '*' ? 'Manage' : Str::ucfirst(str_replace(['-', '_'], ' ', Str::snake($name, ' ')));
     }
 
     private static function entity(string $entityType): string

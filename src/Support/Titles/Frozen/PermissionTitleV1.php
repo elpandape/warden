@@ -2,11 +2,20 @@
 
 declare(strict_types=1);
 
-namespace ElPandaPe\Warden\Support\Titles;
+namespace ElPandaPe\Warden\Support\Titles\Frozen;
 
 use Illuminate\Support\Str;
 
-final class PermissionTitle
+/**
+ * Warden's permission titles as they stood from 1.0.0 to 1.3.0, transcribed
+ * and frozen.
+ *
+ * A row titled under that generator keeps its title through every upgrade, so
+ * the only way to recognise one later is to have written the old rule down.
+ * This class never tracks the live generator again: reconstructing an old
+ * title from code that still moves breaks the day the live one changes shape.
+ */
+final class PermissionTitleV1
 {
     public static function generate(
         string $name,
@@ -27,30 +36,9 @@ final class PermissionTitle
         };
     }
 
-    /**
-     * Every title Warden could have written for this tuple, current first.
-     *
-     * A consumer asks this before rewriting a stored title: a value in the list
-     * was Warden's to begin with, one outside it belongs to a person.
-     *
-     * @return list<string>
-     */
-    public static function generations(
-        string $name,
-        ?string $entityType,
-        int|string|null $entityId,
-        bool $onlyOwned,
-    ): array {
-        return array_values(array_unique([
-            self::generate($name, $entityType, $entityId, $onlyOwned),
-            Frozen\PermissionTitleV2::generate($name, $entityType, $entityId, $onlyOwned),
-            Frozen\PermissionTitleV1::generate($name, $entityType, $entityId, $onlyOwned),
-        ]));
-    }
-
     private static function action(string $name): string
     {
-        return $name === '*' ? 'Manage' : Words::humanize($name);
+        return $name === '*' ? 'Manage' : Str::ucfirst(str_replace(['-', '_'], ' ', $name));
     }
 
     private static function entity(string $entityType): string
