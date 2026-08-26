@@ -3,6 +3,22 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v2.1.0 — A catalogue that can converge (2026-08-26)
+
+### Added
+
+- **`PermissionTitle::generations()` and `RoleTitle::generations()`** answer the question
+  a consumer has to settle before rewriting a stored title: did Warden write this one?
+  Every generator this package has published is transcribed and frozen beside the live
+  one, so a row titled by `1.x` stays recognisable after the generator moves on. Without
+  it, "Warden generated this title" stops being decidable the moment the generator
+  changes, and every consumer has to keep a private copy of every generator ever shipped.
+- **`warden:retitle`** applies that rule across the catalogue: a title an older Warden
+  generated converges on the current wording, a title a person typed is left alone, and a
+  `null` stays `null` — it was chosen, not pending. `--dry-run` reports the count without
+  writing. This is the missing half of `2.0.0`, whose camel-case split otherwise left an
+  upgraded catalogue carrying two wordings for the same rule indefinitely.
+
 ## v2.0.1 — Titles left alone, an explanation that holds (2026-08-26)
 
 ### Fixed

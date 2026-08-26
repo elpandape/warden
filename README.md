@@ -615,6 +615,7 @@ $this->assignRoles($user, 'admin');
 php artisan warden:show [Class:id]       # Show permissions for an authority
 php artisan warden:cache-reset           # Reset cache
 php artisan warden:clean --dry-run       # Clean orphaned permissions
+php artisan warden:retitle --dry-run     # Converge titles an older Warden wrote
 ```
 
 ---
@@ -666,6 +667,15 @@ Four tables:
 > ```
 
 > 📌 **Titles are generated once, on creation, and only when none was given.** A rename keeps the old title, and setting `title` to `null` on an update leaves it `null`. Recompute one deliberately with `Support\Titles\PermissionTitle::generate()` or `RoleTitle::generate()` — the same calls the hook makes.
+
+> 📌 **Ask before you rewrite a title.** `PermissionTitle::generations()` and `RoleTitle::generations()` return every title Warden could have written for a name, current first — each generator this package has published is transcribed and frozen. A stored title inside that list was Warden's; one outside it was typed by a person and is not yours to overwrite.
+>
+> ```php
+> PermissionTitle::generations('viewAny', Post::class, null, false);
+> // ['View any posts', 'ViewAny posts']  ← current, then the pre-2.0 reading
+> ```
+>
+> `php artisan warden:retitle` applies exactly that rule across the catalogue: a title an older Warden generated converges on the current wording, a title someone wrote stays, and a `null` stays `null`. Run it with `--dry-run` first.
 
 Any model can hold roles and permissions:
 
