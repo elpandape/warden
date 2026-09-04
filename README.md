@@ -499,6 +499,10 @@ Enable with `warden.cancellable_events`. A listener returning `false` aborts the
 
 > 📌 `sync()` never fires nor honors pre-action events — its declarative diff events tell the whole story.
 
+> 📌 **Deleting a catalog row announces what the cascade was predicted to reach.** A foreign key removes a permission's grants inside the engine, where no model event fires, so warden reads the doomed rows *before* the delete and dispatches one `PermissionRevoked` — or `PermissionUnforbidden` — per row afterwards. The read is the announcement: if the foreign key is not enforced, the events describe a deletion that did not happen.
+
+> 📌 **That cascade is blind to the active tenant.** The doomed rows are read with `withoutGlobalScopes()`, on purpose — the delete destroys every tenant's grants regardless of which one is active, so counting only the current tenant would promise a smaller loss than the real one.
+
 ---
 
 ## ⚠️ Exceptions
