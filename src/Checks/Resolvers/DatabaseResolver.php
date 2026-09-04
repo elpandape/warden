@@ -10,11 +10,17 @@ use ElPandaPe\Warden\Contracts\Resolver;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 final readonly class DatabaseResolver implements Resolver
 {
-    public function __construct(private Context $context) {}
+    /**
+     * @param  Collection<int, Model>|null  $assignments  Pre-read assignments for
+     *                                                    this authority, so a caller that
+     *                                                    needs them too reads the table once.
+     */
+    public function __construct(private Context $context, private ?Collection $assignments = null) {}
 
     public function resolve(
         Model $authority,
@@ -45,6 +51,18 @@ final readonly class DatabaseResolver implements Resolver
         return $grantedBy === null
             ? Verdict::abstained($rejected, $rejectedRow)
             : Verdict::granted($grantedBy, $grantedRow);
+    }
+
+    /**
+     * @return Collection<int, Model>
+     */
+    public static function readAssignments(Context $context, Model $authority): Collection
+    {
+        /** @var Collection<int, Model> */
+        return $context->assignedRoleClass()::query()
+            ->where('entity_type', $authority->getMorphClass())
+            ->where('entity_id', $authority->getKey())
+            ->get();
     }
 
     /**
@@ -143,10 +161,7 @@ final readonly class DatabaseResolver implements Resolver
      */
     private function effectiveRoleKeys(Model $authority, Model|string|null $entity): array
     {
-        $assignments = $this->context->assignedRoleClass()::query()
-            ->where('entity_type', $authority->getMorphClass())
-            ->where('entity_id', $authority->getKey())
-            ->get();
+        $assignments = $this->assignments ?? self::readAssignments($this->context, $authority);
 
         $keys = [];
 

@@ -293,3 +293,23 @@ it('emits a real tautology for an empty group already stored', function (): void
 
     expect(Account::query()->whereCan($this->user, 'view')->pluck('id')->all())->toBe([$one->getKey()]);
 });
+
+it('reads assigned_roles once per call, not once per pass', function (): void {
+    Account::query()->create(['name' => 'Acme']);
+    $this->warden->allow('editor')->to('view', Account::class);
+    $this->warden->assign('editor')->to($this->user);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    Account::whereCan($this->user, 'view')->get();
+
+    $log = DB::getQueryLog();
+    $assignments = array_filter(
+        $log,
+        fn (array $entry): bool => str_contains((string) $entry['query'], 'assigned_roles'),
+    );
+
+    expect($assignments)->toHaveCount(1)
+        ->and($log)->toHaveCount(5);
+});

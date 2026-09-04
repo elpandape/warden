@@ -41,9 +41,14 @@ final readonly class WhereCan
     {
         $model = $query->getModel();
 
-        $candidates = $this->candidates($model, $permission, $authority);
-        $granted = $this->activeKeys($authority, $candidates, forbidden: false);
-        $forbidden = $this->activeKeys($authority, $candidates, forbidden: true);
+        // One read of assigned_roles for the whole call: the candidate
+        // narrowing and both passes derive from it, partitioned in PHP exactly
+        // as DatabaseResolver::effectiveRoleKeys() and CachedResolver::build().
+        [$unrestrictedRoleKeys, $allRoleKeys] = $this->roleKeys($authority);
+
+        $candidates = $this->candidates($model, $permission, $authority, $allRoleKeys);
+        $granted = $this->activeKeys($authority, $candidates, $unrestrictedRoleKeys, forbidden: false);
+        $forbidden = $this->activeKeys($authority, $candidates, $allRoleKeys, forbidden: true);
 
         $grantBranches = [];
         $forbidBranches = [];
@@ -94,12 +99,43 @@ final readonly class WhereCan
     }
 
     /**
+     * Every assignment this authority holds, in one read: unrestricted keys
+     * first, all keys second. Restricted assignments cannot compile into row
+     * conditions, and each consumer fails closed its own way — which is a
+     * partition of one read, not three reads.
+     *
+     * @return array{0: list<mixed>, 1: list<mixed>}
+     */
+    private function roleKeys(Model $authority): array
+    {
+        $unrestricted = [];
+        $all = [];
+
+        $rows = $this->context->assignedRoleClass()::query()
+            ->where('entity_type', $authority->getMorphClass())
+            ->where('entity_id', $authority->getKey())
+            ->toBase()
+            ->get(['role_id', 'restricted_to_type', 'restricted_to_id']);
+
+        foreach ($rows as $row) {
+            $all[] = $row->role_id;
+
+            if ($row->restricted_to_type === null && $row->restricted_to_id === null) {
+                $unrestricted[] = $row->role_id;
+            }
+        }
+
+        return [$unrestricted, $all];
+    }
+
+    /**
      * Catalog rows that could apply to instances of this model, under the
      * current tenant filter.
      *
+     * @param  list<mixed>  $roleKeys
      * @return Collection<int, Model>
      */
-    private function candidates(Model $model, string $permission, Model $authority): Collection
+    private function candidates(Model $model, string $permission, Model $authority, array $roleKeys): Collection
     {
         /** @var Collection<int, Model> */
         return $this->context->permissionClass()::query()
@@ -108,7 +144,7 @@ final readonly class WhereCan
                 $query->where('entity_type', '*')
                     ->orWhere('entity_type', $model->getMorphClass());
             })
-            ->whereExists($this->anyGrantHeld($authority))
+            ->whereExists($this->anyGrantHeld($authority, $roleKeys))
             ->get()
             ->toBase();
     }
@@ -121,21 +157,15 @@ final readonly class WhereCan
      * partitions it afterwards, with a fail-closed asymmetry that differs per
      * pass. Narrowing here would drop forbid branches, which fails OPEN.
      *
+     * @param  list<mixed>  $roleKeys
      * @return Builder<Grant>
      */
-    private function anyGrantHeld(Model $authority): Builder
+    private function anyGrantHeld(Model $authority, array $roleKeys): Builder
     {
         $grantClass = $this->context->grantClass();
         $grants = (new $grantClass)->getTable();
         $permissions = (new ($this->context->permissionClass()))->getQualifiedKeyName();
         $roleMorph = (new ($this->context->roleClass()))->getMorphClass();
-
-        $roleKeys = $this->context->assignedRoleClass()::query()
-            ->where('entity_type', $authority->getMorphClass())
-            ->where('entity_id', $authority->getKey())
-            ->toBase()
-            ->pluck('role_id')
-            ->all();
 
         return $grantClass::query()
             ->whereColumn("{$grants}.permission_id", $permissions)
@@ -158,9 +188,10 @@ final readonly class WhereCan
      * unrestricted role, or as everyone-grants) — resolved once, not per row.
      *
      * @param  Collection<int, Model>  $candidates
+     * @param  list<mixed>  $roleKeys
      * @return list<string>
      */
-    private function activeKeys(Model $authority, Collection $candidates, bool $forbidden): array
+    private function activeKeys(Model $authority, Collection $candidates, array $roleKeys, bool $forbidden): array
     {
         if ($candidates->isEmpty()) {
             return [];
@@ -172,19 +203,6 @@ final readonly class WhereCan
         // fails closed its own way: the GRANT pass excludes them (a restricted
         // editor is not a queryable global editor), while the FORBID pass
         // includes them — over-blocking beats returning a row can() denies.
-        $assignments = $this->context->assignedRoleClass()::query()
-            ->where('entity_type', $authority->getMorphClass())
-            ->where('entity_id', $authority->getKey());
-
-        if (! $forbidden) {
-            $assignments->whereNull('restricted_to_type')->whereNull('restricted_to_id');
-        }
-
-        $roleKeys = $assignments
-            ->toBase()
-            ->pluck('role_id')
-            ->all();
-
         $active = $this->context->grantClass()::query()
             ->whereIn('permission_id', $candidates->map(fn (Model $candidate): mixed => $candidate->getKey())->all())
             ->where('forbidden', $forbidden)

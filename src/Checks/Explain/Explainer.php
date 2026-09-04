@@ -10,6 +10,7 @@ use ElPandaPe\Warden\Checks\Verdict;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Support\Name;
 use ElPandaPe\Warden\Tenancy\TenantScope;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -22,7 +23,11 @@ final readonly class Explainer
 
     public function explain(Model $authority, string|BackedEnum $permission, Model|string|null $entity = null): AuthorizationExplanation
     {
-        $verdict = new DatabaseResolver($this->context)->resolve($authority, Name::of($permission), $entity);
+        // One read of assigned_roles for the whole diagnosis: the resolver and
+        // the blame step below are the only two consumers, and they agree.
+        $assignments = DatabaseResolver::readAssignments($this->context, $authority);
+
+        $verdict = new DatabaseResolver($this->context, $assignments)->resolve($authority, Name::of($permission), $entity);
 
         if ($verdict->isAbstained()) {
             $applicable = ! is_string($entity)
@@ -45,7 +50,7 @@ final readonly class Explainer
         // Re-reading it by key would return the row it already matched.
         $decisive = $verdict->permission;
 
-        [$cause, $role] = $this->source($authority, $verdict, $entity);
+        [$cause, $role] = $this->source($authority, $verdict, $entity, $assignments);
 
         return new AuthorizationExplanation($verdict, $cause, $decisive, $role);
     }
@@ -54,9 +59,10 @@ final readonly class Explainer
      * How the decisive permission reaches the authority: directly, through a
      * role, or as an everyone-grant — reported most-specific first.
      *
+     * @param  Collection<int, Model>  $assignments
      * @return array{0: Cause, 1: Model|null}
      */
-    private function source(Model $authority, Verdict $verdict, Model|string|null $entity): array
+    private function source(Model $authority, Verdict $verdict, Model|string|null $entity, Collection $assignments): array
     {
         $forbidden = $verdict->isForbidden();
         $roleMorph = (new ($this->context->roleClass()))->getMorphClass();
@@ -79,10 +85,7 @@ final readonly class Explainer
         // a restricted role outside its context must not be blamed.
         $roleKeys = [];
 
-        foreach ($this->context->assignedRoleClass()::query()
-            ->where('entity_type', $authority->getMorphClass())
-            ->where('entity_id', $authority->getKey())
-            ->get() as $assignment) {
+        foreach ($assignments as $assignment) {
             $contextType = $assignment->getAttribute('restricted_to_type');
             $contextId = $assignment->getAttribute('restricted_to_id');
 

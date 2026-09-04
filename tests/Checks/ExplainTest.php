@@ -158,3 +158,23 @@ it('does not re-read the row the resolver already decided on', function (): void
 
     expect(Illuminate\Support\Facades\DB::getQueryLog())->toHaveCount(4);
 });
+
+it('reads assigned_roles once when blaming a role, not once per consumer', function (): void {
+    $this->warden->allow('editor')->to('edit-site');
+    $this->warden->assign('editor')->to($this->user);
+
+    Illuminate\Support\Facades\DB::flushQueryLog();
+    Illuminate\Support\Facades\DB::enableQueryLog();
+
+    $why = $this->warden->explain($this->user, 'edit-site');
+
+    $log = Illuminate\Support\Facades\DB::getQueryLog();
+    $assignments = array_filter(
+        $log,
+        fn (array $entry): bool => str_contains((string) $entry['query'], 'assigned_roles'),
+    );
+
+    expect($why->cause)->toBe(Cause::GrantedViaRole)
+        ->and($assignments)->toHaveCount(1)
+        ->and($log)->toHaveCount(5);
+});
