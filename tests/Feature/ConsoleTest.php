@@ -178,7 +178,7 @@ it('refuses to collapse a catalog row whose stored options do not decode', funct
         'entity_type' => $plain->getAttribute('entity_type'),
         'entity_id' => null,
         'only_owned' => false,
-        'options' => '{"v":1,"g":',
+        'options' => 'null',
         'scope' => null,
         'identity_key' => 'stale',
     ]);
