@@ -367,6 +367,7 @@ Warden::allow($user)->to('view', Document::class)
 > - A **null** attribute satisfies no operator at all, `!=` included, and values whose types are not decidably comparable fail closed the same way. A **missing** attribute is different: under `Model::preventAccessingMissingAttributes()` it throws rather than failing closed.
 > - Constrained grants share one catalog row per distinct rule, so **editing a permission's options changes the rule for every holder of that shape**. Write a new condition instead of editing a shared row.
 > - A **boolean** value matches only a column the model casts to `bool`, and such a column matches only a boolean. Either mismatch never matches — in checks and in queries alike — so the `where('classified', true)` below needs `'classified' => 'bool'` in the model's `$casts`.
+> - ⚠️ **On a `forbid()` that mismatch is the dangerous direction.** A condition that can never be true makes the prohibition inert, and the grant underneath it stays live — `explain()` reports the grant and never mentions the forbid, because from the resolver's side no rule matched. A missing `'bool'` cast therefore reads as "allowed". Add the cast, or write the condition against a column the model casts.
 > - A permission with **no entity** is only ever checked without an instance, so constraining one is refused: the shape that would make it match is the shape that rejects it.
 > - A constrained grant **never matches instance-less checks** (`can('view')`, `can('view', Document::class)`) — they fail closed.
 

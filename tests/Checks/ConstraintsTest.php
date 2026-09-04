@@ -463,6 +463,17 @@ it('refuses a group carrying the unimplemented negation instead of reading it as
     expect(Gate::forUser($this->user)->allows('view', $account))->toBeFalse();
 });
 
+it('leaves the grant beneath a forbid whose condition can never be true', function (): void {
+    $account = Account::query()->create(['name' => 'Acme']);
+
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $this->warden->forbid($this->user)->to('view', Account::class)->where('name', true);
+
+    expect(Gate::forUser($this->user)->allows('view', $account))->toBeTrue()
+        ->and($this->warden->explain($this->user, 'view', $account)->cause)
+        ->toBe(Cause::GrantedDirectly);
+});
+
 it('refuses to serialize the reserved not operator, at any depth', function (): void {
     $leaf = new Group([[LogicalOperator::Not, new ValueConstraint('name', ComparisonOperator::Equal, 'Acme')]]);
 
@@ -470,4 +481,28 @@ it('refuses to serialize the reserved not operator, at any depth', function (): 
         ->toThrow(ConfigurationException::class, 'reserved')
         ->and(fn (): array => ConstraintSerializer::serialize(new Group([[LogicalOperator::And, $leaf]])))
         ->toThrow(ConfigurationException::class, 'reserved');
+});
+
+it('warns when a persisted condition can never be true', function (): void {
+    Log::spy();
+
+    $this->warden->forbid($this->user)->to('view', Account::class)->where('name', true);
+
+    Log::shouldHaveReceived('warning')->once();
+});
+
+it('stays quiet when the column carries the matching cast', function (): void {
+    Log::spy();
+
+    $this->warden->forbid($this->user)->to('view', BoolCastAccount::class)->where('user_id', true);
+
+    Log::shouldNotHaveReceived('warning');
+});
+
+it('stays quiet for a wildcard entity, which names no model to ask', function (): void {
+    Log::spy();
+
+    $this->warden->forbid($this->user)->everything()->where('name', true);
+
+    Log::shouldNotHaveReceived('warning');
 });

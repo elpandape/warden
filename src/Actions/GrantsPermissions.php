@@ -10,6 +10,8 @@ use ElPandaPe\Warden\Actions\Concerns\ResolvesAuthority;
 use ElPandaPe\Warden\Actions\Concerns\ResolvesPermissions;
 use ElPandaPe\Warden\Constraints\Builder;
 use ElPandaPe\Warden\Constraints\ConstraintSerializer;
+use ElPandaPe\Warden\Constraints\Group;
+use ElPandaPe\Warden\Constraints\ValueConstraint;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\ForbiddingPermission;
@@ -22,6 +24,7 @@ use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
@@ -289,6 +292,8 @@ class GrantsPermissions
             return $this;
         }
 
+        $this->warnUnsatisfiable($group);
+
         $grantClass = Context::resolve()->grantClass();
         $options = ConstraintSerializer::serialize($group);
 
@@ -351,6 +356,60 @@ class GrantsPermissions
             : new PermissionGranted($this->lastAuthority, new Collection(array_column($repointed, 1)), $this->lastScope, $this->actor()));
 
         return $this;
+    }
+
+    /**
+     * A boolean compares only against a column the model casts to bool, and
+     * such a column only against a boolean: either mismatch can never be true.
+     * Written on a forbid it leaves the grant beneath it live, and explain()
+     * reports that grant without mentioning the prohibition — so say so here,
+     * where there is still a person to tell.
+     */
+    private function warnUnsatisfiable(Group $group): void
+    {
+        foreach ($this->lastGranted as $permission) {
+            $type = $permission->getAttribute('entity_type');
+
+            if (! is_string($type) || $type === '*') {
+                continue;
+            }
+
+            $class = Relation::getMorphedModel($type) ?? $type;
+
+            if (! is_subclass_of($class, Model::class)) {
+                continue; // @codeCoverageIgnore
+            }
+
+            foreach (self::unsatisfiableColumns(new $class, $group) as $column) {
+                Log::warning(
+                    "Warden: condition on [{$column}] can never be true for [{$class}] — a boolean matches "
+                    .'only a column cast to bool. On a forbid this leaves the grant beneath it live.',
+                );
+            }
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function unsatisfiableColumns(Model $entity, Group $group): array
+    {
+        $columns = [];
+
+        foreach ($group->items as [, $constraint]) {
+            if ($constraint instanceof Group) {
+                $columns = [...$columns, ...self::unsatisfiableColumns($entity, $constraint)];
+
+                continue;
+            }
+
+            if ($constraint instanceof ValueConstraint
+                && is_bool($constraint->value) !== $entity->hasCast($constraint->column, ['bool', 'boolean'])) {
+                $columns[] = $constraint->column;
+            }
+        }
+
+        return $columns;
     }
 
     /**
