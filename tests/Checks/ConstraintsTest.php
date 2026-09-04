@@ -5,15 +5,21 @@ declare(strict_types=1);
 use ElPandaPe\Warden\Checks\Explain\Cause;
 use ElPandaPe\Warden\Constraints\Builder;
 use ElPandaPe\Warden\Constraints\ConstraintSerializer;
+use ElPandaPe\Warden\Constraints\Group;
+use ElPandaPe\Warden\Constraints\ValueConstraint;
+use ElPandaPe\Warden\Enums\ComparisonOperator;
+use ElPandaPe\Warden\Enums\LogicalOperator;
 use ElPandaPe\Warden\Events\GrantingPermission;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\BoolCastAccount;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -455,4 +461,13 @@ it('refuses a group carrying the unimplemented negation instead of reading it as
     $this->warden->refresh();
 
     expect(Gate::forUser($this->user)->allows('view', $account))->toBeFalse();
+});
+
+it('refuses to serialize the reserved not operator, at any depth', function (): void {
+    $leaf = new Group([[LogicalOperator::Not, new ValueConstraint('name', ComparisonOperator::Equal, 'Acme')]]);
+
+    expect(fn (): array => ConstraintSerializer::serialize($leaf))
+        ->toThrow(ConfigurationException::class, 'reserved')
+        ->and(fn (): array => ConstraintSerializer::serialize(new Group([[LogicalOperator::And, $leaf]])))
+        ->toThrow(ConfigurationException::class, 'reserved');
 });

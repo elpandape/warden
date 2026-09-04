@@ -8,6 +8,7 @@ use ElPandaPe\Warden\Contracts\Constraint;
 use ElPandaPe\Warden\Enums\ComparisonOperator;
 use ElPandaPe\Warden\Enums\ConstraintType;
 use ElPandaPe\Warden\Enums\LogicalOperator;
+use ElPandaPe\Warden\Exceptions\ConfigurationException;
 
 /**
  * The persisted shape is versioned and discriminated by enum, never by class
@@ -24,6 +25,10 @@ final class ConstraintSerializer
      */
     public static function serialize(Group $group): array
     {
+        // Symmetric with deserialize(): a payload carrying the reserved Not can
+        // never be read back, so refuse it where there is still a caller to tell.
+        self::rejectNot($group);
+
         return ['v' => self::VERSION, 'g' => $group->toArray()];
     }
 
@@ -65,6 +70,19 @@ final class ConstraintSerializer
     public static function canonicalOf(mixed $value): mixed
     {
         return self::canonical($value);
+    }
+
+    private static function rejectNot(Group $group): void
+    {
+        foreach ($group->items as [$logic, $constraint]) {
+            if ($logic === LogicalOperator::Not) {
+                throw new ConfigurationException('The "not" operator is reserved and cannot be stored.');
+            }
+
+            if ($constraint instanceof Group) {
+                self::rejectNot($constraint);
+            }
+        }
     }
 
     private static function constraint(mixed $shape): ?Constraint
