@@ -237,7 +237,14 @@ Warden::ownedVia(Post::class, 'writer_id');
 
 // Closure (evaluated live, never cached)
 Warden::ownedVia(fn ($post, $user) => $post->team_id === $user->team_id);
+
+// This class has no owner at all — overrides the global fallback
+Warden::notOwned(Setting::class);
 ```
+
+> 📌 **`ownedVia()` only registers; it never removes.** `ownedVia(Post::class, null)` sets the *global* attribute to `"App\Models\Post"`, which is never what you meant. Use `notOwned()` to take one class out, or `'default_attribute' => null` in the config to turn the fallback off everywhere.
+
+> 📌 **A `toOwn()` grant against a class that resolves no ownership can never grant.** The row is written and looks healthy; warden logs a warning so it is greppable.
 
 ### Best Practices
 

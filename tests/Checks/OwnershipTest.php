@@ -8,6 +8,7 @@ use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -138,4 +139,26 @@ it('owns nothing when the default attribute is explicitly null', function (): vo
 
     expect(Gate::forUser($this->user)->allows('edit', $mine))->toBeFalse()
         ->and(Account::query()->whereCan($this->user, 'edit')->count())->toBe(0);
+});
+
+it('takes a class out of ownership entirely with notOwned', function (): void {
+    $owned = Account::query()->create(['name' => 'Mine', 'user_id' => $this->user->getKey()]);
+
+    $this->warden->allow($this->user)->toOwn(Account::class, 'edit');
+
+    expect(Gate::forUser($this->user)->allows('edit', $owned))->toBeTrue();
+
+    $this->warden->notOwned(Account::class);
+
+    expect(Gate::forUser($this->user)->allows('edit', $owned))->toBeFalse()
+        ->and(Account::whereCan($this->user, 'edit')->count())->toBe(0);
+});
+
+it('warns when toOwn writes against a class that resolves no ownership', function (): void {
+    Log::spy();
+
+    $this->warden->notOwned(Account::class);
+    $this->warden->allow($this->user)->toOwn(Account::class, 'edit');
+
+    Log::shouldHaveReceived('warning')->once();
 });

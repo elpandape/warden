@@ -27,6 +27,9 @@ final class Context
     /** @var array<string, string|Closure> */
     private array $ownershipMap = [];
 
+    /** @var array<string, true> */
+    private array $unownedClasses = [];
+
     /** @var array<string, string|Closure> */
     private array $restrictionMap = [];
 
@@ -128,6 +131,16 @@ final class Context
         }
 
         $this->ownershipMap[$modelOrAttribute] = $attribute;
+    }
+
+    /**
+     * Declare that ownership means nothing for this class, overriding the
+     * global fallback. ownedVia() can only register a resolver, never remove
+     * one: passing null there sets the global attribute instead.
+     */
+    public function notOwned(string $class): void
+    {
+        $this->unownedClasses[$class] = true;
     }
 
     /**
@@ -327,9 +340,10 @@ final class Context
     {
         $class = $entity instanceof Model ? $entity::class : $entity;
 
-        return isset($this->ownershipMap[$class])
-            || isset($this->ownershipMap['*'])
-            || $this->ownershipAttribute !== null;
+        return ! isset($this->unownedClasses[$class])
+            && (isset($this->ownershipMap[$class])
+                || isset($this->ownershipMap['*'])
+                || $this->ownershipAttribute !== null);
     }
 
     /**

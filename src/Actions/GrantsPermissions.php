@@ -23,6 +23,7 @@ use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 class GrantsPermissions
 {
@@ -79,6 +80,14 @@ class GrantsPermissions
     {
         if (! $this->permitsGrant($permissions, $entity, onlyOwned: true)) {
             return $this->forgetChain();
+        }
+
+        // An owned-only grant against a class with no ownership resolver can
+        // never grant anything, and the row it writes looks like a healthy one.
+        if (! Context::resolve()->resolvesOwnershipFor($entity)) {
+            $class = $entity instanceof Model ? $entity::class : $entity;
+
+            Log::warning("Warden: toOwn() wrote a grant for [{$class}], which resolves no ownership. It can never grant.");
         }
 
         $this->asOneWrite(function () use ($permissions, $entity): void {

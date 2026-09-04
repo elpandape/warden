@@ -37,6 +37,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static \Illuminate\Database\Eloquent\Model findPermission(string|\BackedEnum $name)
  * @method static \ElPandaPe\Warden\Testing\WardenFake fake()
  * @method static \ElPandaPe\Warden\Checks\Explain\AuthorizationExplanation explain(\Illuminate\Database\Eloquent\Model $authority, string|\BackedEnum $permission, \Illuminate\Database\Eloquent\Model|string|null $entity = null)
+ * @method static \ElPandaPe\Warden\Warden notOwned(string $class)
  * @method static \ElPandaPe\Warden\Warden restrictedVia(string|\Closure $contextOrAttribute, string|\Closure|null $attribute = null)
  * @method static \ElPandaPe\Warden\Warden refresh()
  * @method static \ElPandaPe\Warden\Warden refreshFor(\Illuminate\Database\Eloquent\Model $authority)

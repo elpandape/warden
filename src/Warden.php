@@ -131,6 +131,13 @@ final class Warden
     /**
      * Configure how entities are matched against restricted-role contexts.
      */
+    public function notOwned(string $class): static
+    {
+        Context::resolve()->notOwned($class);
+
+        return $this;
+    }
+
     public function restrictedVia(string|\Closure $contextOrAttribute, string|\Closure|null $attribute = null): static
     {
         Context::resolve()->restrictedVia($contextOrAttribute, $attribute);
