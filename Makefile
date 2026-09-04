@@ -16,7 +16,7 @@ test: ## Run the test suite
 	$(PHP) vendor/bin/pest --parallel
 
 test-cached: ## Full suite again through the cached resolver (parity matrix)
-	$(DC) run --rm -e WARDEN_TEST_RESOLVER=cached php vendor/bin/pest --ci
+	$(DC) run --rm -e WARDEN_TEST_RESOLVER=cached php php -d memory_limit=1G vendor/bin/pest --ci
 
 coverage: ## Tests + 100% coverage gate
 	$(PHP) php -d memory_limit=1G -d pcov.directory=/app -d 'pcov.exclude=~/(vendor|tests|\.cache)/~' vendor/bin/pest --ci --coverage --min=100
