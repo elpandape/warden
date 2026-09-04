@@ -93,6 +93,9 @@ final class Tenancy
 
     /**
      * Keep the grants given to roles global across tenants.
+     *
+     * The argument is negated: dontScopeRoleGrants(false) restores scoping.
+     * Forwarding warden.scope.role_grants straight in therefore inverts it.
      */
     public function dontScopeRoleGrants(bool $dont = true): self
     {

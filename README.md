@@ -319,10 +319,18 @@ $removed = Warden::retract('editor')->from($user)->retractedCount();  // rows de
 > ⚠️ **The scope rule is warden's, not Eloquent's.** `TenantScope` filters reads and stamps creates; it does not isolate writes. `$permission->delete()` and `$role->delete()` reach rows in every tenant, and the foreign keys cascade below Eloquent entirely. Remove rows through warden's own verbs, or through `warden:clean`.
 
 > ⚠️ **Pivot tenancy is a plain predicate, not a registered scope**, so `withoutGlobalScopes()` does not lift it. Widen deliberately with `Warden::tenant()->removeOnce(...)`, which is the supported escape hatch.
+>
+> **Under `null_behavior => 'strict'` it narrows instead.** With no active tenant, strict reads only global rows, so `removeOnce()` turns `(scope is null or scope = $tenant)` into `scope is null` — strictly fewer rows than the read it was meant to widen. Under the default `'all'` it widens as described.
 
 > 📌 **Relation writes obey the rule too.** `detach()`, `sync()`, `toggle()`, `syncWithoutDetaching()` and `updateExistingPivot()` on `roles()` and `permissions()` touch only rows at the active write scope, and `attach()` stamps it. A global row the tenant inherits stays out of reach in both directions: under tenant 5, `sync([$role])` adds the tenant-5 row beside the global one instead of adopting it, and `sync([])` leaves the global one standing.
 
+> ⚠️ **Scope, yes; restriction, no.** A relation write narrows to one scope and stops there: it does not filter `restricted_to_*`, so `$user->roles()->detach($editor)` removes the scoped-role assignments along with the plain one. That mirrors `Warden::retract('editor')->from($user)` without `->on()`, which deletes them all the same way — the relation is not narrower than the verb it reflects. To remove one context and leave the others, name it: `Warden::retract('editor')->on($org)->from($user)`.
+
+> ⚠️ **A relation captures its write scope when it is built, not when it writes.** `$user->roles()` resolves the active tenant at construction time, so a relation held in a property across a tenant change still writes to the scope it was born in. Ask for it again after switching tenants, or write through `Warden::assign()` / `retract()`, which resolve the scope per call — and which also dispatch the typed events and report `retractedCount()`.
+
 > 📌 **A role is global unless the write mints a tenant one.** Under an active tenant, `allow('editor')` attaches to a global `editor` if one exists, rather than creating a tenant-scoped twin. Roles are looked up by name and scope; a tenant twin only exists once something writes it.
+
+> 📌 **The permission catalog behaves the same way.** The creating side follows the reading filter for permissions too, so under a tenant `allow($user)->to('publish')` reuses a global `publish` row when one exists instead of minting a tenant twin. Set `Warden::tenant()->onlyRelations()` to keep the catalog global on purpose.
 
 > 📌 `Tenancy::writeScope()` takes `forRoleGrant`, and it defaults to `false`. A bare call therefore reports the scope of an authority grant; ask with `forRoleGrant: true` when the holder is a role, or the answer describes a different write than the one you meant.
 
