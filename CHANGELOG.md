@@ -3,6 +3,74 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v2.2.0 — Writes that admit what they cannot do (2026-09-04)
+
+### Added
+
+- **`Warden::notOwned()`** takes one class out of ownership entirely. `ownedVia()` could
+  only ever register a resolver: passing `null` as the second argument set the *class
+  name* as the global attribute, which is never what anyone meant, so there was no way
+  to say "this model has no owner" while the fallback stayed on for every other one.
+- **A warning when a write can never grant.** `toOwn()` against a class that resolves no
+  ownership, and a condition whose boolean cannot match the column it names, both write
+  rows that look healthy in the table and can never authorise anything. Both now say so
+  in the log, at the one moment there is still a person to tell. The second is the more
+  dangerous of the two: written as a `forbid()`, an unsatisfiable condition leaves the
+  grant underneath it live, and `explain()` reports that grant without ever mentioning
+  the prohibition.
+
+### Fixed
+
+- **A catalogue row edited through the model invalidates the cache.** The invalidation
+  hook recognised the two pivots and not `permissions`, so renaming a permission or
+  rewriting its `options` through Eloquent left every cached check answering the old
+  rule until the payload expired a day later. This one fails **open**: the rule a person
+  edited to narrow a grant kept granting. The catalogue write and the grant beside it
+  are one logical write, so the operation boundary now opens before the lookup and the
+  two still cost a single cache bump between them.
+- **`warden:clean --duplicates` refuses a row it cannot read.** It asked the cast where
+  the three engines deliberately ask the column, and an undecodable blob casts to
+  `null` — which reads as "no conditions". A narrowed rule nobody could decode could
+  therefore be collapsed into its unconstrained sister, and the grant re-pointed at the
+  row without the condition. A row the command cannot decide about is now skipped with
+  a warning.
+- **`ConstraintSerializer::serialize()` refuses the reserved negation.** Reading already
+  rejected a stored `not`, so it failed closed; writing did not, which meant a group
+  carrying one produced a payload that could never be read back, and its author found
+  out at check time rather than at write time.
+- **What `warden.gate.register` off actually silences.** The note added in `2.0.0`
+  claimed `Warden::can()` still answers while `$user->can()` does not. Both go through
+  the same Gate, so with the key off a loose permission with no policy behind it reads
+  as denied by either — and by `cannot()`, `canAny()`, `authorize()` and the middleware
+  as well. Only the resolver keeps answering. The config key now carries the same
+  explanation, where it is acted on.
+
+### Changed
+
+- **`assigned_roles` is read once per call.** `whereCan()` read it three times, twice
+  with an identical predicate, so a listing paid six preamble queries where four do the
+  same work; `explain()` read it twice more, once inside the resolver and once to name
+  the role to blame. Both now partition a single read in PHP, exactly as the two
+  resolvers already did — which also collapses the two copies of "which assignments
+  count for this check" that were obliged to agree.
+
+### Documentation
+
+- **Three rules tenancy left unstated.** `removeOnce()` is documented as the way to
+  widen a pivot read, but under `null_behavior => 'strict'` it narrows instead; the
+  creating side follows the reading filter for the permission catalogue too, and only
+  the role half of that was written down; and `dontScopeRoleGrants()` negates its
+  argument, so forwarding the config key straight in inverts it.
+- **What a relation write does and does not narrow.** It narrows by scope and not by
+  restriction — mirroring `retract()->from()` without `->on()` — and it captures its
+  write scope when the relation is built, not when it writes.
+- **`to()->where()` is two writes.** Only the second runs in a transaction, so between
+  them the live row is unconditional and a throw in the chain leaves it that way.
+- **What a cascade announces.** Deleting a catalogue row dispatches one event per grant
+  read *before* the delete, so the events describe what the foreign key was predicted
+  to take rather than what it confirmed; and that read is deliberately unscoped, because
+  the delete crosses every tenant.
+
 ## v2.1.0 — A catalogue that can converge (2026-08-26)
 
 ### Added
