@@ -167,6 +167,33 @@ it('resolves duplicate catalog rows and re-points their grants', function (): vo
         ->and(Grant::query()->where('permission_id', $keeper->getKey())->count())->toBe(2);
 });
 
+it('refuses to collapse a catalog row whose stored options do not decode', function (): void {
+    $other = User::query()->create(['name' => 'Ana']);
+
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $plain = Permission::query()->sole();
+
+    $undecodableId = Permission::query()->getQuery()->insertGetId([
+        'name' => $plain->getAttribute('name'),
+        'entity_type' => $plain->getAttribute('entity_type'),
+        'entity_id' => null,
+        'only_owned' => false,
+        'options' => '{"v":1,"g":',
+        'scope' => null,
+        'identity_key' => 'stale',
+    ]);
+    Grant::query()->getQuery()->insert([
+        'permission_id' => $undecodableId, 'entity_type' => $other->getMorphClass(),
+        'entity_id' => $other->getKey(), 'forbidden' => false, 'scope' => null,
+    ]);
+
+    $this->artisan('warden:clean', ['--duplicates' => true])->assertSuccessful();
+
+    expect(Permission::query()->count())->toBe(2)
+        ->and(Grant::query()->where('permission_id', $undecodableId)->count())->toBe(1)
+        ->and(Grant::query()->where('permission_id', $plain->getKey())->count())->toBe(1);
+});
+
 it('leaves a lone catalog row alone when collapsing duplicates', function (): void {
     app(Warden::class)->allow(User::query()->create(['name' => 'Solo']))->to('view');
 

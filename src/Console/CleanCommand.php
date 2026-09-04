@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElPandaPe\Warden\Console;
 
 use ElPandaPe\Warden\Constraints\ConstraintSerializer;
+use ElPandaPe\Warden\Constraints\Group;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Console\Command;
@@ -177,6 +178,23 @@ final class CleanCommand extends Command
         $clusters = [];
 
         foreach ($group as $row) {
+            // Ask the column, not the cast: an undecodable blob casts to null,
+            // which reads as "no conditions" and would collapse a narrowed rule
+            // into its unconstrained sister.
+            $stored = $row->getAttributes()['options'] ?? null;
+
+            if ($stored !== null && ! ConstraintSerializer::deserialize($stored) instanceof Group) {
+                $key = $row->getKey();
+
+                if (! is_int($key) && ! is_string($key)) {
+                    continue; // @codeCoverageIgnore
+                }
+
+                $this->components->warn("Skipping permission [{$key}]: its options do not decode.");
+
+                continue;
+            }
+
             foreach ($clusters as $index => $cluster) {
                 if (ConstraintSerializer::sameRule($cluster[0]->getAttribute('options'), $row->getAttribute('options'))) {
                     $clusters[$index][] = $row;
