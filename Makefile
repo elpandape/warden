@@ -56,8 +56,8 @@ mutation: ## Mutation testing over the core, one pass per path
 
 test-dbs: ## Suite against MySQL & Postgres (waits for healthchecks)
 	$(DC) up -d --wait mysql postgres
-	$(PHP) sh -c "DB_CONNECTION=mysql DB_HOST=mysql DB_PORT=3306 DB_USERNAME=root DB_PASSWORD=secret DB_DATABASE=warden vendor/bin/pest --ci"
-	$(PHP) sh -c "DB_CONNECTION=pgsql DB_HOST=postgres DB_PORT=5432 DB_USERNAME=postgres DB_PASSWORD=secret DB_DATABASE=warden vendor/bin/pest --ci"
+	$(PHP) sh -c "DB_CONNECTION=mysql DB_HOST=mysql DB_PORT=3306 DB_USERNAME=root DB_PASSWORD=secret DB_DATABASE=warden php -d memory_limit=1G vendor/bin/pest --ci"
+	$(PHP) sh -c "DB_CONNECTION=pgsql DB_HOST=postgres DB_PORT=5432 DB_USERNAME=postgres DB_PASSWORD=secret DB_DATABASE=warden php -d memory_limit=1G vendor/bin/pest --ci"
 
 release-check: ## Everything a tag must pass: ci plus both real engines
 	$(MAKE) ci
