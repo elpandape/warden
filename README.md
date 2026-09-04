@@ -370,6 +370,7 @@ Warden::allow($user)->to('view', Document::class)
 > - ⚠️ **On a `forbid()` that mismatch is the dangerous direction.** A condition that can never be true makes the prohibition inert, and the grant underneath it stays live — `explain()` reports the grant and never mentions the forbid, because from the resolver's side no rule matched. A missing `'bool'` cast therefore reads as "allowed". Add the cast, or write the condition against a column the model casts.
 > - A permission with **no entity** is only ever checked without an instance, so constraining one is refused: the shape that would make it match is the shape that rejects it.
 > - A constrained grant **never matches instance-less checks** (`can('view')`, `can('view', Document::class)`) — they fail closed.
+> - **`to()->where()` is two writes, not one.** `to()` lands an unconstrained grant that authorises every instance, and `where()` re-points it at the constrained twin. Only the second step runs in a transaction; between the two the live row is unconditional, and a throw in `where()` — an unknown operator, a permission with no entity — leaves it that way. Wrap the whole chain in your own transaction when that window matters.
 
 ### Best Practices
 
