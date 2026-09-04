@@ -53,7 +53,11 @@ class GrantsPermissions
             return $this->forgetChain();
         }
 
-        $this->grant($this->findOrCreatePermissions($permissions, $entity));
+        // The catalog row and the grant are one logical write: open the
+        // boundary before the lookup so both coalesce into a single bump.
+        $this->asOneWrite(function () use ($permissions, $entity): void {
+            $this->grant($this->findOrCreatePermissions($permissions, $entity));
+        });
 
         return $this;
     }
@@ -77,7 +81,9 @@ class GrantsPermissions
             return $this->forgetChain();
         }
 
-        $this->grant($this->findOrCreatePermissions($permissions, $entity, onlyOwned: true));
+        $this->asOneWrite(function () use ($permissions, $entity): void {
+            $this->grant($this->findOrCreatePermissions($permissions, $entity, onlyOwned: true));
+        });
 
         return $this;
     }

@@ -425,6 +425,30 @@ it('invalidates cached checks through a pivot model warden does not own', functi
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
 });
 
+it('invalidates cached checks when a catalog row is edited by the model', function (): void {
+    $this->warden->allow($this->user)->to('edit-site');
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
+
+    Permission::query()->where('name', 'edit-site')->sole()->update(['name' => 'renamed']);
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse()
+        ->and(Gate::forUser($this->user)->allows('renamed'))->toBeTrue();
+});
+
+it('invalidates cached checks when a condition is edited by the model', function (): void {
+    $account = Account::query()->create(['name' => 'Acme']);
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Other');
+
+    expect(Gate::forUser($this->user)->allows('view', $account))->toBeFalse();
+
+    Permission::query()->where('name', 'view')->sole()->update([
+        'options' => ['v' => 1, 'g' => ['t' => 'group', 'i' => [['and', ['t' => 'value', 'c' => 'name', 'o' => '=', 'v' => 'Acme']]]]],
+    ]);
+
+    expect(Gate::forUser($this->user)->allows('view', $account))->toBeTrue();
+});
+
 it('invalidates cached checks in the tenants a cascade reached', function (): void {
     $this->warden->tenant()->to(5);
     $this->warden->allow($this->user)->to('edit-site');

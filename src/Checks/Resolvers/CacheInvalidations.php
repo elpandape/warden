@@ -287,6 +287,9 @@ final class CacheInvalidations
         return in_array($model::class, [
             $context->grantClass(),
             $context->assignedRoleClass(),
+            // The catalog too: build() bakes a permission's own columns into
+            // the cached tuple, so editing one by the model must invalidate.
+            $context->permissionClass(),
         ], true);
     }
 }

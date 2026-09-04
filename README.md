@@ -567,6 +567,8 @@ Warden::disallow($user)->to('publish');   // next check is already correct
 
 ❌ **Don't** — raw database edits (seeders, manual SQL) bypass invalidation. After hand-editing rows, call `Warden::refresh()` — or better, make the edit through the API.
 
+> 📌 **"Through the API" includes the models.** Editing a `Grant`, an `AssignedRole` or a **catalog row** through Eloquent invalidates too — renaming a permission or rewriting its `options` reaches every cached check, because a permission's own columns are baked into the payload. What still needs `Warden::refresh()` is a write that fires no model event: the query builder, `DB::table()`, and a raw statement.
+
 > ⚠️ The in-memory matcher compares permission names **byte-exactly**, while a case-insensitive database collation may match `Edit` to `edit`. Use exact, consistent names.
 
 ---
