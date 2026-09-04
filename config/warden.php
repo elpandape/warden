@@ -43,7 +43,10 @@ return [
     ],
 
     'gate' => [
-        // Set to false to register your own Gate callback instead.
+        // Set to false to register your own Gate callback instead. Warden then
+        // abstains from every Gate answer, so a permission with no policy behind
+        // it reads as denied through every route into the Gate. The resolver is
+        // unaffected: app(Contracts\Resolver::class) still answers.
         'register' => true,
         'run_before_policies' => false,
     ],

@@ -162,7 +162,7 @@ Gate::authorize('edit', $post);     // throws on deny
 > - Checks with more than one argument are left to your policies.
 > - Guests and non-model arguments are never answered by Warden.
 > - `Warden::can()` inside a policy **recurses through the Gate**. Ask the resolver directly — `app(Contracts\Resolver::class)` — when a policy needs Warden's own answer.
-> - With `warden.gate.register` off, Warden abstains from every Gate answer, so a loose permission with no policy behind it reads as denied. `Warden::can()` still answers; `$user->can()` does not.
+> - With `warden.gate.register` off, Warden abstains from every Gate answer, so a loose permission with no policy behind it reads as denied by **every** route through the Gate — `$user->can()`, `Warden::can()`, `cannot()`, `canAny()`, `authorize()` and the `warden.permission` middleware all go through the same Gate. What keeps answering is the resolver, `app(Contracts\Resolver::class)` — and your policies, wherever you have one.
 
 ---
 

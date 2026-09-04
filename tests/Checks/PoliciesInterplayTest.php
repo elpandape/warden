@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Contracts\Resolver;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
@@ -73,6 +74,19 @@ it('stays out of the gate when registration is disabled', function (): void {
     $this->warden->allow($this->user)->to('edit-site');
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
+});
+
+it('denies a loose permission through every gate entry point when registration is disabled', function (): void {
+    config()->set('warden.gate.register', false);
+    $this->actingAs($this->user);
+
+    $this->warden->allow($this->user)->to('edit-site');
+
+    expect($this->user->can('edit-site'))->toBeFalse()
+        ->and($this->warden->can('edit-site'))->toBeFalse()
+        ->and($this->warden->cannot('edit-site'))->toBeTrue()
+        ->and($this->warden->canAny(['edit-site']))->toBeFalse()
+        ->and(app(Resolver::class)->resolve($this->user, 'edit-site')->isGranted())->toBeTrue();
 });
 
 it('abstains on extra arguments even when running before policies', function (): void {
