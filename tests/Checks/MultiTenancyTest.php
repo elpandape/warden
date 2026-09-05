@@ -170,3 +170,20 @@ it('restores the no-tenant state after a temporary switch', function (): void {
     expect($removed)->toBeNull()
         ->and($this->warden->tenant()->current())->toBeNull();
 });
+
+it('prefers the row a tenant minted over the global one it shadows', function (): void {
+    $this->warden->allow('editor')->to('publish');
+    $global = Permission::query()->withoutGlobalScopes()->sole();
+
+    $twin = $this->warden->tenant()->onceTo(7, fn (): Permission => Permission::query()->create([
+        'name' => 'publish', 'entity_type' => null, 'entity_id' => null, 'only_owned' => false, 'options' => null,
+    ]));
+
+    $this->warden->tenant()->onceTo(7, fn () => $this->warden->allow('editor')->to('publish'));
+
+    $grant = Grant::query()->withoutGlobalScopes()->where('scope', 7)->sole();
+
+    expect($twin->getAttribute('scope'))->toBe(7)
+        ->and($grant->getAttribute('permission_id'))->toBe($twin->getKey())
+        ->and($grant->getAttribute('permission_id'))->not->toBe($global->getKey());
+});

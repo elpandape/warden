@@ -330,7 +330,7 @@ $removed = Warden::retract('editor')->from($user)->retractedCount();  // rows de
 
 > 📌 **A role is global unless the write mints a tenant one.** Under an active tenant, `allow('editor')` attaches to a global `editor` if one exists, rather than creating a tenant-scoped twin. Roles are looked up by name and scope; a tenant twin only exists once something writes it.
 
-> 📌 **The permission catalog behaves the same way.** The creating side follows the reading filter for permissions too, so under a tenant `allow($user)->to('publish')` reuses a global `publish` row when one exists instead of minting a tenant twin. Set `Warden::tenant()->onlyRelations()` to keep the catalog global on purpose.
+> 📌 **The permission catalog behaves the same way**, and in both halves a row the tenant minted for itself wins the global one it shadows. Under a tenant, `allow($user)->to('publish')` reuses a global `publish` row when that is all there is, and picks the tenant's own the moment one exists. Set `Warden::tenant()->onlyRelations()` to keep the catalog global on purpose.
 
 > 📌 `Tenancy::writeScope()` takes `forRoleGrant`, and it defaults to `false`. A bare call therefore reports the scope of an authority grant; ask with `forRoleGrant: true` when the holder is a role, or the answer describes a different write than the one you meant.
 

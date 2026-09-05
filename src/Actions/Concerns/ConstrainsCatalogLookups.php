@@ -22,8 +22,13 @@ trait ConstrainsCatalogLookups
      */
     private function constrainCatalogLookup(Builder $query): Builder
     {
-        return app(Tenancy::class)->current() === null
-            ? $query->whereNull('scope')
-            : $query;
+        if (app(Tenancy::class)->current() === null) {
+            return $query->whereNull('scope');
+        }
+
+        // The read scope pairs global + tenant, and firstOrCreate takes whichever
+        // row the engine hands back first — which nothing ordered, so it differed
+        // per engine. A row the tenant minted for itself wins the one it shadows.
+        return $query->orderByRaw('scope is null');
     }
 }
