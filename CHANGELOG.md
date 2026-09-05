@@ -3,6 +3,21 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v2.2.1 — The catalogue row you meant (2026-09-04)
+
+### Fixed
+
+- **A catalogue lookup under a tenant picks that tenant's own row.** The read scope pairs
+  the global row with the tenant's, and `firstOrCreate` took whichever the engine handed
+  back first — which nothing ordered. Measured on the same data, SQLite returned the
+  global row and MySQL the tenant twin, so the outcome was not merely surprising, it was
+  undefined. Somebody who minted a row for their tenant on purpose and then granted that
+  permission under the same tenant could end up with a concession pointing at the shared
+  row, governed by *its* conditions rather than the ones they chose, with their own row
+  left orphaned. The lookup now prefers the tenant's own row in both halves of the
+  catalogue — roles and permissions — and still falls back to the global one when there
+  is no twin to prefer.
+
 ## v2.2.0 — Writes that admit what they cannot do (2026-09-04)
 
 ### Added
