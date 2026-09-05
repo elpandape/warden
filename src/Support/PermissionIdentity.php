@@ -25,7 +25,9 @@ final class PermissionIdentity
             $permission->getAttribute('entity_id'),
             (bool) $permission->getAttribute('only_owned'),
             $permission->getAttribute('scope'),
-            $permission->getAttribute('options'),
+            // Ask the column, not the cast: an undecodable blob casts to null,
+            // which would digest as "no conditions" — its plain sister's print.
+            $permission->getAttributes()['options'] ?? null,
         );
     }
 
@@ -55,7 +57,19 @@ final class PermissionIdentity
             return '~';
         }
 
-        $canonical = ConstraintSerializer::canonicalOf($options);
+        // The stored bytes, decoded here rather than trusted from a cast. What
+        // canonicalises is the decoded shape: hashing the bytes would make the
+        // print depend on key order, which a json column is free to rewrite.
+        $decoded = is_string($options) ? json_decode($options, true) : $options;
+
+        if (! is_array($decoded)) {
+            // A rule nobody can read is not the absence of a rule. Give it a
+            // print of its own so it collides with nothing, and so recomputing
+            // the key repairs the row instead of failing against its sister.
+            return '!'.substr(hash('sha256', is_string($options) ? $options : ''), 0, 31);
+        }
+
+        $canonical = ConstraintSerializer::canonicalOf($decoded);
 
         return substr(hash('sha256', json_encode($canonical, JSON_THROW_ON_ERROR)), 0, 32);
     }

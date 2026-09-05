@@ -12,10 +12,12 @@ use ElPandaPe\Warden\Enums\LogicalOperator;
 use ElPandaPe\Warden\Events\GrantingPermission;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Models\Permission;
+use ElPandaPe\Warden\Support\PermissionIdentity;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\BoolCastAccount;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -505,4 +507,23 @@ it('stays quiet for a wildcard entity, which names no model to ask', function ()
     $this->warden->forbid($this->user)->everything()->where('name', true);
 
     Log::shouldNotHaveReceived('warning');
+});
+
+it('gives an unreadable rule a fingerprint of its own, not its plain sister\'s', function (): void {
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+
+    $plain = Permission::query()->whereNull('options')->sole();
+    $twin = Permission::query()->whereNotNull('options')->sole();
+
+    // Raw on purpose: through the model the cast re-encodes it as valid json,
+    // which is the step that hides this shape.
+    DB::table('permissions')->where('id', $twin->getKey())->update(['options' => 'null']);
+
+    $reread = Permission::query()->whereKey($twin->getKey())->sole();
+    $reread->setAttribute('title', 'Renamed');
+
+    expect(fn (): bool => $reread->save())->not->toThrow(QueryException::class)
+        ->and(PermissionIdentity::for($reread))->not->toBe(PermissionIdentity::for($plain))
+        ->and(Permission::query()->count())->toBe(2);
 });
