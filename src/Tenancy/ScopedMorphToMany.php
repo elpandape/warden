@@ -36,6 +36,13 @@ final class ScopedMorphToMany extends MorphToMany
         return $this;
     }
 
+    /**
+     * Narrowed by scope, and by scope only: no predicate on restricted_to_*.
+     * That is deliberate, and it mirrors retract()->from() without on(), which
+     * deletes restricted assignments the same way — the relation is not
+     * narrower than the verb it reflects. To remove one context and leave the
+     * others, name it: Warden::retract($role)->on($context)->from($authority).
+     */
     public function newPivotQuery(): Builder
     {
         $query = parent::newPivotQuery();

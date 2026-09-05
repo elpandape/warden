@@ -11,8 +11,15 @@ enum LogicalOperator: string
     case And = 'and';
     case Or = 'or';
     /**
-     * Reserved and unimplemented. The serializer refuses any payload carrying
-     * it, so a stored Not fails closed rather than quietly meaning And.
+     * Reserved and unimplemented. Serializing one is refused and reading one
+     * back is refused, so a stored Not fails closed rather than quietly meaning
+     * And.
+     *
+     * The in-memory half is still open: Group::passes() reads a hand-built Not
+     * as a conjunction. Closing it means letting a group report that it cannot
+     * be decided, which changes a published signature and so cannot land before
+     * a major. Until then, do not derive a connector list from cases(): the
+     * third one is not a connector anything will store.
      */
     case Not = 'not';
 

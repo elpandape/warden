@@ -17,6 +17,13 @@ enum ComparisonOperator: string
      * Strict by design: identical types compare directly, numeric strings
      * bridge to their numbers (database drivers stringify), anything else
      * fails closed instead of falling into PHP type juggling.
+     *
+     * is_numeric(true) is false, so a boolean never matches a column the model
+     * does not cast to bool. Writing that mismatch is refused and the query
+     * compiler is symmetric, but a row stored before the refusal still
+     * evaluates here, and evaluates to false — written as a forbid it never
+     * fires. Aligning this half changes documented behaviour and so cannot
+     * land before a major.
      */
     public function compare(mixed $left, mixed $right): bool
     {
