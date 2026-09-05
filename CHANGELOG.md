@@ -3,6 +3,43 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v2.2.2 — A rule nobody can read is not the absence of one (2026-09-05)
+
+### Fixed
+
+- **An unreadable rule gets a fingerprint of its own.** `PermissionIdentity` asked the cast
+  for `options`, and Eloquent flattens three stored values to `null` — text that is not
+  JSON, the empty string, and the JSON literal `null`. A row carrying one of them therefore
+  digested as a row with **no conditions at all**, which is byte for byte the print of the
+  plain row beside it, and `(name, identity_key)` reads those two as one permission. It also
+  left the row unrepairable: the save that would recompute its key is the one that collides
+  with its sister. The stored bytes are now decoded here rather than trusted from a cast, so
+  every readable rule digests exactly as it did before — **no migration, no key changes** —
+  and what does not decode gets a print nothing else can collide with. Same fix the three
+  engines took in `1.0.2` and `warden:clean` took in `2.2.0`; this was the site both passes
+  left behind.
+
+  *Note for anyone who swapped the permission model and dropped the `options` cast: your
+  keys were being computed from raw bytes, which a `json` column is free to reorder. They
+  are now computed from the decoded shape, so they become engine-stable — and change once.*
+
+### Documentation
+
+- **Which live halves are deliberate, said where somebody is about to rely on them.** Three
+  behaviours had no statement outside the changelog, so a consumer carrying a workaround for
+  each could not tell a permanent constraint from a temporary one:
+  - `ScopedMorphToMany::newPivotQuery()` narrows by scope and **not** by restriction on
+    purpose — it mirrors `retract()->from()` without `->on()`, which deletes restricted
+    assignments the same way.
+  - `LogicalOperator::Not` is refused on the way in and on the way out, but a hand-built
+    group still reads it as a conjunction. Closing that needs a published signature to move,
+    so it cannot land in 2.x — and until it does, do not derive a connector list from
+    `cases()`.
+  - `ComparisonOperator::compare()` can never match a boolean to a column the model does not
+    cast, so a row stored before the write-time refusal evaluates to false and, written as a
+    forbid, never fires. Aligning it changes documented behaviour, so it cannot land in 2.x
+    either.
+
 ## v2.2.1 — The catalogue row you meant (2026-09-04)
 
 ### Fixed
