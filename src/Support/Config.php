@@ -9,6 +9,23 @@ use ElPandaPe\Warden\Exceptions\ConfigurationException;
 
 final class Config
 {
+    public static function nestedRoles(): bool
+    {
+        return (bool) config('warden.roles.nested', false);
+    }
+
+    /**
+     * A ceiling rather than a cycle exception: a cycle stops expanding instead
+     * of throwing, because assigning a role to a role is accepted today and
+     * turning that into a failure is a break nobody asked for.
+     */
+    public static function roleMaxDepth(): int
+    {
+        $depth = config('warden.roles.max_depth', 10);
+
+        return is_int($depth) && $depth > 0 ? $depth : 10;
+    }
+
     public static function eventsEnabled(): bool
     {
         return (bool) config('warden.events_enabled', true);

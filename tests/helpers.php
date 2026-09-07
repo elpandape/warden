@@ -6,8 +6,10 @@ namespace ElPandaPe\Warden\Tests;
 
 use ElPandaPe\Warden\Checks\Resolvers\CacheKeyVersioner;
 use ElPandaPe\Warden\Models\AssignedRole;
+use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
+use ElPandaPe\Warden\Warden;
 use ElPandaPe\Warden\WardenServiceProvider;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
@@ -26,6 +28,15 @@ function storeConditionRefusedSince3(string $column = 'user_id'): void
     DB::table('permissions')->whereNotNull('entity_type')->update([
         'options' => '{"v": 1, "g": {"t": "group", "i": [["and", {"t": "value", "c": "'.$column.'", "o": "=", "v": true}]]}}',
     ]);
+}
+
+/**
+ * Nest one role inside another: the edge is an assignment whose authority is
+ * the outer role.
+ */
+function nestRole(string $inner, string $outer): void
+{
+    app(Warden::class)->assign($inner)->to(Role::query()->firstOrCreate(['name' => $outer]));
 }
 
 function projectIn(Account $org): Account

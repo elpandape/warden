@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace ElPandaPe\Warden\Models\Concerns;
 
 use ElPandaPe\Warden\Concerns\HasPermissions;
+use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Support\Config;
 use ElPandaPe\Warden\Support\Titles\RoleTitle;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Facades\Event;
 
 trait IsRole
@@ -18,6 +20,29 @@ trait IsRole
     use BelongsToTenant;
     use HasPermissions;
     use ResolvesContext;
+
+    /**
+     * The roles nested inside this one: an edge between roles, read through a
+     * relation of its own rather than by giving the role model the authority
+     * concern — that would drag roles(), isA() and the tenancy scopes onto it
+     * and make every role an authority for the whole engine.
+     *
+     * The edge is stored in assigned_roles like any other assignment, with
+     * this role as the authority, so the schema is untouched.
+     *
+     * @return BelongsToMany<\ElPandaPe\Warden\Models\Role, $this>
+     */
+    public function nestedRoles(): BelongsToMany
+    {
+        $context = Context::resolve();
+
+        return $this->belongsToMany(
+            $context->roleClass(),
+            $context->table('assigned_roles'),
+            'entity_id',
+            'role_id',
+        )->wherePivot('entity_type', $this->getMorphClass());
+    }
 
     protected static function bootIsRole(): void
     {

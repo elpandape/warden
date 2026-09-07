@@ -10,6 +10,7 @@ use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Support\Config;
 use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Support\Name;
+use ElPandaPe\Warden\Support\RoleClosure;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -44,11 +45,22 @@ trait HasRolesAndPermissions
     {
         $names = array_map(Name::of(...), array_values($roles));
 
-        if ($this->relationLoaded('roles')) {
+        if (! Config::nestedRoles() && $this->relationLoaded('roles')) {
             return $this->loadedRoleNames()->intersect($names)->isNotEmpty();
         }
 
-        return $this->roles()->whereIn('name', $names)->exists();
+        if (! Config::nestedRoles()) {
+            return $this->roles()->whereIn('name', $names)->exists();
+        }
+
+        // Nesting reaches roles the eager-loaded relation never held, so the
+        // memo cannot answer this one.
+        $reachable = array_keys(RoleClosure::for($this));
+
+        return $reachable !== [] && Context::resolve()->roleClass()::query()
+            ->whereKey($reachable)
+            ->whereIn('name', $names)
+            ->exists();
     }
 
     public function isAn(string|BackedEnum ...$roles): bool
@@ -86,9 +98,19 @@ trait HasRolesAndPermissions
         $names = array_map(Name::of(...), array_values($roles));
         $column = self::qualifiedRoleName();
 
+        if (! Config::nestedRoles()) {
+            return $query->whereHas(
+                'roles',
+                fn (Builder $role): Builder => $role->whereIn($column, $names),
+            );
+        }
+
+        // Answered from the role's side: a closure cannot be expanded per row.
+        $reaching = RoleClosure::reaching(self::roleKeysNamed($names));
+
         return $query->whereHas(
             'roles',
-            fn (Builder $role): Builder => $role->whereIn($column, $names),
+            fn (Builder $role): Builder => $role->whereKey($reaching),
         );
     }
 
@@ -143,6 +165,20 @@ trait HasRolesAndPermissions
     public function getForbiddenPermissions(): \Illuminate\Database\Eloquent\Collection
     {
         return $this->resolveGrantedPermissions(forbidden: true);
+    }
+
+    /**
+     * @param  list<string>  $names
+     * @return list<int|string>
+     */
+    private static function roleKeysNamed(array $names): array
+    {
+        /** @var list<int|string> */
+        return Context::resolve()->roleClass()::query()
+            ->whereIn('name', $names)
+            ->toBase()
+            ->pluck('id')
+            ->all();
     }
 
     /**

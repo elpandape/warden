@@ -14,6 +14,7 @@ use ElPandaPe\Warden\Contracts\Constraint;
 use ElPandaPe\Warden\Enums\LogicalOperator;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Support\Expiry;
+use ElPandaPe\Warden\Support\RoleClosure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -112,17 +113,13 @@ final readonly class WhereCan
         $unrestricted = [];
         $all = [];
 
-        $rows = $this->context->assignedRoleClass()::query()
-            ->where('entity_type', $authority->getMorphClass())
-            ->where('entity_id', $authority->getKey())
-            ->toBase()
-            ->get(['role_id', 'restricted_to_type', 'restricted_to_id']);
+        foreach (RoleClosure::for($authority) as $roleKey => $restrictions) {
+            $all[] = $roleKey;
 
-        foreach ($rows as $row) {
-            $all[] = $row->role_id;
-
-            if ($row->restricted_to_type === null && $row->restricted_to_id === null) {
-                $unrestricted[] = $row->role_id;
+            foreach ($restrictions as [$contextType, $contextId]) {
+                if ($contextType === null && $contextId === null) {
+                    $unrestricted[] = $roleKey;
+                }
             }
         }
 

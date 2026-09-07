@@ -23,7 +23,7 @@ it('embeds the global counter in the strict segment, so a global write orphans s
     config()->set('warden.scope.null_behavior', 'strict');
     Cache::store('array')->put('warden:v:g', 7, 60);
 
-    expect(app(CacheKeyVersioner::class)->segment())->toBe('strict.c1.g7');
+    expect(app(CacheKeyVersioner::class)->segment())->toBe('strict.c1.n0.g7');
 });
 
 it('builds the tenant segment from both counters, separated so their digits cannot collide', function (): void {
@@ -31,7 +31,7 @@ it('builds the tenant segment from both counters, separated so their digits cann
     Cache::store('array')->put('warden:v:g', 3, 60);
     Cache::store('array')->put('warden:v:t.5', 8, 60);
 
-    expect(app(CacheKeyVersioner::class)->segment())->toBe('t5.c1.g3.v8');
+    expect(app(CacheKeyVersioner::class)->segment())->toBe('t5.c1.n0.g3.v8');
 });
 
 it('invalidates a tenant payload through its own tenant counter, never the global one', function (): void {
@@ -58,5 +58,5 @@ it('seeds a fresh counter above the values an evicted predecessor may have hande
 it('falls back to zero for a junk counter that cannot be reseeded', function (): void {
     Cache::store('array')->put('warden:v:a', 'junk', 60);
 
-    expect(app(CacheKeyVersioner::class)->segment())->toBe('all.c1.a0');
+    expect(app(CacheKeyVersioner::class)->segment())->toBe('all.c1.n0.a0');
 });

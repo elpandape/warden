@@ -10,6 +10,7 @@ use ElPandaPe\Warden\Contracts\Resolver;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Support\Expiry;
+use ElPandaPe\Warden\Support\RoleClosure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -163,37 +164,28 @@ final readonly class DatabaseResolver implements Resolver
      */
     private function effectiveRoleKeys(Model $authority, Model|string|null $entity): array
     {
-        $assignments = $this->assignments ?? self::readAssignments($this->context, $authority);
-
         $keys = [];
 
-        foreach ($assignments as $assignment) {
-            $contextType = $assignment->getAttribute('restricted_to_type');
-            $contextId = $assignment->getAttribute('restricted_to_id');
-            $roleKey = $assignment->getAttribute('role_id');
+        foreach (RoleClosure::for($authority, $this->assignments) as $roleKey => $restrictions) {
+            foreach ($restrictions as [$contextType, $contextId]) {
+                if ($contextType === null && $contextId === null) {
+                    $keys[] = $roleKey;
 
-            if (! is_int($roleKey) && ! is_string($roleKey)) {
-                continue; // @codeCoverageIgnore
-            }
+                    continue;
+                }
 
-            if ($contextType === null && $contextId === null) {
-                $keys[] = $roleKey;
+                // Unreachable: the closure already drops a half-written
+                // restriction. Kept because the context call needs both narrowed.
+                if ($contextType === null || $contextId === null) {
+                    continue; // @codeCoverageIgnore
+                }
 
-                continue;
-            }
+                $usable = $entity instanceof Model
+                    && $this->context->belongsToContext($entity, $contextType, $contextId);
 
-            // A half-written restriction is not "unrestricted": fail closed.
-            if ($contextType === null || $contextId === null) {
-                continue;
-            }
-
-            $usable = $entity instanceof Model
-                && is_string($contextType)
-                && (is_int($contextId) || is_string($contextId))
-                && $this->context->belongsToContext($entity, $contextType, $contextId);
-
-            if ($usable) {
-                $keys[] = $roleKey;
+                if ($usable) {
+                    $keys[] = $roleKey;
+                }
             }
         }
 

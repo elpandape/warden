@@ -12,6 +12,7 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\Resolver;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\RoleClosure;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\Repository;
@@ -173,38 +174,7 @@ final class CachedResolver implements Resolver
 
         // Every assignment, restrictions included: a role granted through a
         // restricted assignment carries that context into its tuples.
-        /** @var array<int|string, list<array{string|null, int|string|null, int|null}>> $restrictionsByRole */
-        $restrictionsByRole = [];
-
-        foreach ($this->context->assignedRoleClass()::query()
-            ->where('entity_type', $authorityMorph)
-            ->where('entity_id', $authorityKey)
-            ->get() as $assignment) {
-            $roleKey = $assignment->getAttribute('role_id');
-
-            if (! is_int($roleKey) && ! is_string($roleKey)) {
-                continue; // @codeCoverageIgnore
-            }
-
-            $contextType = $assignment->getAttribute('restricted_to_type');
-            $contextId = $assignment->getAttribute('restricted_to_id');
-
-            $type = is_string($contextType) ? $contextType : null;
-            $id = is_int($contextId) || is_string($contextId) ? $contextId : null;
-
-            // A half-written restriction is not "unrestricted": fail closed.
-            if (($type === null) !== ($id === null)) {
-                continue;
-            }
-
-            $assignmentEnds = $assignment->getAttribute('expires_at');
-
-            $restrictionsByRole[$roleKey][] = [
-                $type,
-                $id,
-                $assignmentEnds instanceof DateTimeInterface ? $assignmentEnds->getTimestamp() : null,
-            ];
-        }
+        $restrictionsByRole = RoleClosure::for($authority);
 
         $roleKeys = array_keys($restrictionsByRole);
 

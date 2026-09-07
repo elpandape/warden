@@ -85,6 +85,17 @@ return [
         'expiration_time' => DateInterval::createFromDateString('24 hours'),
     ],
 
+    /*
+     * Nested roles: a role assigned to another role lends its grants to the
+     * holders of the outer one. Off by default — turning it on widens what
+     * every existing assignment reaches, and turning it back off takes effect
+     * on the next check rather than when the cache happens to expire.
+     */
+    'roles' => [
+        'nested' => false,
+        'max_depth' => 10,
+    ],
+
     'events_enabled' => true,
 
     // Opt-in: pre-action events where a listener returning false aborts the write.

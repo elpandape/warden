@@ -50,6 +50,11 @@ final readonly class CacheKeyVersioner
         $tenancy = app(Tenancy::class);
         $filter = $tenancy->readFilter();
         $catalog = $tenancy->scopesCatalog() ? 'c1' : 'c0';
+        // Turning nesting off is not a write, so nothing bumps a counter. In
+        // the key, the switch takes effect on the next check rather than
+        // whenever the cache happens to expire — which is what makes it usable
+        // as the emergency lever that justifies shipping it off.
+        $catalog .= Config::nestedRoles() ? '.n1' : '.n0';
 
         if ($filter === null) {
             return "all.{$catalog}.a".$this->counter('a');
