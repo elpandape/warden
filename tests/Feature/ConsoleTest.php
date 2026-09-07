@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
@@ -200,4 +202,45 @@ it('leaves a lone catalog row alone when collapsing duplicates', function (): vo
     $this->artisan('warden:clean', ['--duplicates' => true])->assertSuccessful();
 
     expect(Permission::query()->count())->toBe(1);
+});
+
+it('deletes rows past their end date from both pivots', function (): void {
+    $warden = app(Warden::class);
+    $user = User::query()->create(['name' => 'Ada']);
+    $past = Carbon::now()->subDay();
+
+    $warden->allow($user)->until($past)->to('view', Account::class);
+    $warden->assign('auditor')->until($past)->to($user);
+    $warden->allow($user)->to('browse');
+
+    $this->artisan('warden:clean --expired')
+        ->expectsOutputToContain('Deleted 2 expired row(s).')
+        ->assertExitCode(0);
+
+    expect(Grant::query()->count())->toBe(1)
+        ->and(AssignedRole::query()->count())->toBe(0);
+});
+
+it('counts expired rows without deleting them on a dry run', function (): void {
+    $warden = app(Warden::class);
+    $user = User::query()->create(['name' => 'Ada']);
+
+    $warden->allow($user)->until(Carbon::now()->subDay())->to('view', Account::class);
+
+    $this->artisan('warden:clean --expired --dry-run')
+        ->expectsOutputToContain('Would delete 1 expired row(s).')
+        ->assertExitCode(0);
+
+    expect(Grant::query()->count())->toBe(1);
+});
+
+it('stops authorizing before anyone runs the sweep', function (): void {
+    $warden = app(Warden::class);
+    $user = User::query()->create(['name' => 'Ada']);
+    $account = Account::query()->create(['name' => 'Acme']);
+
+    $warden->allow($user)->until(Carbon::now()->subDay())->to('view', Account::class);
+
+    expect(Gate::forUser($user)->allows('view', $account))->toBeFalse()
+        ->and(Grant::query()->count())->toBe(1);
 });

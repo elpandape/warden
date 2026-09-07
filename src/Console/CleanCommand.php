@@ -10,6 +10,7 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 final class CleanCommand extends Command
@@ -17,6 +18,7 @@ final class CleanCommand extends Command
     protected $signature = 'warden:clean
         {--dry-run : Report what would be deleted without deleting}
         {--stranded : Also delete grants whose authority row is gone}
+        {--expired : Also delete grants and role assignments whose end date has passed}
         {--duplicates : Also collapse catalog rows that identify the same permission}';
 
     protected $description = 'Delete unused permissions: catalog rows no grant points at';
@@ -40,6 +42,10 @@ final class CleanCommand extends Command
         if ((bool) $this->option('dry-run')) {
             $this->components->info("Would delete {$unused->count()} unused permission(s).");
 
+            if ((bool) $this->option('expired')) {
+                $this->components->info("Would delete {$this->expiredCount($context)} expired row(s).");
+            }
+
             return self::SUCCESS;
         }
 
@@ -57,6 +63,7 @@ final class CleanCommand extends Command
             },
         );
 
+        $expired = (bool) $this->option('expired') ? $this->sweepExpired($context) : 0;
         $collapsed = (bool) $this->option('duplicates') ? $this->collapseDuplicates($context) : 0;
         $stranded = (bool) $this->option('stranded') ? $this->sweepStranded($context) : 0;
 
@@ -72,7 +79,49 @@ final class CleanCommand extends Command
             $this->components->info("Deleted {$stranded} stranded grant(s).");
         }
 
+        if ((bool) $this->option('expired')) {
+            $this->components->info("Deleted {$expired} expired row(s).");
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Rows past their end date, on both pivots.
+     *
+     * Hygiene, never load-bearing: an expired grant stops authorizing whether
+     * or not anyone runs this. The moment something needs the command to have
+     * run in order to deny, expiry has the shape of the competitor's.
+     */
+    private function expiredCount(Context $context): int
+    {
+        $total = 0;
+
+        foreach ([$context->grantClass(), $context->assignedRoleClass()] as $class) {
+            $total += $class::query()->withoutGlobalScopes()
+                ->whereNotNull('expires_at')
+                ->where('expires_at', '<=', Carbon::now())
+                ->count();
+        }
+
+        return $total;
+    }
+
+    private function sweepExpired(Context $context): int
+    {
+        $deleted = 0;
+
+        foreach ([$context->grantClass(), $context->assignedRoleClass()] as $class) {
+            $rows = $class::query()->withoutGlobalScopes()
+                ->whereNotNull('expires_at')
+                ->where('expires_at', '<=', Carbon::now())
+                ->toBase()
+                ->delete();
+
+            $deleted += $rows;
+        }
+
+        return $deleted;
     }
 
     /**
