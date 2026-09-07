@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  * @property int|string|null $entity_id
  * @property bool $forbidden
  * @property int|null $scope
+ * @property \Illuminate\Support\Carbon|null $expires_at
  */
 class Grant extends MorphPivot
 {
@@ -58,6 +59,7 @@ class Grant extends MorphPivot
     {
         return [
             'forbidden' => 'boolean',
+            'expires_at' => 'datetime',
         ];
     }
 

@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace ElPandaPe\Warden\Actions;
 
 use BackedEnum;
+use DateTimeInterface;
 use ElPandaPe\Warden\Actions\Concerns\NormalizesRoles;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\AssigningRole;
 use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
+use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
@@ -29,6 +31,10 @@ class AssignsRoles
 
     private bool $assigned = false;
 
+    private ?DateTimeInterface $expiresAt = null;
+
+    private bool $expiryDeclared = false;
+
     /**
      * @param  string|array<int, mixed>|Model|BackedEnum  $roles
      */
@@ -36,6 +42,27 @@ class AssignsRoles
     {
         $this->roles = $this->normalizeRoles($roles);
         $this->silentEvents = $silentEvents;
+    }
+
+    /**
+     * End the assignment at a moment: past it, the holder stops holding the
+     * role and stops inheriting its grants. Call before to() — writes are
+     * immediate — and note the date lives on the assignment, not on the role,
+     * so the same role may end on different days for different holders.
+     * Pass null to lift an end date a previous write left; not calling until()
+     * leaves it alone, which is what keeps sync() from making every
+     * assignment it keeps permanent.
+     */
+    public function until(?DateTimeInterface $moment): static
+    {
+        if ($this->assigned) {
+            throw new ConfigurationException('Call until() before to(): assignments execute immediately.');
+        }
+
+        $this->expiresAt = $moment;
+        $this->expiryDeclared = true;
+
+        return $this;
     }
 
     /**
@@ -99,7 +126,8 @@ class AssignsRoles
                         'scope' => $scope,
                     ]);
 
-                    $wrote = $wrote || $assignment->wasRecentlyCreated;
+                    $moved = $this->expiryDeclared && Expiry::apply($assignment, $this->expiresAt);
+                    $wrote = $wrote || $assignment->wasRecentlyCreated || $moved;
                 }
             }
 

@@ -6,6 +6,7 @@ namespace ElPandaPe\Warden\Actions;
 
 use BackedEnum;
 use Closure;
+use DateTimeInterface;
 use ElPandaPe\Warden\Actions\Concerns\ResolvesAuthority;
 use ElPandaPe\Warden\Actions\Concerns\ResolvesPermissions;
 use ElPandaPe\Warden\Constraints\Builder;
@@ -20,6 +21,7 @@ use ElPandaPe\Warden\Events\PermissionGranted;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
+use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
@@ -35,6 +37,10 @@ class GrantsPermissions
     use ResolvesPermissions;
 
     protected bool $forbidding = false;
+
+    protected ?DateTimeInterface $expiresAt = null;
+
+    protected bool $expiryDeclared = false;
 
     /** @var list<Model> */
     private array $lastGranted = [];
@@ -61,6 +67,25 @@ class GrantsPermissions
         $this->asOneWrite(function () use ($permissions, $entity): void {
             $this->grant($this->findOrCreatePermissions($permissions, $entity));
         });
+
+        return $this;
+    }
+
+    /**
+     * End the grant at a moment: past it, it stops authorizing. Call before
+     * to() — writes are immediate. Pass null to lift an end date a previous
+     * write left; not calling until() at all leaves that date alone, because
+     * a verb that says nothing about time should not silently make a grant
+     * permanent.
+     */
+    public function until(?DateTimeInterface $moment): static
+    {
+        if ($this->lastGranted !== []) {
+            throw new ConfigurationException('Call until() before to(): grants execute immediately.');
+        }
+
+        $this->expiresAt = $moment;
+        $this->expiryDeclared = true;
 
         return $this;
     }
@@ -177,7 +202,8 @@ class GrantsPermissions
                     'scope' => $scope,
                 ]);
 
-                $wrote = $wrote || $grant->wasRecentlyCreated;
+                $moved = $this->expiryDeclared && Expiry::apply($grant, $this->expiresAt);
+                $wrote = $wrote || $grant->wasRecentlyCreated || $moved;
             }
 
             // Remembered so a fluent where() can refine this exact concession;
@@ -312,21 +338,32 @@ class GrantsPermissions
                 // Every sibling twin of this shape, not just the row resolved here:
                 // a second where() EDITS the rule, and leaving the previous twin's
                 // grant alive would make the two conditions authorise as a union.
-                $grantClass::query()->withoutGlobalScope(TenantScope::class)
+                $superseded = $grantClass::query()->withoutGlobalScope(TenantScope::class)
                     ->whereIn('permission_id', $this->siblingKeys($permission))
                     ->where('entity_type', $this->lastAuthority?->getMorphClass())
                     ->where('entity_id', $this->lastAuthority?->getKey())
                     ->where('forbidden', $this->forbidding)
-                    ->where('scope', $this->lastScope)
-                    ->delete();
+                    ->where('scope', $this->lastScope);
 
-                $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
+                // Narrowing a concession must not widen its life: the rows
+                // about to be deleted carry the end date, and re-creating
+                // against the twin would silently hand back an endless grant.
+                $carried = $superseded->clone()->value('expires_at');
+
+                $superseded->delete();
+
+                $repointedGrant = $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
                     'permission_id' => $this->modelKey($twin),
                     'entity_type' => $this->lastAuthority?->getMorphClass(),
                     'entity_id' => $this->lastAuthority?->getKey(),
                     'forbidden' => $this->forbidding,
                     'scope' => $this->lastScope,
                 ]);
+
+                if ($carried !== null) {
+                    $repointedGrant->setAttribute('expires_at', $carried);
+                    $repointedGrant->save();
+                }
 
                 // A base row this action just created, now orphaned, goes away.
                 $orphaned = $permission->wasRecentlyCreated

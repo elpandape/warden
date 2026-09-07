@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  * @property string|null $restricted_to_type
  * @property int|string|null $restricted_to_id
  * @property int|null $scope
+ * @property \Illuminate\Support\Carbon|null $expires_at
  */
 class AssignedRole extends MorphPivot
 {
@@ -58,6 +59,16 @@ class AssignedRole extends MorphPivot
     public function restrictedTo(): MorphTo
     {
         return $this->morphTo(__FUNCTION__, 'restricted_to_type', 'restricted_to_id');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'expires_at' => 'datetime',
+        ];
     }
 
     protected function contextTableKey(): string

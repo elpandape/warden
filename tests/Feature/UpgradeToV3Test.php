@@ -62,7 +62,7 @@ it('hydrates the end date through the relation, not just the table', function ()
 
     $pivot = $user->roles()->first()?->getRelationValue('pivot');
 
-    expect($pivot?->getAttribute('expires_at'))->toBe('2026-12-31 23:59:59');
+    expect($pivot?->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59');
 });
 
 it('drops the column back off both pivots', function (): void {
