@@ -6,10 +6,12 @@ namespace ElPandaPe\Warden\Testing;
 
 use BackedEnum;
 use Closure;
+use DateTimeInterface;
 use ElPandaPe\Warden\Checks\Verdict;
 use ElPandaPe\Warden\Constraints\Builder;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\Resolver;
+use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Support\Name;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use Illuminate\Database\Eloquent\Model;
@@ -61,6 +63,22 @@ final class WardenFake implements Resolver
     public function forbid(string|BackedEnum $permission, Model|string|null $entity = null): static
     {
         $this->rules[] = new Rule(Name::of($permission), $entity, forbidden: true);
+
+        return $this;
+    }
+
+    /**
+     * End the rule just scripted at a moment, and refuse it on a forbid for
+     * the same reason the engine does: a prohibition that expires by clock is
+     * not a prohibition.
+     */
+    public function until(?DateTimeInterface $moment): static
+    {
+        if ($this->lastRule()->forbidden) {
+            throw new ConfigurationException('A forbid does not expire: lift it with unforbid().');
+        }
+
+        $this->lastRule()->expiresAt = $moment;
 
         return $this;
     }

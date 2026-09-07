@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Testing;
 
+use DateTimeInterface;
 use ElPandaPe\Warden\Constraints\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * One scripted rule, matching the shapes a catalog row can take: an entity
@@ -23,6 +25,8 @@ final class Rule
     public int|string|null $scope = null;
 
     public ?Builder $constraints = null;
+
+    public ?DateTimeInterface $expiresAt = null;
 
     private readonly ?string $entityType;
 
@@ -48,6 +52,7 @@ final class Rule
         ?array $filter,
     ): bool {
         return $this->namedBy($permission)
+            && $this->stillLive()
             && $this->heldBy($authority)
             && $this->visibleUnder($filter)
             && ($owned || ! $this->onlyOwned)
@@ -77,6 +82,17 @@ final class Rule
             $this->entityType !== null => 1,
             default => 0,
         };
+    }
+
+    /**
+     * Same exclusive boundary as the engine: a rule stops counting at the
+     * instant it names, not a tick later. If the two disagreed here, parity
+     * would be a suite that passes while production denies.
+     */
+    private function stillLive(): bool
+    {
+        return ! $this->expiresAt instanceof DateTimeInterface
+            || $this->expiresAt->getTimestamp() > Carbon::now()->getTimestamp();
     }
 
     private function namedBy(string $permission): bool

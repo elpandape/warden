@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Testing\WardenFake;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
@@ -39,6 +41,21 @@ it('answers what the database engine answers', function (array $scenario): void 
 
     expect($scripted)->toBe($engine);
 })->with([
+    'a grant still inside its end date' => [[
+        'engine' => fn (Warden $w, User $u, Account $a) => $w->allow($u)->until(Carbon::parse('2027-01-01 00:00:00'))->to('publish'),
+        'fake' => fn (WardenFake $f, User $u, Account $a) => $f->allow('publish')->for($u)->until(Carbon::parse('2027-01-01 00:00:00')),
+        'check' => fn (Account $mine, Account $theirs): array => ['publish'],
+    ]],
+    'a grant past its end date' => [[
+        'engine' => fn (Warden $w, User $u, Account $a) => $w->allow($u)->until(Carbon::parse('2020-01-01 00:00:00'))->to('publish'),
+        'fake' => fn (WardenFake $f, User $u, Account $a) => $f->allow('publish')->for($u)->until(Carbon::parse('2020-01-01 00:00:00')),
+        'check' => fn (Account $mine, Account $theirs): array => ['publish'],
+    ]],
+    'a grant at the exact instant it names' => [[
+        'engine' => fn (Warden $w, User $u, Account $a) => $w->allow($u)->until(Carbon::now())->to('publish'),
+        'fake' => fn (WardenFake $f, User $u, Account $a) => $f->allow('publish')->for($u)->until(Carbon::now()),
+        'check' => fn (Account $mine, Account $theirs): array => ['publish'],
+    ]],
     'a grant held by another authority' => [[
         'engine' => fn (Warden $w, User $u, Account $a) => $w->allow(User::query()->find(2))->to('publish'),
         'fake' => fn (WardenFake $f, User $u, Account $a) => $f->allow('publish')->for(User::query()->find(2)),
@@ -134,3 +151,10 @@ it('answers what the database engine answers', function (array $scenario): void 
         'check' => fn (Account $mine, Account $theirs): array => ['edit', 'not-a-model'],
     ]],
 ]);
+
+it('refuses to let a scripted forbid expire, exactly as the engine does', function (): void {
+    $fake = $this->warden->fake();
+
+    expect(fn (): mixed => $fake->forbid('publish')->until(Carbon::parse('2027-01-01 00:00:00')))
+        ->toThrow(ConfigurationException::class, 'A forbid does not expire');
+});
