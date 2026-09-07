@@ -3,7 +3,7 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
-## v3.0.0 — Access that ends, and roles that nest (unreleased)
+## v3.0.0 — Access that ends, and roles that nest (2026-09-07)
 
 ### Added
 
