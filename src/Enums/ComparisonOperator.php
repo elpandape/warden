@@ -22,7 +22,7 @@ enum ComparisonOperator: string
      * does not cast to bool. Writing that mismatch is refused since 3.0 and the
      * query compiler is symmetric, but a row stored before the refusal still
      * evaluates here, and evaluates to false — written as a forbid it never
-     * fires.
+     * fires. warden:doctor lists those rows; it does not rewrite them.
      */
     public function compare(mixed $left, mixed $right): bool
     {

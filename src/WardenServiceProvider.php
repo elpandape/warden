@@ -167,6 +167,7 @@ final class WardenServiceProvider extends ServiceProvider
                 Console\ShowCommand::class,
                 Console\CacheResetCommand::class,
                 Console\CleanCommand::class,
+                Console\DoctorCommand::class,
                 Console\UpgradeCommand::class,
                 Console\RetitleCommand::class,
             ]);

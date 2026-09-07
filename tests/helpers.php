@@ -12,9 +12,21 @@ use ElPandaPe\Warden\WardenServiceProvider;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
+
+/**
+ * A rule the write path refuses since 3.0, planted the way a 2.x database left
+ * it: straight into the column, without going through the fluent API.
+ */
+function storeConditionRefusedSince3(string $column = 'user_id'): void
+{
+    DB::table('permissions')->whereNotNull('entity_type')->update([
+        'options' => '{"v": 1, "g": {"t": "group", "i": [["and", {"t": "value", "c": "'.$column.'", "o": "=", "v": true}]]}}',
+    ]);
+}
 
 function projectIn(Account $org): Account
 {

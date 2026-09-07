@@ -54,6 +54,34 @@ final readonly class Group implements Constraint
         return $clause;
     }
 
+    /**
+     * Columns this group compares in a way that can never hold for the given
+     * entity: a boolean against a column the model does not cast to bool, or
+     * the reverse. The write path refuses them; a catalogue filled before that
+     * refusal still carries them, and warden:doctor reads them back.
+     *
+     * @return list<string>
+     */
+    public function unsatisfiableColumns(Model $entity): array
+    {
+        $columns = [];
+
+        foreach ($this->items as [, $constraint]) {
+            if ($constraint instanceof self) {
+                $columns = [...$columns, ...$constraint->unsatisfiableColumns($entity)];
+
+                continue;
+            }
+
+            if ($constraint instanceof ValueConstraint
+                && is_bool($constraint->value) !== $entity->hasCast($constraint->column, ['bool', 'boolean'])) {
+                $columns[] = $constraint->column;
+            }
+        }
+
+        return $columns;
+    }
+
     public function isEmpty(): bool
     {
         return $this->items === [];

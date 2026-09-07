@@ -374,7 +374,7 @@ Warden::allow($user)->to('view', Document::class)
 > - Comparisons are strict — no PHP type juggling.
 > - A **null** attribute satisfies no operator at all, `!=` included, and values whose types are not decidably comparable fail closed the same way. A **missing** attribute is different: under `Model::preventAccessingMissingAttributes()` it throws rather than failing closed.
 > - Constrained grants share one catalog row per distinct rule, so **editing a permission's options changes the rule for every holder of that shape**. Write a new condition instead of editing a shared row.
-> - A **boolean** value matches only a column the model casts to `bool`, and such a column matches only a boolean, so **writing either mismatch is refused**: `where('classified', true)` needs `'classified' => 'bool'` in the model's `$casts`. A row stored before 3.0 keeps failing closed in checks and in queries alike.
+> - A **boolean** value matches only a column the model casts to `bool`, and such a column matches only a boolean, so **writing either mismatch is refused**: `where('classified', true)` needs `'classified' => 'bool'` in the model's `$casts`. A row stored before 3.0 keeps failing closed in checks and in queries alike — `php artisan warden:doctor` lists those rows.
 > - The refusal exists because of what the mismatch does to a `forbid()`: a condition that can never be true makes the prohibition inert, the grant underneath it stays live, and `explain()` reports that grant without ever mentioning the forbid — a missing cast read as "allowed".
 > - A permission with **no entity** is only ever checked without an instance, so constraining one is refused: the shape that would make it match is the shape that rejects it.
 > - A constrained grant **never matches instance-less checks** (`can('view')`, `can('view', Document::class)`) — they fail closed.
@@ -639,7 +639,14 @@ php artisan warden:show [Class:id]       # Show permissions for an authority
 php artisan warden:cache-reset           # Reset cache
 php artisan warden:clean --dry-run       # Clean orphaned permissions
 php artisan warden:retitle --dry-run     # Converge titles an older Warden wrote
+php artisan warden:doctor                # Audit the catalog for rules that can never be true
 ```
+
+> 📌 **`warden:doctor` exits non-zero when it finds something**, so it works as a CI gate. It
+> reads every stored condition back through the rule the write path enforces and reports the
+> ones that would be refused today, with the permission and how many grants and forbids point
+> at it. It changes nothing: adding the missing cast and rewriting the condition mean different
+> things, and only you know which one you meant.
 
 ---
 

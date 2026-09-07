@@ -11,7 +11,6 @@ use ElPandaPe\Warden\Actions\Concerns\ResolvesPermissions;
 use ElPandaPe\Warden\Constraints\Builder;
 use ElPandaPe\Warden\Constraints\ConstraintSerializer;
 use ElPandaPe\Warden\Constraints\Group;
-use ElPandaPe\Warden\Constraints\ValueConstraint;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\ForbiddingPermission;
@@ -380,36 +379,13 @@ class GrantsPermissions
                 continue; // @codeCoverageIgnore
             }
 
-            foreach (self::unsatisfiableColumns(new $class, $group) as $column) {
+            foreach ($group->unsatisfiableColumns(new $class) as $column) {
                 throw new ConfigurationException(
                     "The condition on [{$column}] can never be true for [{$class}]: a boolean matches only "
                     .'a column the model casts to bool. Add the cast, or compare against a column that has it.',
                 );
             }
         }
-    }
-
-    /**
-     * @return list<string>
-     */
-    private static function unsatisfiableColumns(Model $entity, Group $group): array
-    {
-        $columns = [];
-
-        foreach ($group->items as [, $constraint]) {
-            if ($constraint instanceof Group) {
-                $columns = [...$columns, ...self::unsatisfiableColumns($entity, $constraint)];
-
-                continue;
-            }
-
-            if ($constraint instanceof ValueConstraint
-                && is_bool($constraint->value) !== $entity->hasCast($constraint->column, ['bool', 'boolean'])) {
-                $columns[] = $constraint->column;
-            }
-        }
-
-        return $columns;
     }
 
     /**
