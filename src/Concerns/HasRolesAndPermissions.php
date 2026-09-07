@@ -32,7 +32,7 @@ trait HasRolesAndPermissions
         $relation = $this
             ->scopedMorphToMany($role, $context->table('assigned_roles'), 'entity_id', 'role_id', 'roles', inverse: false, roleGrant: false)
             ->using($assignedRole)
-            ->withPivot(['scope', 'restricted_to_type', 'restricted_to_id']);
+            ->withPivot(['scope', 'restricted_to_type', 'restricted_to_id', 'expires_at']);
 
         $relation = $this->applyPivotTenancy($relation, $context->table('assigned_roles'));
 

@@ -63,6 +63,10 @@ return new class extends Migration
             $table->string('restricted_to_type')->nullable();
             $table->unsignedBigInteger('restricted_to_id')->nullable();
             $table->integer('scope')->nullable()->index();
+            // Outside the unique on purpose: an assignment is the same assignment
+            // whatever its end date, so firstOrCreate finds the row and moves the
+            // date instead of minting one assignment per date.
+            $table->timestamp('expires_at')->nullable()->index();
 
             $table->unique(
                 ['role_id', 'entity_id', 'entity_type', 'scope', 'restricted_to_type', 'restricted_to_id'],
@@ -85,6 +89,9 @@ return new class extends Migration
             $table->unsignedBigInteger('entity_id')->nullable();
             $table->boolean('forbidden')->default(false);
             $table->integer('scope')->nullable()->index();
+            // Outside the unique, as in assigned_roles. Always null where
+            // forbidden is true: a forbid does not expire.
+            $table->timestamp('expires_at')->nullable()->index();
 
             $table->unique(
                 ['permission_id', 'entity_id', 'entity_type', 'scope', 'forbidden'],

@@ -35,6 +35,14 @@ final class Schema
         self::migration('upgrade_warden_to_v2')->up(); // @phpstan-ignore method.notFound
     }
 
+    /**
+     * A 2.x install brought up to the expiry column on both pivots.
+     */
+    public static function upgradeToV3(): void
+    {
+        self::migration('upgrade_warden_to_v3')->up(); // @phpstan-ignore method.notFound
+    }
+
     private static function migration(string $name = 'create_warden_tables'): Migration
     {
         /** @var Migration $migration */

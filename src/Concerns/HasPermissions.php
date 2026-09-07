@@ -27,7 +27,7 @@ trait HasPermissions
         $relation = $this
             ->scopedMorphToMany($permission, $context->table('grants'), 'entity_id', 'permission_id', 'permissions', inverse: false, roleGrant: $this instanceof ($context->roleClass()))
             ->using($grant)
-            ->withPivot(['forbidden', 'scope']);
+            ->withPivot(['forbidden', 'scope', 'expires_at']);
 
         $relation = $this->applyPivotTenancy($relation, $context->table('grants'));
 

@@ -14,6 +14,11 @@ function wardenMigration(): Migration
     return require __DIR__.'/../../database/migrations/create_warden_tables.php.stub';
 }
 
+function wardenUpgradeToV3Migration(): Migration
+{
+    return require __DIR__.'/../../database/migrations/upgrade_warden_to_v3.php.stub';
+}
+
 function dropWardenTables(): void
 {
     // Children first: real databases enforce the foreign keys.
@@ -40,6 +45,18 @@ function migrateWardenTables(): void
             }
 
             $blueprint->timestamps();
+        });
+    }
+}
+
+function migrateWithoutExpiry(): void
+{
+    migrateWardenTables();
+
+    foreach (['assigned_roles', 'grants'] as $table) {
+        Schema::table($table, function (Blueprint $blueprint): void {
+            $blueprint->dropIndex(['expires_at']);
+            $blueprint->dropColumn('expires_at');
         });
     }
 }
