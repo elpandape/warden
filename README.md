@@ -60,6 +60,8 @@
 | 🏗️ **ABAC constraints** | `where('status', 'published')` on grants — evaluated on every check. |
 | 🏠 **Ownership** | `toOwn(Post::class)` — grant only what the user owns, resolved by attribute or closure. |
 | 🎯 **Scoped roles** | `assign('editor')->on($org)` — same role, different contexts. |
+| ⏳ **Temporary access** | `until($moment)` on a grant or an assignment — it stops authorizing on its own. |
+| 🪆 **Nested roles** | A role inside a role lends its grants, off by default and switchable live. |
 | 🏢 **Multi-tenancy** | Tenant-scoped rows with global fallback, injectable resolver, exception-safe `onceTo()`. |
 | 💾 **Smart caching** | O(1) invalidation, versioned payloads, anti-stampede locking, Octane-safe. |
 | 📡 **Typed events** | Every write dispatches a typed event with hydrated models — never raw IDs. |
@@ -194,7 +196,16 @@ Warden::allow('admin')->to('audit');
 Warden::sync($user)->roles(['editor', 'writer']);
 ```
 
-> 📌 **Assignments are one hop, and there is no role hierarchy.** `assign('editor')->to($role)` is accepted and writes a row, but holders of the outer role gain nothing: membership does not nest. Grant the union to the outer role, or assign both roles to the authority.
+> 📌 **Assignments are one hop unless you turn nesting on.** `assign('auditor')->to($role)` writes an edge between roles. By default holders of the outer role gain nothing from it — set `warden.roles.nested` to `true` and they inherit the inner role's grants, to `warden.roles.max_depth` levels deep.
+>
+> ```php
+> // config/warden.php
+> 'roles' => ['nested' => true, 'max_depth' => 10],
+> ```
+>
+> **Off by default on purpose**, because turning it on widens what every existing assignment reaches. The switch is read on every check rather than baked into a cached payload, so turning it back off takes effect immediately — it is meant to work as an emergency lever. A cycle stops expanding at the depth ceiling instead of throwing.
+>
+> `can()`, `is()` and `whereIs()` all nest together: a split would let `can('publish')` say yes while `Warden::is($user)->an('editor')` says no, painting a menu wrong for precisely the users with the most access.
 
 ### Best Practices
 

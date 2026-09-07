@@ -3,6 +3,60 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v3.0.0 — Access that ends, and roles that nest (unreleased)
+
+### Added
+
+- **Temporary access.** `until()` on `allow()` and `assign()` gives a grant or a role
+  assignment an end date. Past it, it stops authorizing, stops appearing in `whereCan()`,
+  and stops being listed by `getPermissions()` — **no command has to run for that to
+  happen**. The date lives on the assignment, never on the role: a role is a shared
+  definition, so an end date there would end it for everyone, while on the assignment the
+  same role can end on different days for different holders. A grant reached through a role
+  outlives neither — the earlier of the two ends it — and the boundary is exclusive, so a
+  row stops counting at the instant it names.
+- **Nested roles, off by default.** A role assigned to another role lends its grants to the
+  holders of the outer one when `warden.roles.nested` is on. `can()`, `is()` and `whereIs()`
+  nest together: a split would let `can('publish')` say yes while `is($user)->an('editor')`
+  says no, painting a menu wrong for exactly the users with the most access. The flag rides
+  in the cache key rather than a payload version, so turning it back off takes effect on the
+  next check — it is meant to work as an emergency lever. A cycle stops expanding at
+  `warden.roles.max_depth` instead of throwing.
+- **`warden:doctor`** audits the catalog for conditions that can never be true and exits
+  non-zero when it finds any, so it can stand as a gate in CI. It changes nothing: adding the
+  missing cast and rewriting the condition mean different things, and only you know which.
+- **`warden:clean --expired`** deletes rows past their end date. Hygiene, never load-bearing.
+- **`Group::unsatisfiableColumns()`** publishes the satisfiability rule the write path
+  enforces, so a consumer can ask the same question warden asks.
+
+### Breaking
+
+- **A condition that can never be true is refused.** Writing a boolean against a column the
+  model does not cast to `bool` used to succeed with a logged warning; it now throws. On a
+  `forbid()` that shape made the prohibition inert while the grant beneath it stayed live,
+  and `explain()` reported that grant without ever mentioning the forbid. Rows written before
+  this release are **not** migrated — `warden:doctor` lists them.
+- **`LogicalOperator::Not` throws when evaluated.** A hand-built group carrying it used to
+  answer exactly like an `and`, the opposite of what the operator says. Storing one was
+  already refused, so only in-memory groups are affected. `Contracts\Constraint::passes()`
+  keeps its signature.
+- **`LogicalOperator::combine()` is removed** — public surface with no caller in the package.
+- **`until()` on a `forbid()` throws.** A prohibition that lapsed by clock would turn *a
+  forbid beats every grant* into *until Tuesday*.
+- **Both pivot tables gain `expires_at`**, nullable and indexed, outside the unique. Run the
+  published `upgrade_warden_to_v3` migration; see [UPGRADE.md](UPGRADE.md).
+- **Cached payloads move to version 4.** v3 payloads are discarded on read rather than
+  misread.
+- **`getPermissions()` filters expiry**, like the resolver already did.
+- **`warden:clean --stranded` sweeps both pivots.** Nesting made `assigned_roles` able to
+  hold an edge whose authority is a role, and no foreign key reaches that side.
+
+### Fixed
+
+- **`warden:upgrade` leaves a 3.0 schema behind.** A silber/bouncer schema predates the
+  expiry column and every reader names it, so the migration would otherwise land a database
+  that cannot answer a single check.
+
 ## v2.2.2 — A rule nobody can read is not the absence of one (2026-09-05)
 
 ### Fixed

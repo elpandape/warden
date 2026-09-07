@@ -36,6 +36,20 @@ with a null end date, which means exactly what it meant before — no end.
   as an `and`. Storing one was already refused, so only in-memory groups are affected.
 - **`LogicalOperator::combine()` is removed.** It had no caller inside the package.
 - **`until()` on a `forbid()` throws.** A prohibition does not expire.
+- **Roles can nest, and the switch is off.** `assign('auditor')->to($role)` has always been
+  accepted and has always granted nothing; with `warden.roles.nested` on, holders of the
+  outer role now inherit the inner one's grants. **Nothing changes until you turn it on** —
+  but if your database already carries role-to-role assignments written under the old
+  contract, know that flipping the switch is what makes them live. Audit them first:
+
+  ```php
+  ElPandaPe\Warden\Models\AssignedRole::query()
+      ->where('entity_type', (new ElPandaPe\Warden\Models\Role)->getMorphClass())
+      ->count();
+  ```
+
+  `warden:clean --stranded` now sweeps both pivots, so an edge left pointing at a deleted
+  role is reachable by the cleanup for the first time.
 
 `Contracts\Constraint::passes()` keeps its signature: nothing that implements it needs to
 change.
