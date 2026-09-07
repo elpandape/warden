@@ -89,7 +89,11 @@ it('skips an entity_type that resolves to no model class', function (): void {
 
 it('skips a row whose stored conditions cannot be decoded', function (): void {
     $this->warden->allow($this->user)->to('view', Account::class);
-    DB::table('permissions')->whereNotNull('entity_type')->update(['options' => 'not json at all']);
+
+    // Valid JSON of an unknown shape, not malformed text: a json column on
+    // MySQL and Postgres rejects the latter outright, so only sqlite would
+    // ever hold it and the test would prove nothing on the other two.
+    DB::table('permissions')->whereNotNull('entity_type')->update(['options' => '{"v": 99, "g": null}']);
 
     $this->artisan('warden:doctor')->assertExitCode(0);
 });
