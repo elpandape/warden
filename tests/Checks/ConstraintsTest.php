@@ -21,7 +21,6 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Log;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -165,12 +164,11 @@ it('fails closed on corrupted persisted constraints', function (): void {
 });
 
 it('compares strictly: no type juggling surprises', function (): void {
-    $zero = Account::query()->create(['name' => '0'])->refresh();
+    $named = Account::query()->create(['name' => 'Acme'])->refresh();
 
-    // Loose PHP would say '0' == false-ish matches; strict comparison won't.
-    $this->warden->allow($this->user)->to('view', Account::class)->where('name', false);
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', '>=', 5);
 
-    expect(Gate::forUser($this->user)->allows('view', $zero))->toBeFalse();
+    expect(Gate::forUser($this->user)->allows('view', $named))->toBeFalse();
 });
 
 it('rejects constraints without a grant and unknown operators', function (): void {
@@ -465,17 +463,6 @@ it('refuses a group carrying the unimplemented negation instead of reading it as
     expect(Gate::forUser($this->user)->allows('view', $account))->toBeFalse();
 });
 
-it('leaves the grant beneath a forbid whose condition can never be true', function (): void {
-    $account = Account::query()->create(['name' => 'Acme']);
-
-    $this->warden->allow($this->user)->to('view', Account::class);
-    $this->warden->forbid($this->user)->to('view', Account::class)->where('name', true);
-
-    expect(Gate::forUser($this->user)->allows('view', $account))->toBeTrue()
-        ->and($this->warden->explain($this->user, 'view', $account)->cause)
-        ->toBe(Cause::GrantedDirectly);
-});
-
 it('refuses to serialize the reserved not operator, at any depth', function (): void {
     $leaf = new Group([[LogicalOperator::Not, new ValueConstraint('name', ComparisonOperator::Equal, 'Acme')]]);
 
@@ -485,28 +472,21 @@ it('refuses to serialize the reserved not operator, at any depth', function (): 
         ->toThrow(ConfigurationException::class, 'reserved');
 });
 
-it('warns when a persisted condition can never be true', function (): void {
-    Log::spy();
-
-    $this->warden->forbid($this->user)->to('view', Account::class)->where('name', true);
-
-    Log::shouldHaveReceived('warning')->once();
+it('refuses a condition that can never be true', function (): void {
+    expect(fn (): mixed => $this->warden->forbid($this->user)->to('view', Account::class)->where('name', true))
+        ->toThrow(ConfigurationException::class, 'can never be true');
 });
 
-it('stays quiet when the column carries the matching cast', function (): void {
-    Log::spy();
-
+it('accepts the condition when the column carries the matching cast', function (): void {
     $this->warden->forbid($this->user)->to('view', BoolCastAccount::class)->where('user_id', true);
 
-    Log::shouldNotHaveReceived('warning');
+    expect(Permission::query()->whereNotNull('options')->count())->toBe(1);
 });
 
-it('stays quiet for a wildcard entity, which names no model to ask', function (): void {
-    Log::spy();
-
+it('accepts a wildcard entity, which names no model to ask', function (): void {
     $this->warden->forbid($this->user)->everything()->where('name', true);
 
-    Log::shouldNotHaveReceived('warning');
+    expect(Permission::query()->whereNotNull('options')->count())->toBe(1);
 });
 
 it('gives an unreadable rule a fingerprint of its own, not its plain sister\'s', function (): void {

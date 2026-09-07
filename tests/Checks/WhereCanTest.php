@@ -214,11 +214,15 @@ it('keeps empty constraint groups from erasing forbid branches', function (): vo
 it('treats boolean constraints without a cast as impossible, like can()', function (): void {
     Account::query()->create(['name' => 'One', 'user_id' => 1])->refresh();
 
-    $this->warden->allow($this->user)->to('view', Account::class)->where('user_id', true);
+    $this->warden->allow($this->user)->to('view', Account::class);
 
-    // The strict comparator can never match int 1 to bool true: parity is empty.
-    expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0);
-    expect($this->user)->toQueryExactlyWhatItCanCheck('view');
+    // Refused on the way in now, so only a catalogue filled before the refusal
+    // reaches the read path — and both engines must still agree on it.
+    DB::table('permissions')->update(['options' => '{"v": 1, "g": {"t": "group", "i": [["and", {"t": "value", "c": "user_id", "o": "=", "v": true}]]}}']);
+    $this->warden->refresh();
+
+    expect(Account::query()->whereCan($this->user, 'view')->count())->toBe(0)
+        ->and($this->user)->toQueryExactlyWhatItCanCheck('view');
 });
 
 it('blocks only the pinned row when a forbid cannot be expressed in sql', function (): void {
@@ -238,7 +242,10 @@ it('blocks only the pinned row when a forbid cannot be expressed in sql', functi
 );
 
 it('compiles an impossible predicate for a non-boolean value on a bool-cast column', function (): void {
-    $this->warden->allow($this->user)->to('view', BoolCastAccount::class)->where('user_id', '=', 'true');
+    $this->warden->allow($this->user)->to('view', BoolCastAccount::class);
+
+    DB::table('permissions')->update(['options' => '{"v": 1, "g": {"t": "group", "i": [["and", {"t": "value", "c": "user_id", "o": "=", "v": "true"}]]}}']);
+    $this->warden->refresh();
 
     expect(BoolCastAccount::query()->whereCan($this->user, 'view')->toSql())->toContain('0 = 1');
 });

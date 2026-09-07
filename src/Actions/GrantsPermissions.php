@@ -292,7 +292,7 @@ class GrantsPermissions
             return $this;
         }
 
-        $this->warnUnsatisfiable($group);
+        $this->rejectUnsatisfiable($group);
 
         $grantClass = Context::resolve()->grantClass();
         $options = ConstraintSerializer::serialize($group);
@@ -361,11 +361,11 @@ class GrantsPermissions
     /**
      * A boolean compares only against a column the model casts to bool, and
      * such a column only against a boolean: either mismatch can never be true.
-     * Written on a forbid it leaves the grant beneath it live, and explain()
-     * reports that grant without mentioning the prohibition — so say so here,
-     * where there is still a person to tell.
+     * Written on a forbid it would leave the grant beneath it live, and
+     * explain() would report that grant without mentioning the prohibition —
+     * so the write is refused where there is still a person to tell.
      */
-    private function warnUnsatisfiable(Group $group): void
+    private function rejectUnsatisfiable(Group $group): void
     {
         foreach ($this->lastGranted as $permission) {
             $type = $permission->getAttribute('entity_type');
@@ -381,9 +381,9 @@ class GrantsPermissions
             }
 
             foreach (self::unsatisfiableColumns(new $class, $group) as $column) {
-                Log::warning(
-                    "Warden: condition on [{$column}] can never be true for [{$class}] — a boolean matches "
-                    .'only a column cast to bool. On a forbid this leaves the grant beneath it live.',
+                throw new ConfigurationException(
+                    "The condition on [{$column}] can never be true for [{$class}]: a boolean matches only "
+                    .'a column the model casts to bool. Add the cast, or compare against a column that has it.',
                 );
             }
         }
