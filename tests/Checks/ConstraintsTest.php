@@ -489,6 +489,14 @@ it('accepts a wildcard entity, which names no model to ask', function (): void {
     expect(Permission::query()->whereNotNull('options')->count())->toBe(1);
 });
 
+it('refuses to evaluate a hand-built group carrying the reserved negation', function (): void {
+    $account = Account::query()->create(['name' => 'Acme']);
+    $group = new Group([[LogicalOperator::Not, new ValueConstraint('name', ComparisonOperator::Equal, 'Acme')]]);
+
+    expect(fn (): bool => $group->passes($account, $this->user))
+        ->toThrow(ConfigurationException::class, 'reserved');
+});
+
 it('gives an unreadable rule a fingerprint of its own, not its plain sister\'s', function (): void {
     $this->warden->allow($this->user)->to('view', Account::class);
     $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');

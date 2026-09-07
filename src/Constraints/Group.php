@@ -7,6 +7,7 @@ namespace ElPandaPe\Warden\Constraints;
 use ElPandaPe\Warden\Contracts\Constraint;
 use ElPandaPe\Warden\Enums\ConstraintType;
 use ElPandaPe\Warden\Enums\LogicalOperator;
+use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -32,6 +33,12 @@ final readonly class Group implements Constraint
         $first = true;
 
         foreach ($this->items as [$logic, $constraint]) {
+            // Unary: it cannot join two operands, and carrying on would read it
+            // as And. Storing one is refused, so only a hand-built group arrives.
+            if ($logic === LogicalOperator::Not) {
+                throw new ConfigurationException('The "not" operator is reserved and cannot be evaluated.');
+            }
+
             if (! $first && $logic === LogicalOperator::Or) {
                 if ($clause) {
                     return true;
