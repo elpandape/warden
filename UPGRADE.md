@@ -3,6 +3,43 @@
 Version-to-version upgrades of this package, newest first. Coming from silber/bouncer
 instead? See [MIGRATING-FROM-BOUNCER.md](MIGRATING-FROM-BOUNCER.md).
 
+## From 2.x to 3.0
+
+3.0 gives grants and role assignments an end date: a nullable, indexed `expires_at` on both
+pivot tables. Publish and run the incremental migration before upgrading the package in a
+running application — every reader names the column, so a 2.x schema cannot answer a check
+under 3.0.
+
+```bash
+php artisan vendor:publish --tag=warden-migrations-v3
+php artisan migrate
+```
+
+In a package test suite, `ElPandaPe\Warden\Testing\Schema::upgradeToV3()` does the same
+thing. Coming from silber/bouncer instead, `warden:upgrade` already leaves the column behind
+and needs no extra step.
+
+The migration is re-runnable and touches no rows: existing grants and assignments come out
+with a null end date, which means exactly what it meant before — no end.
+
+### What else changes
+
+- **Cached payloads move to version 4.** Payloads written by 2.x are discarded on read
+  rather than misread. Nothing to do; the first check after the upgrade rebuilds them.
+- **`getPermissions()` now filters expiry**, like the resolver already did. It cannot hand
+  back a permission that `can()` would deny.
+- **A condition that can never be true is refused instead of logged.** Writing a boolean
+  against a column the model does not cast to `bool` used to succeed with a warning; it now
+  throws. Rows written before this release are **not** migrated — they keep evaluating to
+  false, and as a `forbid()` they stay inert. Run `php artisan warden:doctor` to list them.
+- **`LogicalOperator::Not` throws when evaluated**, where a hand-built group used to read it
+  as an `and`. Storing one was already refused, so only in-memory groups are affected.
+- **`LogicalOperator::combine()` is removed.** It had no caller inside the package.
+- **`until()` on a `forbid()` throws.** A prohibition does not expire.
+
+`Contracts\Constraint::passes()` keeps its signature: nothing that implements it needs to
+change.
+
 ## From 1.x to 2.0
 
 2.0 gives the permission catalog an identity: a `identity_key` column carrying the rest of

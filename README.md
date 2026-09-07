@@ -213,6 +213,34 @@ Warden::unforbid($user)->to('view', $classifiedDocument);
 
 ---
 
+## ⏳ Temporary Access
+
+Grants and role assignments can carry an end date. Past it they stop authorizing, stop appearing in `whereCan()`, and stop being listed by `getPermissions()` — no command has to run for that to happen.
+
+```php
+use ElPandaPe\Warden\Facades\Warden;
+
+Warden::allow($user)->until(now()->addDays(7))->to('publish', Post::class);
+Warden::assign('auditor')->until($audit->ends_at)->to($user);
+
+// Lift an end date a previous write left; saying nothing leaves it alone.
+Warden::allow($user)->until(null)->to('publish', Post::class);
+```
+
+> 📌 **The date lives on the assignment, not on the role.** A role is a shared definition, so an end date there would end it for everyone. On the assignment, the same role can end on different days for different holders — and when it does, the permissions that role lent go with it.
+
+> 📌 **`until()` goes before `to()`**, like `on()`: writes execute immediately, so calling it afterwards throws rather than quietly doing nothing. Moving a date counts as a write — it invalidates the cache and fires the same event as any other.
+
+> ⚠️ **A `forbid()` cannot expire**, and `until()` on one throws. A prohibition that lapsed by clock would turn *a forbid beats every grant* into *until Tuesday*, with the grant beneath it still live. Lift it deliberately with `unforbid()`.
+
+> 📌 **A grant reached through a role outlives neither**: the earlier of the two dates ends it.
+
+> 📌 **The boundary is exclusive.** A row stops counting at the instant it names, not a tick later.
+
+`php artisan warden:clean --expired` deletes rows past their date. It is hygiene, not part of the mechanism: **an expired grant stops authorizing whether or not anyone runs it.**
+
+---
+
 ## 🏠 Ownership
 
 ```php

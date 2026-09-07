@@ -47,3 +47,11 @@ it('exposes the publishable config and migration groups', function (): void {
         ->and(array_key_first($migrations))->toEndWith('create_warden_tables.php.stub')
         ->and((string) current($migrations))->toContain('_create_warden_tables.php');
 });
+
+it('publishes each incremental migration under a tag of its own', function (): void {
+    $v3 = ServiceProvider::pathsToPublish(WardenServiceProvider::class, 'warden-migrations-v3');
+
+    expect($v3)->toHaveCount(1)
+        ->and(array_key_first($v3))->toEndWith('upgrade_warden_to_v3.php.stub')
+        ->and((string) current($v3))->toContain('_upgrade_warden_to_v3.php');
+});

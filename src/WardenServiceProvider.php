@@ -194,6 +194,12 @@ final class WardenServiceProvider extends ServiceProvider
                     'migrations/'.date('Y_m_d_His').'_upgrade_warden_to_v2.php',
                 ),
             ], 'warden-migrations-v2');
+
+            $this->publishes([
+                __DIR__.'/../database/migrations/upgrade_warden_to_v3.php.stub' => database_path(
+                    'migrations/'.date('Y_m_d_His').'_upgrade_warden_to_v3.php',
+                ),
+            ], 'warden-migrations-v3');
         }
     }
 
