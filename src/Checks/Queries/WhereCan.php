@@ -13,6 +13,7 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\Constraint;
 use ElPandaPe\Warden\Enums\LogicalOperator;
 use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Support\Expiry;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -169,6 +170,9 @@ final readonly class WhereCan
 
         return $grantClass::query()
             ->whereColumn("{$grants}.permission_id", $permissions)
+            ->tap(function (Builder $query) use ($grants): void {
+                Expiry::live($query, $grants);
+            })
             ->where(function (Builder $grant) use ($authority, $roleMorph, $roleKeys): void {
                 $grant
                     ->where(function (Builder $direct) use ($authority): void {
@@ -206,6 +210,7 @@ final readonly class WhereCan
         $active = $this->context->grantClass()::query()
             ->whereIn('permission_id', $candidates->map(fn (Model $candidate): mixed => $candidate->getKey())->all())
             ->where('forbidden', $forbidden)
+            ->tap(Expiry::live(...))
             ->where(function (Builder $query) use ($authority, $roleMorph, $roleKeys): void {
                 $query
                     ->where(function (Builder $direct) use ($authority): void {

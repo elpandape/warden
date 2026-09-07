@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Checks\Resolvers;
 
+use DateTimeInterface;
 use ElPandaPe\Warden\Checks\Verdict;
 use ElPandaPe\Warden\Constraints\ConstraintSerializer;
 use ElPandaPe\Warden\Constraints\Group;
@@ -16,6 +17,7 @@ use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * Caches one minimal payload per authority — every grant tuple that could
@@ -23,11 +25,11 @@ use Illuminate\Database\Eloquent\Model;
  * semantics as the database engine. The payload is versioned so v0.8 fields
  * (constraints, role restrictions) extend it without breaking old entries.
  *
- * @phpstan-type GrantTuple array{key: int|string, name: string, entity_type: string|null, entity_id: int|string|null, only_owned: bool, forbidden: bool, options: string|null, restricted_to_type: string|null, restricted_to_id: int|string|null}
+ * @phpstan-type GrantTuple array{key: int|string, name: string, entity_type: string|null, entity_id: int|string|null, only_owned: bool, forbidden: bool, options: string|null, restricted_to_type: string|null, restricted_to_id: int|string|null, expires_at: int|null}
  */
 final class CachedResolver implements Resolver
 {
-    private const int PAYLOAD_VERSION = 3;
+    private const int PAYLOAD_VERSION = 4;
 
     private const int LOCK_SECONDS = 10;
 
@@ -171,7 +173,7 @@ final class CachedResolver implements Resolver
 
         // Every assignment, restrictions included: a role granted through a
         // restricted assignment carries that context into its tuples.
-        /** @var array<int|string, list<array{string|null, int|string|null}>> $restrictionsByRole */
+        /** @var array<int|string, list<array{string|null, int|string|null, int|null}>> $restrictionsByRole */
         $restrictionsByRole = [];
 
         foreach ($this->context->assignedRoleClass()::query()
@@ -195,7 +197,13 @@ final class CachedResolver implements Resolver
                 continue;
             }
 
-            $restrictionsByRole[$roleKey][] = [$type, $id];
+            $assignmentEnds = $assignment->getAttribute('expires_at');
+
+            $restrictionsByRole[$roleKey][] = [
+                $type,
+                $id,
+                $assignmentEnds instanceof DateTimeInterface ? $assignmentEnds->getTimestamp() : null,
+            ];
         }
 
         $roleKeys = array_keys($restrictionsByRole);
@@ -228,7 +236,7 @@ final class CachedResolver implements Resolver
 
         // Deduplicate (permission, forbidden, restriction) triples: role
         // grants expand once per assignment so restrictions ride along.
-        /** @var array<string, array{int|string, bool, string|null, int|string|null}> $pairs */
+        /** @var array<string, array{int|string, bool, string|null, int|string|null, int|null}> $pairs */
         $pairs = [];
 
         foreach ($grantRows as $grant) {
@@ -236,9 +244,12 @@ final class CachedResolver implements Resolver
                 && $grant->entity_id !== null
                 && isset($restrictionsByRole[$grant->entity_id]);
 
-            $restrictions = $viaRole ? $restrictionsByRole[$grant->entity_id] : [[null, null]];
+            $restrictions = $viaRole ? $restrictionsByRole[$grant->entity_id] : [[null, null, null]];
 
-            foreach ($restrictions as [$contextType, $contextId]) {
+            $grantEnds = $grant->getAttribute('expires_at');
+            $grantEnds = $grantEnds instanceof DateTimeInterface ? $grantEnds->getTimestamp() : null;
+
+            foreach ($restrictions as [$contextType, $contextId, $assignmentEnds]) {
                 $key = implode(':', [
                     (string) $grant->permission_id,
                     $grant->forbidden ? '1' : '0',
@@ -246,7 +257,16 @@ final class CachedResolver implements Resolver
                     $contextId === null ? '' : (string) $contextId,
                 ]);
 
-                $pairs[$key] = [$grant->permission_id, (bool) $grant->forbidden, $contextType, $contextId];
+                // A grant reached through a role outlives neither: the earlier
+                // of the two ends it, and null means no end at all.
+                $ends = $this->earlier($grantEnds, $assignmentEnds);
+
+                // The same triple can arrive twice with different dates. The
+                // later one wins: either row authorises while it is alive, so
+                // collapsing to the earlier would revoke access nobody revoked.
+                $pairs[$key] = array_key_exists($key, $pairs)
+                    ? [$grant->permission_id, (bool) $grant->forbidden, $contextType, $contextId, $this->later($pairs[$key][4], $ends)]
+                    : [$grant->permission_id, (bool) $grant->forbidden, $contextType, $contextId, $ends];
             }
         }
 
@@ -265,7 +285,7 @@ final class CachedResolver implements Resolver
 
         $tuples = [];
 
-        foreach ($pairs as [$permissionKey, $forbidden, $contextType, $contextId]) {
+        foreach ($pairs as [$permissionKey, $forbidden, $contextType, $contextId, $ends]) {
             $permission = $permissions[$permissionKey] ?? null;
 
             if ($permission === null) {
@@ -284,10 +304,29 @@ final class CachedResolver implements Resolver
                 'options' => is_string($rawOptions) ? $rawOptions : null,
                 'restricted_to_type' => $contextType,
                 'restricted_to_id' => $contextId,
+                'expires_at' => $ends,
             ];
         }
 
         return $tuples;
+    }
+
+    private function earlier(?int $first, ?int $second): ?int
+    {
+        if ($first === null || $second === null) {
+            return $first ?? $second;
+        }
+
+        return min($first, $second);
+    }
+
+    private function later(?int $first, ?int $second): ?int
+    {
+        if ($first === null || $second === null) {
+            return null;
+        }
+
+        return max($first, $second);
     }
 
     /**
@@ -325,8 +364,17 @@ final class CachedResolver implements Resolver
     ): int|string|null {
         $candidates = [];
 
+        $now = Carbon::now()->getTimestamp();
+
         foreach ($tuples as $tuple) {
             if ($tuple['forbidden'] !== $forbidden) {
+                continue;
+            }
+
+            // Compared here rather than filtered when the payload was built:
+            // the row was alive at build time and the payload does not read
+            // again, so a cached answer would outlive the grant itself.
+            if ($tuple['expires_at'] !== null && $tuple['expires_at'] <= $now) {
                 continue;
             }
 

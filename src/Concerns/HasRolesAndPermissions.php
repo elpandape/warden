@@ -8,6 +8,7 @@ use BackedEnum;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Support\Name;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use Illuminate\Database\Eloquent\Builder;
@@ -165,12 +166,16 @@ trait HasRolesAndPermissions
             ->where('entity_id', $this->getKey())
             ->whereNull('restricted_to_type')
             ->whereNull('restricted_to_id')
+            ->tap(Expiry::live(...))
             ->toBase()
             ->pluck('role_id')
             ->all();
 
+        // getPermissions() filters expiry like the resolver does. A listing that
+        // hands back an expired permission paints a menu can() then denies.
         $permissionKeys = $context->grantClass()::query()
             ->where('forbidden', $forbidden)
+            ->tap(Expiry::live(...))
             ->where(
                 /** @param Builder<\ElPandaPe\Warden\Models\Grant> $query */
                 function (Builder $query) use ($roleMorph, $roleKeys): void {

@@ -7,6 +7,7 @@ namespace ElPandaPe\Warden\Console;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Console\Command;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -92,7 +93,7 @@ final class UpgradeCommand extends Command
 
         $steps = function (): void {
             Schema::rename('permissions', 'grants');
-            Schema::table('grants', function (\Illuminate\Database\Schema\Blueprint $table): void {
+            Schema::table('grants', function (Blueprint $table): void {
                 $table->renameColumn('ability_id', 'permission_id');
             });
             Schema::rename('abilities', 'permissions');
@@ -115,6 +116,19 @@ final class UpgradeCommand extends Command
             // them preserves the behavior users actually had (fail-closed
             // deserialization would silence those grants instead).
             DB::table('permissions')->whereNotNull('options')->update(['options' => null]);
+
+            // A legacy schema predates the expiry column and every reader in
+            // 3.0 names it. Without this the upgrade lands a database that
+            // cannot answer a single check.
+            foreach (['grants', 'assigned_roles'] as $pivot) {
+                if (Schema::hasColumn($pivot, 'expires_at')) {
+                    continue; // @codeCoverageIgnore
+                }
+
+                Schema::table($pivot, function (Blueprint $table): void {
+                    $table->timestamp('expires_at')->nullable()->index();
+                });
+            }
         };
 
         // Postgres and SQLite give us atomic DDL; MySQL auto-commits each

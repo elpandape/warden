@@ -9,6 +9,7 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\Resolver;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
+use ElPandaPe\Warden\Support\Expiry;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -62,6 +63,7 @@ final readonly class DatabaseResolver implements Resolver
         return $context->assignedRoleClass()::query()
             ->where('entity_type', $authority->getMorphClass())
             ->where('entity_id', $authority->getKey())
+            ->tap(Expiry::live(...))
             ->get();
     }
 
@@ -277,6 +279,9 @@ final readonly class DatabaseResolver implements Resolver
         return $grantClass::query()
             ->whereColumn("{$grants}.permission_id", $permissionModel->getQualifiedKeyName())
             ->where('forbidden', $forbidden)
+            ->tap(function (Builder $query) use ($grants): void {
+                Expiry::live($query, $grants);
+            })
             ->where(function (Builder $grant) use ($authority, $roleMorph, $roleKeys): void {
                 $grant
                     ->where(function (Builder $direct) use ($authority): void {

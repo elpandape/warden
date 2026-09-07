@@ -15,6 +15,7 @@ use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Cache\ArrayLock;
 use Illuminate\Cache\ArrayStore;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -242,6 +243,18 @@ it('skips unowned only-owned tuples without stopping the match', function (): vo
 
     expect($verdict->isGranted())->toBeTrue()
         ->and($verdict->permissionKey)->toBe(12);
+});
+
+it('skips an expired tuple without stopping the match', function (): void {
+    seedCachedPayload($this->user, [
+        grantTuple(['key' => 31, 'expires_at' => Carbon::now()->subSecond()->getTimestamp()]),
+        grantTuple(['key' => 32]),
+    ]);
+
+    $verdict = app(Resolver::class)->resolve($this->user, 'edit');
+
+    expect($verdict->isGranted())->toBeTrue()
+        ->and($verdict->permissionKey)->toBe(32);
 });
 
 it('skips out-of-context tuples without stopping the match', function (): void {

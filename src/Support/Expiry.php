@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace ElPandaPe\Warden\Support;
 
 use DateTimeInterface;
+use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * The end date on a pivot row that a write just found or created.
@@ -17,6 +19,20 @@ use Illuminate\Database\Eloquent\Model;
  */
 final class Expiry
 {
+    /**
+     * Rows that still count: no end date, or one strictly ahead of now. The
+     * boundary is exclusive, so a row expires at the instant it names rather
+     * than a tick later.
+     */
+    public static function live(Builder $query, string $table = ''): void
+    {
+        $column = $table === '' ? 'expires_at' : "{$table}.expires_at";
+
+        $query->where(function (Builder $live) use ($column): void {
+            $live->whereNull($column)->orWhere($column, '>', Carbon::now());
+        });
+    }
+
     public static function apply(Model $row, ?DateTimeInterface $expiresAt): bool
     {
         $current = $row->getAttribute('expires_at');
