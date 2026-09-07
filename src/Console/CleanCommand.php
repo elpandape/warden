@@ -17,7 +17,7 @@ final class CleanCommand extends Command
 {
     protected $signature = 'warden:clean
         {--dry-run : Report what would be deleted without deleting}
-        {--stranded : Also delete grants whose authority row is gone}
+        {--stranded : Also delete grants and assignments whose authority row is gone}
         {--expired : Also delete grants and role assignments whose end date has passed}
         {--duplicates : Also collapse catalog rows that identify the same permission}';
 
@@ -76,7 +76,7 @@ final class CleanCommand extends Command
         }
 
         if ((bool) $this->option('stranded')) {
-            $this->components->info("Deleted {$stranded} stranded grant(s).");
+            $this->components->info("Deleted {$stranded} stranded row(s).");
         }
 
         if ((bool) $this->option('expired')) {
@@ -125,18 +125,31 @@ final class CleanCommand extends Command
     }
 
     /**
-     * Grants whose authority no longer exists: a role or user deleted outside
+     * Rows whose authority no longer exists: a role or user deleted outside
      * warden leaves them behind, and no foreign key reaches a morph pair.
+     *
+     * Both pivots, because nesting made assigned_roles able to hold an edge
+     * whose authority is a role: role_id cascades, but the parent side lives in
+     * entity_type/entity_id, which no foreign key reaches.
      *
      * An alias that maps to no class is reported, never deleted — the class may
      * simply not be loaded in this process.
      */
     private function sweepStranded(Context $context): int
     {
-        $grantModel = new ($context->grantClass());
+        return $this->sweepStrandedIn($context->grantClass())
+            + $this->sweepStrandedIn($context->assignedRoleClass());
+    }
+
+    /**
+     * @param  class-string<Model>  $class
+     */
+    private function sweepStrandedIn(string $class): int
+    {
+        $grantModel = new $class;
         $deleted = 0;
 
-        $types = $context->grantClass()::query()->withoutGlobalScopes()->getQuery()
+        $types = $class::query()->withoutGlobalScopes()->getQuery()
             ->whereNotNull('entity_type')->distinct()->pluck('entity_type');
 
         foreach ($types as $type) {
@@ -144,17 +157,17 @@ final class CleanCommand extends Command
                 continue; // @codeCoverageIgnore
             }
 
-            $class = \Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel($type) ?? $type;
+            $authorityClass = \Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel($type) ?? $type;
 
-            if (! is_subclass_of($class, Model::class)) {
+            if (! is_subclass_of($authorityClass, Model::class)) {
                 $this->components->warn("Skipping [{$type}]: no class maps to it here.");
 
                 continue;
             }
 
-            $authority = new $class;
+            $authority = new $authorityClass;
 
-            $deleted += (int) $context->grantClass()::query()->withoutGlobalScopes()->getQuery()
+            $deleted += (int) $class::query()->withoutGlobalScopes()->getQuery()
                 ->where('entity_type', $type)
                 ->whereNotExists(function (\Illuminate\Database\Query\Builder $query) use ($authority, $grantModel): void {
                     $query->from($authority->getTable())

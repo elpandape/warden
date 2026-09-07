@@ -13,6 +13,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
+use function ElPandaPe\Warden\Tests\nestRole;
 use function ElPandaPe\Warden\Tests\privateInstallPath;
 
 beforeEach(function (): void {
@@ -243,4 +244,21 @@ it('stops authorizing before anyone runs the sweep', function (): void {
 
     expect(Gate::forUser($user)->allows('view', $account))->toBeFalse()
         ->and(Grant::query()->count())->toBe(1);
+});
+
+it('sweeps a nesting edge whose parent role is gone', function (): void {
+    $warden = app(Warden::class);
+    $user = User::query()->create(['name' => 'Ada']);
+
+    nestRole('auditor', 'editor');
+    $warden->assign('editor')->to($user);
+
+    Role::query()->where('name', 'editor')->delete();
+
+    $this->artisan('warden:clean --stranded')
+        ->expectsOutputToContain('Deleted 1 stranded row(s).')
+        ->assertExitCode(0);
+
+    // The edge pointing AT the deleted role is the one no foreign key reaches.
+    expect(AssignedRole::query()->where('entity_type', 'warden.role')->count())->toBe(0);
 });
