@@ -28,6 +28,7 @@
 - [⚡ Quick Start](#-quick-start)
 - [🔐 Checking Permissions](#-checking-permissions)
 - [🎁 Granting & Forbidding](#-granting--forbidding)
+- [⏳ Temporary Access](#-temporary-access)
 - [🏠 Ownership](#-ownership)
 - [🎯 Scoped Roles](#-scoped-roles)
 - [🏢 Multi-tenancy](#-multi-tenancy)
