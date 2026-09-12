@@ -25,7 +25,9 @@ use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -416,4 +418,78 @@ it('announces no phantom revoke when a later delete reuses the object id of a ve
 
     Event::assertDispatched(RoleDeleted::class);
     Event::assertNotDispatched(PermissionRevoked::class);
+});
+
+it('names a holder from another tenant in a cascaded revoke instead of everyone', function (): void {
+    $this->warden->tenant()->to(7);
+    $this->warden->allow('editor')->to('publish');
+
+    $editor = Role::query()->where('name', 'editor')->sole();
+
+    $this->warden->tenant()->to(5);
+
+    Event::fake(WARDEN_EVENTS);
+
+    Permission::query()->withoutGlobalScopes()->where('name', 'publish')->sole()->delete();
+
+    Event::assertDispatchedTimes(PermissionRevoked::class, 1);
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($editor) === true
+        && $event->scope === 7);
+});
+
+it('skips a cascaded holder whose row is gone instead of announcing everyone', function (): void {
+    $gone = User::query()->create(['name' => 'Gone']);
+    $this->warden->allow($this->user)->to('publish');
+    $this->warden->allow($gone)->to('publish');
+
+    User::query()->whereKey($gone->getKey())->delete();
+
+    Event::fake(WARDEN_EVENTS);
+
+    Permission::query()->where('name', 'publish')->sole()->delete();
+
+    Event::assertDispatchedTimes(PermissionRevoked::class, 1);
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($this->user) === true);
+});
+
+it('warns about a cascaded holder type no class maps and announces nothing for it', function (): void {
+    $this->warden->allow($this->user)->to('publish');
+    $permission = Permission::query()->where('name', 'publish')->sole();
+
+    DB::table('grants')->insert([
+        'permission_id' => $permission->getKey(),
+        'entity_type' => 'nothing.maps.here',
+        'entity_id' => 1,
+        'forbidden' => false,
+    ]);
+
+    Log::spy();
+    Event::fake(WARDEN_EVENTS);
+
+    $permission->delete();
+
+    Event::assertDispatchedTimes(PermissionRevoked::class, 1);
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($this->user) === true);
+    Log::shouldHaveReceived('warning')->once()->withArgs(
+        fn (string $message): bool => str_contains($message, '[nothing.maps.here]'),
+    );
+});
+
+it('announces nothing for a cascaded row that names a holder type but no key', function (): void {
+    $this->warden->allow($this->user)->to('publish');
+    $permission = Permission::query()->where('name', 'publish')->sole();
+
+    DB::table('grants')->insert([
+        'permission_id' => $permission->getKey(),
+        'entity_type' => $this->user->getMorphClass(),
+        'entity_id' => null,
+        'forbidden' => false,
+    ]);
+
+    Event::fake(WARDEN_EVENTS);
+
+    $permission->delete();
+
+    Event::assertDispatchedTimes(PermissionRevoked::class, 1);
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($this->user) === true);
 });

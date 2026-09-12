@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 
 /**
  * What happens when rows change outside the fluent actions: the counter moves,
@@ -180,7 +181,15 @@ final class CacheInvalidations
         $permissions = new Collection([$model]);
 
         foreach ($grants as [$type, $key, $forbidden, $scope]) {
-            $authority = $this->hydrate($type, $key);
+            $everyone = $type === null && $key === null;
+            $authority = $everyone ? null : $this->hydrate($type, $key);
+
+            // Only a row with neither holder column reached everyone. Any other
+            // row whose holder cannot be named authorized nobody, and a null
+            // authority would announce it as a grant to everyone.
+            if (! $everyone && ! $authority instanceof Model) {
+                continue;
+            }
 
             Event::dispatch($forbidden
                 ? new PermissionUnforbidden($authority, $permissions, $scope, $actor)
@@ -222,15 +231,23 @@ final class CacheInvalidations
         return $grants;
     }
 
-    private function hydrate(?string $type, int|string|null $id): ?Model
+    private function hydrate(?string $type, int|string|null $key): ?Model
     {
-        if ($type === null || $id === null) {
+        if ($type === null || $key === null) {
             return null;
         }
 
         $class = Relation::getMorphedModel($type) ?? $type;
 
-        return is_subclass_of($class, Model::class) ? $class::query()->find($id) : null;
+        if (! is_subclass_of($class, Model::class)) {
+            Log::warning("Warden: no model class maps the morph type [{$type}], so its rows cannot be named.", ['ids' => [$key]]);
+
+            return null;
+        }
+
+        // Unscoped: naming a holder is not an authorization read, and a tenant
+        // or soft-delete filter would hide one the cascade still reached.
+        return $class::query()->withoutGlobalScopes()->find($key);
     }
 
     /**
