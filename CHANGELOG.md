@@ -12,9 +12,9 @@ for a deleted row; the rest deleted live rows, or reported deletions that never 
 signature changes and no migration. The fixes that change what a caller sees are marked
 **Visible**.
 
-**Upgrading:** after deploying, run `php artisan warden:cache-reset` once, so no payload
-cached by 3.0.0 goes on reading a grant with a type and no key as a grant to everyone; then
-`php artisan warden:clean --stranded` deletes those rows.
+**Upgrading:** after deploying, run `php artisan warden:clean --stranded` once: it deletes the
+grants with a type and no key that 3.0.0 could write. Cached payloads move to version 5, so
+no payload cached by 3.0.0 is read again.
 
 ### Fixed
 
@@ -69,9 +69,10 @@ cached by 3.0.0 goes on reading a grant with a type and no key as a grant to eve
   rows of that shape; this one stops the rows already stored — written by 3.0.0 for an
   unsaved authority, or for a role model that hands back no key — from granting anything.
   `allowEveryone()` leaves both columns `null`, and its grants still reach everyone.
-  **Visible:** such a row stops granting, and a forbid written that way stops blocking. The
-  payload version is unchanged, so a payload cached before the upgrade needs the reset under
-  **Upgrading**. A catalog delete that cascades over such a row does not announce it either.
+  **Visible:** such a row stops granting, and a forbid written that way stops blocking.
+  Cached payloads move to version 5, so none cached before the upgrade goes on reading such
+  a row as everyone's. A catalog delete that cascades over such a row does not announce it
+  either.
 - **Deleting a catalog row settles before any listener hears of it.** `RoleDeleted` and
   `PermissionDeleted` were dispatched before the hook that invalidates the cache, so a
   listener that threw left every cached check answering for the deleted row until the

@@ -30,7 +30,7 @@ use Illuminate\Support\Carbon;
  */
 final class CachedResolver implements Resolver
 {
-    private const int PAYLOAD_VERSION = 4;
+    private const int PAYLOAD_VERSION = 5;
 
     private const int LOCK_SECONDS = 10;
 
