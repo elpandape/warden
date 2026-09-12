@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Models\Concerns;
 
+use ElPandaPe\Warden\Checks\Resolvers\CacheInvalidations;
 use ElPandaPe\Warden\Concerns\HasPermissions;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\RoleCreated;
@@ -62,9 +63,14 @@ trait IsRole
         });
 
         static::deleted(function (Model $role): void {
+            $invalidations = app(CacheInvalidations::class);
+            $invalidations->settleCascade($role);
+
             if (Config::eventsEnabled()) {
                 Event::dispatch(new RoleDeleted($role));
             }
+
+            $invalidations->announceCascade($role);
         });
     }
 

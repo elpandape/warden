@@ -116,6 +116,9 @@ final class WardenServiceProvider extends ServiceProvider
 
             $invalidations = $this->app->make(Checks\Resolvers\CacheInvalidations::class);
 
+            // Only the read before a catalog delete lives here: a wildcard runs
+            // after the model's own listeners, so their veto comes first. What
+            // follows the delete settles in the catalog traits, ahead of them.
             if (str_starts_with($event, 'eloquent.deleting:')) {
                 $invalidations->prepareCascade($model);
 
@@ -123,10 +126,6 @@ final class WardenServiceProvider extends ServiceProvider
             }
 
             $invalidations->markFrom($model);
-
-            if (str_starts_with($event, 'eloquent.deleted:')) {
-                $invalidations->markCascade($model);
-            }
         });
 
         // Optional borrowings, off by default: identity stays fluent-first.

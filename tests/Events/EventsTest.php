@@ -379,3 +379,41 @@ it('announces a cascaded forbid as unforbidden, and an everyone-grant with no au
     Event::assertDispatched(PermissionUnforbidden::class, fn (PermissionUnforbidden $event): bool => $event->authority?->is($this->user) === true);
     Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => ! $event->authority instanceof Illuminate\Database\Eloquent\Model);
 });
+
+it('announces a permission delete before the grants it took with it', function (): void {
+    $this->warden->allow($this->user)->to('edit-site');
+
+    $heard = [];
+    Event::listen([PermissionDeleted::class, PermissionRevoked::class], function (object $event) use (&$heard): void {
+        $heard[] = $event::class;
+    });
+
+    Permission::query()->where('name', 'edit-site')->sole()->delete();
+
+    expect($heard)->toBe([PermissionDeleted::class, PermissionRevoked::class]);
+});
+
+it('announces no phantom revoke when a later delete reuses the object id of a vetoed one', function (): void {
+    $this->warden->allow($this->user)->to('edit-site');
+
+    Event::listen('eloquent.deleting: *', fn (string $event, array $payload): ?bool => $payload[0] instanceof Permission ? false : null);
+
+    $permission = Permission::query()->where('name', 'edit-site')->sole();
+    $vetoed = $permission->delete();
+    $staleId = spl_object_id($permission);
+    unset($permission);
+
+    $role = new Role(['name' => 'bystander']);
+
+    expect($vetoed)->toBeFalse()
+        ->and(spl_object_id($role))->toBe($staleId);
+
+    $role->save();
+
+    Event::fake(WARDEN_EVENTS);
+
+    $role->delete();
+
+    Event::assertDispatched(RoleDeleted::class);
+    Event::assertNotDispatched(PermissionRevoked::class);
+});

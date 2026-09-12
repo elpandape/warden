@@ -134,23 +134,70 @@ final class CacheInvalidations
     }
 
     /**
-     * The engine has cascaded: announce what it reached, and sweep what no
-     * foreign key covers.
+     * The engine has cascaded: mark the scopes it reached and sweep what no
+     * foreign key covers. The catalog model calls this from its own deleted
+     * hook, ahead of every listener of its event, so a listener that throws
+     * cannot leave the cache granting what the delete removed.
      */
-    public function markCascade(Model $model): void
+    public function settleCascade(Model $model): void
     {
-        $id = spl_object_id($model);
+        $object = spl_object_id($model);
+        $scopes = $this->cascading[$object] ?? [];
+        unset($this->cascading[$object]);
 
-        foreach ($this->cascading[$id] ?? [] as $scope) {
+        $context = Context::resolve();
+
+        // Object ids are reused: an entry left by a delete that never finished
+        // can meet a later model that happens to receive the same id.
+        if (! in_array($model::class, [$context->permissionClass(), $context->roleClass()], true)) {
+            return;
+        }
+
+        foreach ($scopes as $scope) {
             $this->mark($scope);
         }
 
-        unset($this->cascading[$id]);
-
-        $this->announceCascade($model, $this->doomed[$id] ?? []);
-        unset($this->doomed[$id]);
-
         $this->sweepStrandedGrants($model);
+    }
+
+    /**
+     * The cascade removed grants nobody asked to remove: say so, with the
+     * payload shape the write paths already publish. Called after the catalog
+     * event, so a listener of that event that throws loses these announcements
+     * and nothing else.
+     */
+    public function announceCascade(Model $model): void
+    {
+        $object = spl_object_id($model);
+        $grants = $this->doomed[$object] ?? [];
+        unset($this->doomed[$object]);
+
+        if ($model::class !== Context::resolve()->permissionClass() || $grants === [] || ! Config::eventsEnabled()) {
+            return;
+        }
+
+        $actor = app(ActorResolver::class)->resolve();
+        $permissions = new Collection([$model]);
+
+        foreach ($grants as [$type, $key, $forbidden, $scope]) {
+            $authority = $this->hydrate($type, $key);
+
+            Event::dispatch($forbidden
+                ? new PermissionUnforbidden($authority, $permissions, $scope, $actor)
+                : new PermissionRevoked($authority, $permissions, $scope, $actor));
+        }
+    }
+
+    /**
+     * The whole cascade in one call, as 3.0.0 ran it. The catalog models no
+     * longer call it: their own event goes out between the two halves.
+     *
+     * @deprecated 3.0.1 Call settleCascade(), then announceCascade().
+     */
+    public function markCascade(Model $model): void
+    {
+        $this->settleCascade($model);
+        $this->announceCascade($model);
     }
 
     /**
@@ -173,30 +220,6 @@ final class CacheInvalidations
         ])->values()->all();
 
         return $grants;
-    }
-
-    /**
-     * The cascade removed grants nobody asked to remove: say so, with the
-     * payload shape the write paths already publish.
-     *
-     * @param  list<array{string|null, int|string|null, bool, int|string|null}>  $grants
-     */
-    private function announceCascade(Model $model, array $grants): void
-    {
-        if ($grants === [] || ! Config::eventsEnabled()) {
-            return;
-        }
-
-        $actor = app(ActorResolver::class)->resolve();
-        $permissions = new Collection([$model]);
-
-        foreach ($grants as [$type, $id, $forbidden, $scope]) {
-            $authority = $this->hydrate($type, $id);
-
-            Event::dispatch($forbidden
-                ? new PermissionUnforbidden($authority, $permissions, $scope, $actor)
-                : new PermissionRevoked($authority, $permissions, $scope, $actor));
-        }
     }
 
     private function hydrate(?string $type, int|string|null $id): ?Model

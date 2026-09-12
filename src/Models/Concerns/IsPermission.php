@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Models\Concerns;
 
+use ElPandaPe\Warden\Checks\Resolvers\CacheInvalidations;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
@@ -76,9 +77,14 @@ trait IsPermission
         });
 
         static::deleted(function (Model $permission): void {
+            $invalidations = app(CacheInvalidations::class);
+            $invalidations->settleCascade($permission);
+
             if (Config::eventsEnabled()) {
                 Event::dispatch(new PermissionDeleted($permission));
             }
+
+            $invalidations->announceCascade($permission);
         });
     }
 

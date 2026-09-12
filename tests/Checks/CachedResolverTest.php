@@ -3,25 +3,32 @@
 declare(strict_types=1);
 
 use ElPandaPe\Warden\Checks\Resolvers\CachedResolver;
+use ElPandaPe\Warden\Checks\Resolvers\CacheInvalidations;
 use ElPandaPe\Warden\Checks\Resolvers\CacheKeyVersioner;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\Resolver;
+use ElPandaPe\Warden\Events\PermissionDeleted;
+use ElPandaPe\Warden\Events\PermissionRevoked;
+use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\BarePivot;
+use ElPandaPe\Warden\Tests\Fixtures\CustomRole;
 use ElPandaPe\Warden\Tests\Fixtures\PlainCacheStore;
 use ElPandaPe\Warden\Tests\Fixtures\ScopedGrant;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\cachedPayloadKey;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
+use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
 
 beforeEach(function (): void {
     migrateWardenTables();
@@ -498,4 +505,83 @@ it('honours a global scope on a swapped grant model, cached or not', function ()
 
     expect($cached)->toBeFalse()
         ->and($uncached)->toBeFalse();
+});
+
+it('invalidates and sweeps a deleted role before a throwing listener can stop it', function (): void {
+    withForeignKeys();
+
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->assign('editor')->to($this->user);
+
+    expect(Gate::forUser($this->user)->allows('publish'))->toBeTrue();
+
+    $role = Role::query()->where('name', 'editor')->sole();
+
+    Event::listen(RoleDeleted::class, function (): void {
+        throw new RuntimeException('role listener failed');
+    });
+
+    expect(fn (): ?bool => $role->delete())->toThrow(RuntimeException::class, 'role listener failed')
+        ->and(Gate::forUser($this->user)->allows('publish'))->toBeFalse()
+        ->and(Grant::query()->withoutGlobalScopes()
+            ->where('entity_type', $role->getMorphClass())
+            ->where('entity_id', $role->getKey())
+            ->count())->toBe(0);
+});
+
+it('invalidates a deleted permission before a throwing listener and loses only its cascade announcement', function (): void {
+    withForeignKeys();
+
+    $this->warden->allow($this->user)->to('edit-site');
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
+
+    $revoked = 0;
+    Event::listen(PermissionRevoked::class, function () use (&$revoked): void {
+        $revoked++;
+    });
+    Event::listen(PermissionDeleted::class, function (): void {
+        throw new RuntimeException('permission listener failed');
+    });
+
+    $permission = Permission::query()->where('name', 'edit-site')->sole();
+
+    expect(fn (): ?bool => $permission->delete())->toThrow(RuntimeException::class, 'permission listener failed')
+        ->and(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse()
+        ->and(Permission::query()->count())->toBe(0)
+        ->and(Grant::query()->withoutGlobalScopes()->count())->toBe(0)
+        ->and($revoked)->toBe(0);
+});
+
+it('leaves the grants of a role class warden is not configured with to warden:clean', function (): void {
+    withForeignKeys();
+
+    $outsider = CustomRole::query()->create(['name' => 'outsider']);
+    $this->warden->allow($outsider)->to('publish');
+
+    $outsider->delete();
+
+    expect(Grant::query()->withoutGlobalScopes()->where('entity_type', $outsider->getMorphClass())->count())->toBe(1);
+});
+
+it('keeps the deprecated markCascade settling and announcing a cascade in one call', function (): void {
+    withForeignKeys();
+
+    $this->warden->allow($this->user)->to('edit-site');
+    $permission = Permission::query()->where('name', 'edit-site')->sole();
+    $invalidations = app(CacheInvalidations::class);
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
+
+    $invalidations->prepareCascade($permission);
+    $permission->deleteQuietly();
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
+
+    Event::fake([PermissionRevoked::class]);
+
+    $invalidations->markCascade($permission);
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($this->user) === true);
 });
