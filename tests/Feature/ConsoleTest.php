@@ -16,7 +16,9 @@ use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateRemoteUsers;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
+use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
 use function ElPandaPe\Warden\Tests\nestRole;
+use function ElPandaPe\Warden\Tests\plantDuplicateViewGrant;
 use function ElPandaPe\Warden\Tests\privateInstallPath;
 
 beforeEach(function (): void {
@@ -156,16 +158,7 @@ it('resolves duplicate catalog rows and re-points their grants', function (): vo
     $warden->allow($user)->to('view');
     $keeper = Permission::query()->sole();
 
-    // The duplicate the unique index now forbids, written the way an older
-    // install already has it: straight past the model.
-    $loserId = Permission::query()->getQuery()->insertGetId([
-        'name' => 'view', 'entity_type' => null, 'entity_id' => null,
-        'only_owned' => false, 'options' => null, 'scope' => null, 'identity_key' => 'stale',
-    ]);
-    Grant::query()->getQuery()->insert([
-        'permission_id' => $loserId, 'entity_type' => $other->getMorphClass(),
-        'entity_id' => $other->getKey(), 'forbidden' => false, 'scope' => null,
-    ]);
+    plantDuplicateViewGrant($other);
 
     $this->artisan('warden:clean', ['--duplicates' => true])->assertSuccessful();
 
@@ -319,3 +312,41 @@ it('keeps a grant whose holder its own database matches under its collation', fu
 
     expect(Grant::query()->where('entity_type', (new RemoteTextKeyUser)->getMorphClass())->pluck('entity_id')->all())->toBe([41]);
 });
+
+it('keeps access alive when the duplicate grant outlives the keeper\'s', function (): void {
+    withForeignKeys();
+
+    $this->warden->allow($this->user)->until(Carbon::now()->addDay())->to('view');
+
+    plantDuplicateViewGrant($this->user);
+
+    $this->artisan('warden:clean', ['--duplicates' => true])->assertSuccessful();
+
+    $this->travel(2)->days();
+
+    expect(Gate::forUser($this->user)->allows('view'))->toBeTrue();
+});
+
+it('folds a colliding duplicate grant into the keeper\'s with the later end date', function (?int $keeperDays, ?int $loserDays, ?int $keptDays): void {
+    withForeignKeys();
+    $this->travelTo(Carbon::parse('2026-01-01 00:00:00'));
+
+    $at = fn (?int $days): ?Carbon => $days === null ? null : Carbon::now()->addDays($days);
+
+    $this->warden->allow($this->user)->until($at($keeperDays))->to('view');
+    $keeper = Permission::query()->sole();
+
+    plantDuplicateViewGrant($this->user, $at($loserDays));
+
+    $this->artisan('warden:clean', ['--duplicates' => true])->assertSuccessful();
+
+    $grant = Grant::query()->sole();
+
+    expect($grant->getAttribute('permission_id'))->toBe($keeper->getKey())
+        ->and($grant->expires_at?->toDateTimeString())->toBe($at($keptDays)?->toDateTimeString());
+})->with([
+    'the loser has no end' => [1, null, null],
+    'the keeper has no end' => [null, 1, null],
+    'the loser ends later' => [1, 3, 3],
+    'the keeper ends later' => [3, 1, 3],
+]);

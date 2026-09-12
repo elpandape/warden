@@ -243,8 +243,8 @@ final class CleanCommand extends Command
      * SQL narrows to candidates on the columns that group cleanly; PHP splits
      * each candidate set, because the options blob's identity is defined by
      * ConstraintSerializer and no database can reproduce it. The lowest id wins;
-     * the losers' grants are re-pointed at it, dropping any that would collide
-     * with a grant the keeper already has.
+     * the losers' grants are re-pointed at it. One that would collide with a
+     * grant the keeper already has is dropped, its end date folded into it.
      */
     private function collapseDuplicates(Context $context): int
     {
@@ -338,18 +338,42 @@ final class CleanCommand extends Command
             ->getQuery()->where('permission_id', $loser->getKey())->get();
 
         foreach ($grants as $grant) {
-            $taken = $grantClass::query()->withoutGlobalScopes()->getQuery()
+            $held = $grantClass::query()->withoutGlobalScopes()->getQuery()
                 ->where('permission_id', $keeper->getKey())
                 ->where('entity_type', $grant->entity_type)
                 ->where('entity_id', $grant->entity_id)
                 ->where('forbidden', $grant->forbidden)
                 ->where('scope', $grant->scope)
-                ->exists();
+                ->first(['id', 'expires_at']);
 
             $query = $grantClass::query()->withoutGlobalScopes()->getQuery()->where('id', $grant->id);
 
-            // Re-pointing can collide with a grant the keeper already holds.
-            $taken ? $query->delete() : $query->update(['permission_id' => $keeper->getKey()]);
+            if ($held === null) {
+                $query->update(['permission_id' => $keeper->getKey()]);
+
+                continue;
+            }
+
+            // Re-pointing collides with a grant the keeper already holds: that
+            // one absorbs this one, so the access lasts as long as either did.
+            $grantClass::query()->withoutGlobalScopes()->getQuery()
+                ->where('id', $held->id)
+                ->update(['expires_at' => $this->laterEnd($held->expires_at, $grant->expires_at)]);
+
+            $query->delete();
         }
+    }
+
+    /**
+     * The later of two stored end dates, where no end beats any date: the
+     * rule CachedResolver applies when the same grant arrives twice.
+     */
+    private function laterEnd(mixed $first, mixed $second): ?string
+    {
+        if (! is_string($first) || ! is_string($second)) {
+            return null;
+        }
+
+        return Carbon::parse($first)->greaterThan(Carbon::parse($second)) ? $first : $second;
     }
 }

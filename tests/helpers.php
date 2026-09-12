@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Tests;
 
+use DateTimeInterface;
 use ElPandaPe\Warden\Checks\Resolvers\CacheKeyVersioner;
 use ElPandaPe\Warden\Models\AssignedRole;
+use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
@@ -145,4 +148,20 @@ function assignedRoleScopes(): array
         ->orderByRaw('scope is null desc, scope asc')
         ->pluck('scope')
         ->all();
+}
+
+/**
+ * The duplicate the unique index now forbids, granted the way an older
+ * install already has it: straight past the model.
+ */
+function plantDuplicateViewGrant(User $holder, ?DateTimeInterface $expiresAt = null): void
+{
+    $duplicateId = Permission::query()->getQuery()->insertGetId([
+        'name' => 'view', 'entity_type' => null, 'entity_id' => null,
+        'only_owned' => false, 'options' => null, 'scope' => null, 'identity_key' => 'stale',
+    ]);
+    Grant::query()->getQuery()->insert([
+        'permission_id' => $duplicateId, 'entity_type' => $holder->getMorphClass(),
+        'entity_id' => $holder->getKey(), 'forbidden' => false, 'scope' => null, 'expires_at' => $expiresAt,
+    ]);
 }
