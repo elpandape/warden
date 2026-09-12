@@ -114,7 +114,7 @@ class RetractsRoles
             // Deletes target the exact write scope: global assignments survive tenant retracts.
             $scope = app(Tenancy::class)->writeScope();
 
-            $targets = $this->normalizeAuthorities($authorities);
+            $targets = $this->normalizeAuthorities($authorities, removing: true);
 
             if (! $this->eventPermits(new RetractingRole($this->roles, $targets, $scope, $this->restrictedTo))) {
                 return $this;

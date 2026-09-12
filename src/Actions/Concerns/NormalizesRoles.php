@@ -63,7 +63,7 @@ trait NormalizesRoles
      * @param  Model|array<int, mixed>  $authorities
      * @return list<Model>
      */
-    private function normalizeAuthorities(Model|array $authorities): array
+    private function normalizeAuthorities(Model|array $authorities, bool $removing = false): array
     {
         $items = is_array($authorities) ? array_values($authorities) : [$authorities];
         $normalized = [];
@@ -73,7 +73,9 @@ trait NormalizesRoles
                 throw new InvalidArgumentException('Authorities must be model instances.');
             }
 
-            $normalized[] = $item;
+            $normalized[] = $removing
+                ? $this->assertKeyedAuthority($item)
+                : $this->assertSavedAuthority($item);
         }
 
         return $normalized;

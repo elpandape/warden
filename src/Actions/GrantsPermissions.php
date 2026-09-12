@@ -247,6 +247,11 @@ class GrantsPermissions
      */
     private function permitsGrant(string|array|Model|BackedEnum $permissions, Model|string|null $entity, bool $onlyOwned): bool
     {
+        // First, so a refused grant dispatches nothing and leaves no catalog row.
+        if ($this->authority instanceof Model) {
+            $this->assertSavedAuthority($this->authority);
+        }
+
         // The pre-event announces the scope the write will actually target —
         // computable without side effects: a string authority names a role.
         $roleAuthority = is_string($this->authority)
