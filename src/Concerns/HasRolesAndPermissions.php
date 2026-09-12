@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElPandaPe\Warden\Concerns;
 
 use BackedEnum;
+use Closure;
 use DateTimeInterface;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Models\AssignedRole;
@@ -85,6 +86,16 @@ trait HasRolesAndPermissions
     {
         $unique = array_values(array_unique(array_map(Name::of(...), $roles)));
 
+        // Nesting reaches roles the eager-loaded relation never held, so the
+        // memo cannot answer this one either.
+        if (Config::nestedRoles()) {
+            return Context::resolve()->roleClass()::query()
+                ->whereKey(array_keys(RoleClosure::for($this)))
+                ->whereIn('name', $unique)
+                ->distinct()
+                ->count('name') === count($unique);
+        }
+
         if ($this->relationLoaded('roles')) {
             return $this->loadedRoleNames()->unique()->intersect($unique)->count() === count($unique);
         }
@@ -102,23 +113,7 @@ trait HasRolesAndPermissions
      */
     public function scopeWhereIs(Builder $query, string|BackedEnum ...$roles): Builder
     {
-        $names = array_map(Name::of(...), array_values($roles));
-        $column = self::qualifiedRoleName();
-
-        if (! Config::nestedRoles()) {
-            return $query->whereHas(
-                'roles',
-                fn (Builder $role): Builder => $role->whereIn($column, $names)->tap(self::onlyLive(...)),
-            );
-        }
-
-        // Answered from the role's side: a closure cannot be expanded per row.
-        $reaching = RoleClosure::reaching(self::roleKeysNamed($names));
-
-        return $query->whereHas(
-            'roles',
-            fn (Builder $role): Builder => $role->whereKey($reaching)->tap(self::onlyLive(...)),
-        );
+        return $query->whereHas('roles', self::liveAssignmentOf(array_map(Name::of(...), array_values($roles))));
     }
 
     /**
@@ -127,13 +122,8 @@ trait HasRolesAndPermissions
      */
     public function scopeWhereIsAll(Builder $query, string|BackedEnum ...$roles): Builder
     {
-        $column = self::qualifiedRoleName();
-
         foreach (array_unique(array_map(Name::of(...), $roles)) as $name) {
-            $query->whereHas(
-                'roles',
-                fn (Builder $role): Builder => $role->where($column, $name)->tap(self::onlyLive(...)),
-            );
+            $query->whereHas('roles', self::liveAssignmentOf([$name]));
         }
 
         return $query;
@@ -145,13 +135,7 @@ trait HasRolesAndPermissions
      */
     public function scopeWhereIsNot(Builder $query, string|BackedEnum ...$roles): Builder
     {
-        $names = array_map(Name::of(...), array_values($roles));
-        $column = self::qualifiedRoleName();
-
-        return $query->whereDoesntHave(
-            'roles',
-            fn (Builder $role): Builder => $role->whereIn($column, $names)->tap(self::onlyLive(...)),
-        );
+        return $query->whereDoesntHave('roles', self::liveAssignmentOf(array_map(Name::of(...), array_values($roles))));
     }
 
     /**
@@ -203,6 +187,27 @@ trait HasRolesAndPermissions
     private static function onlyLive(QueryBuilder $query): void
     {
         Expiry::live($query, Context::resolve()->table('assigned_roles'));
+    }
+
+    /**
+     * The role row the three scopes look for through roles(): a live
+     * assignment of one of the names or, with nesting on, of a role that
+     * reaches one. Nesting is answered from the role's side: a closure
+     * cannot be expanded per row.
+     *
+     * @param  list<string>  $names
+     */
+    private static function liveAssignmentOf(array $names): Closure
+    {
+        if (! Config::nestedRoles()) {
+            $column = self::qualifiedRoleName();
+
+            return fn (Builder $role): Builder => $role->whereIn($column, $names)->tap(self::onlyLive(...));
+        }
+
+        $reaching = RoleClosure::reaching(self::roleKeysNamed($names));
+
+        return fn (Builder $role): Builder => $role->whereKey($reaching)->tap(self::onlyLive(...));
     }
 
     /**

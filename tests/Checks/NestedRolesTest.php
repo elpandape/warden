@@ -177,3 +177,69 @@ it('ends a dated grant borrowed through a dated assignment at the earlier one', 
 
     Carbon::setTestNow();
 });
+
+it('answers isAll() the way it answers is()', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    nestRole('auditor', 'editor');
+    $this->warden->assign('editor')->to($this->user);
+
+    expect($this->user->isAll('auditor', 'editor'))->toBeTrue()
+        ->and($this->warden->is($this->user)->all('auditor'))->toBeTrue()
+        ->and($this->user->isAll('auditor', 'ghost'))->toBeFalse();
+});
+
+it('answers isAll() through nesting even with the roles eager-loaded', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    nestRole('auditor', 'editor');
+    $this->warden->assign('editor')->to($this->user);
+    $this->user->load('roles');
+
+    expect($this->user->isAll('auditor'))->toBeTrue();
+});
+
+it('answers whereIsAll() the way it answers isAll()', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    nestRole('auditor', 'editor');
+    $this->warden->assign('editor')->to($this->user);
+    $this->warden->assign('auditor')->to(User::query()->create(['name' => 'Grace']));
+
+    expect(User::query()->whereIsAll('auditor', 'editor')->pluck('name')->all())->toBe(['Ada']);
+});
+
+it('answers whereIsNot() the way it answers is()', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    nestRole('auditor', 'editor');
+    $this->warden->assign('editor')->to($this->user);
+    User::query()->create(['name' => 'Grace']);
+
+    expect(User::query()->whereIsNot('auditor')->pluck('name')->all())->toBe(['Grace']);
+});
+
+it('answers isAll(), whereIsAll() and whereIsNot() for a role nobody defined', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    $this->warden->assign('editor')->to($this->user);
+
+    expect($this->user->isAll('ghost'))->toBeFalse()
+        ->and(User::query()->whereIsAll('ghost')->count())->toBe(0)
+        ->and(User::query()->whereIsNot('ghost')->count())->toBe(1);
+});
+
+it('reaches no nested role through an expired outer assignment in any scope', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    nestRole('auditor', 'editor');
+    $this->warden->assign('editor')->until(Carbon::parse('2027-01-01 00:00:00'))->to($this->user);
+
+    Carbon::setTestNow(Carbon::parse('2027-06-01 00:00:00'));
+
+    expect($this->user->isAll('auditor'))->toBeFalse()
+        ->and(User::query()->whereIsAll('auditor')->count())->toBe(0)
+        ->and(User::query()->whereIsNot('auditor')->count())->toBe(1);
+
+    Carbon::setTestNow();
+});
