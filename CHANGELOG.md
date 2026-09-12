@@ -3,6 +3,158 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v3.0.1 — Access that ends when it says it does (unreleased)
+
+Found while checking 3.0.0 against what an audit log needs from its events. Most of these
+granted more than anyone wrote — an expired role still held, a temporary grant turned
+permanent, an unsaved model or a keyless row granting to everyone, a cache left answering
+for a deleted row; the rest deleted live rows, or reported deletions that never happened. No
+signature changes and no migration. The fixes that change what a caller sees are marked
+**Visible**.
+
+**Upgrading:** after deploying, run `php artisan warden:cache-reset` once, so no payload
+cached by 3.0.0 goes on reading a grant with a type and no key as a grant to everyone; then
+`php artisan warden:clean --stranded` deletes those rows.
+
+### Fixed
+
+- **A role past its end date stops counting as held.** With `warden.roles.nested` off — the
+  default — `isA()`, `isAn()`, `isAll()`, `Warden::is()`, `whereIs()`, `whereIsAll()`,
+  `whereIsNot()` and the eager-loaded path read the assignment without its date, while
+  `can()` already refused the role's grants: the split between *can* and *is* that 3.0.0
+  said it had avoided. The `warden.role` middleware asks `isA()`, so an expired role got
+  through every route it guarded. With nesting on, the last hop of `whereIs()` had the same
+  gap. The date is read in each check rather than inside `roles()`, so `$user->roles` still
+  lists every row it did. **Visible:** an expired role now fails those checks, its holder
+  appears in `whereIsNot()`, and `warden.role` answers it with a 403
+  (`UnauthorizedException`).
+- **`isAll()`, `whereIsAll()` and `whereIsNot()` nest like the rest.** With
+  `warden.roles.nested` on, 3.0.0 expanded `isA()` and `whereIs()` through nested roles but
+  not these three, nor `Warden::is($user)->all()`, so `isAll('editor', 'auditor')` could
+  deny a holder who reaches `auditor` through `editor`. **Visible, with nesting on only:**
+  `isAll()` and `whereIsAll()` can now say yes where they said no, and `whereIsNot()`
+  excludes more. It widens an answer, and it ships in a patch because 3.0.0 published the
+  promise these checks broke: `can()`, `is()` and `whereIs()` nest together.
+- **A narrowing chain keeps the end date it was given.** `allow()->until()->to()->where()`
+  took the twin's date from whichever superseded row the engine returned first — nothing
+  ordered them — and never read `until()` at all. Repeating a chain with a new date kept the
+  old one, `until(null)` lifted nothing, and repeating it without `until()` while another
+  holder kept the plain row alive turned a temporary grant permanent. A declared `until()`
+  now always wins, `until(null)` included. Without one, the twin keeps the date the
+  concession had before the chain, never counting the row the chain's own `to()` just
+  created; when those rows disagree, the later date wins and no end date beats any — the
+  rule the cached engine already applies to two rows that grant the same thing. Row order no
+  longer decides anything.
+- **An unsaved authority is refused instead of granting to everyone.**
+  `Warden::allow(new User)->to('delete-site')` wrote a grant whose `entity_id` was `null`,
+  and every reader took a grant with no key for a grant to everyone — while
+  `PermissionGranted` named the model as though it were the only holder. A saved model with
+  no usable key did the same. **Visible:** `allow()`, `forbid()`, `assign()->to()` and
+  `sync()` throw `ConfigurationException` for an authority that is not saved, or whose key
+  is not an int or a non-empty string, before any row is written — a refused `allow()` does
+  not create the permission it named either. Save it first, or say `allowEveryone()` when
+  everyone is what you mean. A deleted model counts as not saved for those four, so calling
+  one from the model's own `deleted` hook now throws: move that call to a `deleting` hook.
+  `disallow()`, `unforbid()` and `retract()->from()` throw only for an authority with no
+  usable key, so cleanup from a `deleted` hook keeps working.
+- **Only a grant with neither an authority type nor a key reaches everyone.** `can()`, in
+  either engine, `whereCan()` and `getPermissions()` took any grant whose `entity_id` was
+  `null` for a grant to everyone, whatever its `entity_type` said. The entry above stops new
+  rows of that shape; this one stops the rows already stored — written by 3.0.0 for an
+  unsaved authority, or for a role model that hands back no key — from granting anything.
+  `allowEveryone()` leaves both columns `null`, and its grants still reach everyone.
+  **Visible:** such a row stops granting, and a forbid written that way stops blocking. The
+  payload version is unchanged, so a payload cached before the upgrade needs the reset under
+  **Upgrading**. A catalog delete that cascades over such a row does not announce it either.
+- **Deleting a catalog row settles before any listener hears of it.** `RoleDeleted` and
+  `PermissionDeleted` were dispatched before the hook that invalidates the cache, so a
+  listener that threw left every cached check answering for the deleted row until the
+  payload expired, a role's own grants unswept, and a permission's cascade unannounced. The
+  cache is now invalidated and a role's grants swept first; then the `*Deleted` event goes
+  out; then, for a permission, the cascade's `PermissionRevoked` and `PermissionUnforbidden`,
+  in the order its listeners already saw. A listener that throws still stops the
+  announcements after it, and nothing else.
+  - The cascade loads each holder without global scopes. A holder under another tenant, or
+    soft-deleted, arrived as `authority: null`, which a `PermissionRevoked` reads as
+    *everyone*; it now arrives named, and `authority: null` is left to the grant everyone
+    holds. A holder whose row is gone is not announced — it authorized nobody — and one
+    whose morph alias maps to no class in this process is skipped with a warning in the log.
+  - What a delete reads in its `deleting` hook is checked against the model's class and
+    cleared by both hooks, so a delete that failed halfway can no longer lend its grants to
+    the next model that reuses its object id — which surfaced as revocations naming that
+    model as the permission.
+  - **Visible:** a `RoleDeleted` listener no longer finds the role's grants: they are gone
+    before it runs. Read them in a `deleting` listener on the role model if you need them.
+- **Saving a permission loaded with a partial `select()` no longer moves it.** The `saving`
+  hook stamped the active tenant whenever `scope` was not loaded and recomputed
+  `identity_key` from whatever was, on updates too. A global rule fetched with a partial
+  select and saved under a tenant moved into that tenant — every other tenant stopped seeing
+  it and its grants stopped authorizing — and the half-computed key could make the next
+  plain grant of that name collide with it. The tenant is now stamped on creation only, and
+  the key recomputed only when the whole identity is loaded. A permission created in the
+  same request counts as whole: what it left unset holds the column default. **Visible:**
+  changing `entity_type`, `entity_id`, `only_owned`, `scope` or `options` on a permission
+  read with a partial select throws `ConfigurationException`. An edit that leaves those five
+  alone, such as its title, still saves — and in strict mode
+  (`Model::preventAccessingMissingAttributes()`) it now saves where 3.0.0 threw
+  `MissingAttributeException` before writing.
+  - Moving a row's `scope` through the model — a permission, a grant or a role assignment —
+    now invalidates the tenant it left as well as the one it joined. Only the new one was
+    bumped, so the old tenant kept granting from the cache until the payload expired. The
+    scope is read as stored, so a grant or an assignment saved without its `scope` loaded no
+    longer throws `MissingAttributeException` in strict mode after its row was written.
+- **`nestedRoles()` is read-only.** It was a plain `BelongsToMany`: `detach()` removed the
+  edge in every tenant and every context by raw query, without invalidating the cache or
+  firing an event, so holders of the outer role kept inheriting from the cache; and
+  `attach()` failed on the `entity_type` it never wrote. Reads, eager loading,
+  `whereHas('nestedRoles')` and the declared return type are unchanged. **Visible:** every
+  writer the relation declares throws `ConfigurationException` — `attach()`, `detach()`,
+  `sync()`, `syncWithoutDetaching()`, `syncWithPivotValues()`, `toggle()` and
+  `updateExistingPivot()` with their `OrFail` variants; `save()` and `saveMany()` with their
+  `Quietly` variants; `create()`, `createMany()`, `firstOrCreate()`, `createOrFirst()` and
+  `updateOrCreate()` — pointing to `Warden::assign($inner)->to($outer)` and
+  `Warden::retract($inner)->from($outer)`, which scope, invalidate and announce the edge.
+  `save()`, `create()` and the first-or-create family refuse before they save the role they
+  would attach. `touch()` stays open, and so do the writes the relation forwards to the
+  query builder: `$role->nestedRoles()->delete()` deletes the inner roles themselves, as on
+  any Eloquent relation.
+- **`PermissionsSynced` stops reporting grants a sync did not touch.** A permissions sync
+  only deletes plain grants — a name resolves to the plain row — but `$changes->detached` was
+  computed from every grant the authority held at that polarity and scope. A class,
+  instance, `toOwn()` or conditioned grant that survived the sync was listed as detached, so
+  a log wrote *revoked* for access that was still there. **Visible to listeners:**
+  `detached` now names exactly the rows the sync deleted. `RolesSynced` was never affected.
+- **`warden:clean --stranded` checks an authority where it lives.** It looked for the
+  authority's row with a subquery on warden's connection, so with `warden.connection`
+  pointing elsewhere — the landlord and tenant layout the README recommends — it deleted
+  grants whose holders existed on the other database, or threw when that table was not
+  there. When the authority model's connection differs from the pivot's, existence is now
+  checked through that model, on its connection, in batches of keys and without global
+  scopes, and a grant with a type and no key is deleted there too, as on a shared
+  connection. A key the batch hands back in another form — by case or trailing padding, as
+  the holder's collation allows — is asked for again on its own, so only a holder that
+  database no longer has loses its grants.
+- **`warden:clean --duplicates` keeps the later end date when two grants collide.**
+  Re-pointing a loser's grant deletes it when the winner already holds the same one, and it
+  did so without looking at either date, so a permanent grant on the loser beside one ending
+  tomorrow on the winner cut the access short. The winner's grant now takes the later of the
+  two dates — no end date beats any — before the loser's goes.
+
+### Deprecated
+
+- **`CacheInvalidations::markCascade()`.** The delete hooks now call its two halves around
+  the `*Deleted` event: `settleCascade()` invalidates and sweeps before it, and
+  `announceCascade()` announces the cascade after it. `markCascade()` still runs both, in
+  that order, and nothing in warden calls it any more.
+
+### Documentation
+
+- **Re-assigning does not revive an expired row.** Saying nothing about time leaves a date
+  alone — the rule that keeps `sync()` from making every assignment it keeps permanent — so
+  `assign()` or `allow()` without `until()` over a row past its date writes nothing, and the
+  access stays ended. The README now says so where the date is set: give it a new date, or
+  `until(null)` to lift it.
+
 ## v3.0.0 — Access that ends, and roles that nest (2026-09-07)
 
 ### Added
