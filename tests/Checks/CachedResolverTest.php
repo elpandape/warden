@@ -10,6 +10,7 @@ use ElPandaPe\Warden\Contracts\Resolver;
 use ElPandaPe\Warden\Events\PermissionDeleted;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\RoleDeleted;
+use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
@@ -21,6 +22,7 @@ use ElPandaPe\Warden\Tests\Fixtures\PlainCacheStore;
 use ElPandaPe\Warden\Tests\Fixtures\ScopedGrant;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -584,4 +586,37 @@ it('keeps the deprecated markCascade settling and announcing a cascade in one ca
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
     Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($this->user) === true);
+});
+
+it('invalidates the tenant a row is moved out of by the model', function (string $row): void {
+    $this->warden->tenant()->to(7);
+    $this->warden->allow('admin')->to('audit');
+    $this->warden->assign('admin')->to($this->user);
+
+    expect(Gate::forUser($this->user)->allows('audit'))->toBeTrue();
+
+    $row::query()->withoutGlobalScopes()->sole()->update(['scope' => 5]);
+
+    expect(Gate::forUser($this->user)->allows('audit'))->toBeFalse();
+})->with([
+    'a catalog row' => Permission::class,
+    'a grant' => Grant::class,
+    'a role assignment' => AssignedRole::class,
+]);
+
+it('invalidates every tenant for a row saved without its scope, strict mode included', function (): void {
+    $this->warden->tenant()->to(7);
+    $this->warden->allow($this->user)->to('edit-site');
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
+
+    Model::preventAccessingMissingAttributes();
+
+    try {
+        Grant::query()->select(['id', 'forbidden'])->sole()->update(['forbidden' => true]);
+    } finally {
+        Model::preventAccessingMissingAttributes(false);
+    }
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
 });

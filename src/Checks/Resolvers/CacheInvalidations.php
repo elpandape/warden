@@ -93,9 +93,21 @@ final class CacheInvalidations
             return;
         }
 
-        $scope = $model->getAttribute('scope');
+        // As stored, not through the accessor: a row read without its scope
+        // must not throw in strict mode once its write has landed. Unread, the
+        // scope counts as global, and a global mark reaches every cached key.
+        $scopes = [$model->getAttributes()['scope'] ?? null];
 
-        $this->mark(is_int($scope) || is_string($scope) ? $scope : null);
+        // A row moved out of a scope still sits in that scope's cached payloads.
+        // Eloquent syncs the original only after the updated event, so it still
+        // holds the scope the row left.
+        if ($model->wasChanged('scope')) {
+            $scopes[] = $model->getRawOriginal('scope');
+        }
+
+        foreach ($scopes as $scope) {
+            $this->mark(is_int($scope) || is_string($scope) ? $scope : null);
+        }
     }
 
     /**
