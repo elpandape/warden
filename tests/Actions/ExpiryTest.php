@@ -3,12 +3,14 @@
 declare(strict_types=1);
 
 use ElPandaPe\Warden\Actions\GrantsPermissions;
+use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\PermissionGranted;
 use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\BarePivot;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Carbon;
@@ -174,6 +176,17 @@ it('lets the later end date win when the rows a twin replaces disagree', functio
     expect(Grant::query()->whereMorphedTo('entity', $this->user)->sole()->getAttribute('expires_at')?->toDateTimeString())
         ->toBe('2027-06-30 12:00:00');
 })->with('the plain rule');
+
+it('keeps the end date of a twin when the grant model casts no dates', function (): void {
+    config()->set('warden.models.grant', BarePivot::class);
+    app()->forgetInstance(Context::class);
+
+    $this->warden->allow($this->user)->until($this->moment)->to('view', Account::class)->where('name', 'Acme');
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+
+    expect(Grant::query()->sole()->getAttribute('expires_at')?->toDateTimeString())
+        ->toBe('2026-12-31 23:59:59');
+});
 
 it('keeps the end date of the rows a sync keeps', function (): void {
     $this->warden->assign('auditor')->until($this->moment)->to($this->user);

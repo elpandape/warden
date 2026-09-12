@@ -26,6 +26,7 @@ use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
@@ -429,13 +430,14 @@ class GrantsPermissions
                 continue;
             }
 
+            /** @var DateTimeInterface|string|null $end */
             $end = $row->getAttribute('expires_at');
 
-            if (! $end instanceof DateTimeInterface) {
+            if ($end === null) {
                 return null;
             }
 
-            $ends[] = $end;
+            $ends[] = $end instanceof DateTimeInterface ? $end : Carbon::parse($end);
         }
 
         return $ends === [] ? null : max($ends);
