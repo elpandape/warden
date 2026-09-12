@@ -7,6 +7,7 @@ namespace ElPandaPe\Warden\Tests\Database;
 use ElPandaPe\Warden\Testing\Schema as WardenSchema;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 function wardenMigration(): Migration
@@ -24,6 +25,18 @@ function dropWardenTables(): void
     // Children first: real databases enforce the foreign keys.
     foreach (['grants', 'assigned_roles', 'roles', 'permissions', 'users', 'accounts'] as $table) {
         Schema::dropIfExists($table);
+    }
+}
+
+/**
+ * The testing connection runs SQLite with foreign keys off, so a catalog
+ * delete cascades nowhere unless a test turns them on. MySQL and Postgres
+ * always enforce them.
+ */
+function withForeignKeys(): void
+{
+    if (DB::connection()->getDriverName() === 'sqlite') {
+        DB::statement('PRAGMA foreign_keys = ON');
     }
 }
 
