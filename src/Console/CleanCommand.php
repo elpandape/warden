@@ -15,6 +15,8 @@ use Illuminate\Support\Collection;
 
 final class CleanCommand extends Command
 {
+    private const int AUTHORITY_KEY_BATCH = 500;
+
     protected $signature = 'warden:clean
         {--dry-run : Report what would be deleted without deleting}
         {--stranded : Also delete grants and assignments whose authority row is gone}
@@ -167,6 +169,12 @@ final class CleanCommand extends Command
 
             $authority = new $authorityClass;
 
+            if ($authority->getConnection()->getName() !== $grantModel->getConnection()->getName()) {
+                $deleted += $this->sweepStrandedAcrossConnections($class, $type, $authority);
+
+                continue;
+            }
+
             $deleted += (int) $class::query()->withoutGlobalScopes()->getQuery()
                 ->where('entity_type', $type)
                 ->whereNotExists(function (\Illuminate\Database\Query\Builder $query) use ($authority, $grantModel): void {
@@ -177,6 +185,52 @@ final class CleanCommand extends Command
         }
 
         return $deleted;
+    }
+
+    /**
+     * The authority table lives on another connection, out of reach of any
+     * subquery on the pivot's: ask the authority model itself, one batch of
+     * keys at a time. Without its global scopes, since a row one hides still
+     * exists. A row with no key names nobody, as the subquery reads it too.
+     *
+     * @param  class-string<Model>  $class
+     */
+    private function sweepStrandedAcrossConnections(string $class, string $type, Model $authority): int
+    {
+        $rows = fn (): \Illuminate\Database\Query\Builder => $class::query()->withoutGlobalScopes()->getQuery()
+            ->where('entity_type', $type);
+
+        $deleted = $rows()->whereNull('entity_id')->delete();
+
+        $keys = $rows()->whereNotNull('entity_id')->distinct()->pluck('entity_id')->all();
+
+        foreach (array_chunk($keys, self::AUTHORITY_KEY_BATCH) as $batch) {
+            $present = array_map(
+                $this->comparableKey(...),
+                $authority->newQueryWithoutScopes()->whereKey($batch)->pluck($authority->getKeyName())->all(),
+            );
+
+            $gone = array_values(array_filter(
+                $batch,
+                fn (mixed $key): bool => ! in_array($this->comparableKey($key), $present, true),
+            ));
+
+            if ($gone === []) {
+                continue;
+            }
+
+            $deleted += $rows()->whereIn('entity_id', $gone)->delete();
+        }
+
+        return $deleted;
+    }
+
+    /**
+     * Two connections can hand the same key back as an int and as a string.
+     */
+    private function comparableKey(mixed $key): string
+    {
+        return is_int($key) || is_string($key) ? (string) $key : '';
     }
 
     /**

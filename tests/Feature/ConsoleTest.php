@@ -7,11 +7,13 @@ use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\RemoteUser;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 
+use function ElPandaPe\Warden\Tests\Database\migrateRemoteUsers;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 use function ElPandaPe\Warden\Tests\nestRole;
 use function ElPandaPe\Warden\Tests\privateInstallPath;
@@ -261,4 +263,39 @@ it('sweeps a nesting edge whose parent role is gone', function (): void {
 
     // The edge pointing AT the deleted role is the one no foreign key reaches.
     expect(AssignedRole::query()->where('entity_type', 'warden.role')->count())->toBe(0);
+});
+
+it('sweeps stranded rows against the connection their authority model lives on', function (): void {
+    migrateRemoteUsers();
+
+    $ana = RemoteUser::query()->forceCreate(['id' => 41, 'name' => 'Ana']);
+    $luis = RemoteUser::query()->forceCreate(['id' => 42, 'name' => 'Luis']);
+
+    $this->warden->allow($ana)->to('view');
+    $this->warden->allow($luis)->to('view');
+
+    Grant::query()->getQuery()->insert([
+        'permission_id' => Permission::query()->sole()->getKey(), 'entity_type' => $ana->getMorphClass(),
+        'entity_id' => null, 'forbidden' => false, 'scope' => null,
+    ]);
+
+    $luis->delete();
+
+    $this->artisan('warden:clean', ['--stranded' => true])
+        ->expectsOutputToContain('Deleted 2 stranded row(s).')
+        ->assertSuccessful();
+
+    expect(Grant::query()->pluck('entity_id')->all())->toBe([41]);
+});
+
+it('keeps every grant whose authority exists on its own connection', function (): void {
+    migrateRemoteUsers();
+
+    $this->warden->allow(RemoteUser::query()->forceCreate(['id' => 41, 'name' => 'Ana']))->to('view');
+
+    $this->artisan('warden:clean', ['--stranded' => true])
+        ->expectsOutputToContain('Deleted 0 stranded row(s).')
+        ->assertSuccessful();
+
+    expect(Grant::query()->count())->toBe(1);
 });

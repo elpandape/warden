@@ -83,3 +83,18 @@ function migrateLegacyCatalog(): void
         $blueprint->dropColumn('identity_key');
     });
 }
+
+/**
+ * Authorities on a second connection, the way the landlord vs tenant recipe
+ * lays them out: warden's tables on one database, the users on another.
+ */
+function migrateRemoteUsers(): void
+{
+    config()->set('database.connections.remote', ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
+
+    Schema::connection('remote')->create('users', function (Blueprint $blueprint): void {
+        $blueprint->id();
+        $blueprint->string('name')->nullable();
+        $blueprint->timestamps();
+    });
+}
