@@ -747,7 +747,7 @@ Four tables:
 | `assigned_roles` | Role ↔ authority pivot |
 | `grants` | Permission ↔ authority (with `forbidden` flag) |
 
-> 📌 **Revoking removes the grant, never the catalog row.** The row is shared, so pruning it inline would destroy a rule other holders point at. `warden:clean` is the supported way to reclaim rows nothing points at, and `--duplicates` collapses rows that identify the same permission.
+> 📌 **Revoking removes the grant, never the catalog row.** The row is shared, so pruning it inline would destroy a rule other holders point at. `warden:clean` is the supported way to reclaim rows nothing points at, and `--duplicates` collapses rows that identify the same permission. When a grant it re-points collides with one the surviving row already holds, the survivor keeps the later end date — no end date beats any.
 
 > 📌 **Both pivot relations mix granted and forbidden rows.** `$role->permissions()` and `$permission->roles()` return every pivot row, whichever polarity it carries — filter to read one side:
 >
@@ -853,7 +853,7 @@ protected static function booted(): void
 
 ### Landlord vs tenant databases
 
-Point warden tables at their own connection with `warden.connection`. The published migration honors it (`Schema::connection(...)`), and the migration class is anonymous to avoid collisions.
+Point warden tables at their own connection with `warden.connection`. The published migration honors it (`Schema::connection(...)`), and the migration class is anonymous to avoid collisions. `warden:clean --stranded` follows the split: when an authority model lives on another connection, it looks for that authority's rows there rather than on warden's.
 
 ### Replace a role instead of stacking
 
