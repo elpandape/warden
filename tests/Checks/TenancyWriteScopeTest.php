@@ -6,6 +6,7 @@ use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Tenancy\Tenancy;
+use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use ElPandaPe\Warden\WardenServiceProvider;
@@ -195,4 +196,29 @@ it('registers a plain singleton when the reset opt-out is set', function (): voi
     app(Tenancy::class)->to(9);
 
     expect(app(Tenancy::class)->current())->toBe(9);
+});
+
+it('keeps a partially loaded permission where it was when saved under a tenant', function (): void {
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $stored = Permission::query()->sole();
+
+    $this->warden->tenant()->to(7);
+
+    expect(Gate::forUser($this->user)->allows('view', Account::class))->toBeTrue();
+
+    $this->warden->tenant()->to(5);
+
+    $partial = Permission::query()->select(['id', 'title'])->sole();
+    $partial->setAttribute('title', 'Renamed');
+    $partial->save();
+
+    $row = Permission::query()->withoutGlobalScopes()->sole();
+
+    expect($row->getAttribute('title'))->toBe('Renamed')
+        ->and($row->getAttribute('scope'))->toBeNull()
+        ->and($row->getAttribute('identity_key'))->toBe($stored->getAttribute('identity_key'));
+
+    $this->warden->tenant()->to(7);
+
+    expect(Gate::forUser($this->user)->allows('view', Account::class))->toBeTrue();
 });

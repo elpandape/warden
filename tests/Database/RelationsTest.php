@@ -2,14 +2,18 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
+use ElPandaPe\Warden\Support\PermissionIdentity;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -120,4 +124,58 @@ it('still allows rows that differ only in their conditions', function (): void {
     Permission::query()->create(['name' => 'view', 'entity_type' => Account::class, 'options' => ['v' => 1, 'g' => ['i' => [['and', []]]]]]);
 
     expect(Permission::query()->where('name', 'view')->count())->toBe(2);
+});
+
+it('prints a row created in this request from the defaults it left unset, even after an identity edit', function (): void {
+    $permission = Permission::query()->create(['name' => 'publish']);
+
+    expect($permission->getAttribute('identity_key'))->toBe(PermissionIdentity::from(null, null, false, null, null));
+
+    $permission->setAttribute('entity_type', Account::class);
+    $permission->save();
+
+    expect(Permission::query()->sole()->getAttribute('identity_key'))
+        ->toBe(PermissionIdentity::from(Account::class, null, false, null, null));
+});
+
+it('recomputes a stale identity key when the whole row is saved', function (): void {
+    $expected = Permission::query()->create(['name' => 'view', 'entity_type' => Account::class])->getAttribute('identity_key');
+
+    DB::table('permissions')->update(['identity_key' => 'stale']);
+
+    $reread = Permission::query()->sole();
+    $reread->setAttribute('title', 'Renamed');
+    $reread->save();
+
+    expect(Permission::query()->sole()->getAttribute('identity_key'))->toBe($expected);
+});
+
+it('refuses to change what identifies a partially loaded permission', function (): void {
+    $stored = Permission::query()->create(['name' => 'edit', 'entity_type' => Account::class, 'only_owned' => true]);
+
+    $partial = Permission::query()->select(['id', 'entity_type'])->sole();
+    $partial->setAttribute('entity_type', User::class);
+
+    expect(fn (): bool => $partial->save())
+        ->toThrow(ConfigurationException::class, 'Load the whole permission row before changing what identifies it.');
+
+    $row = Permission::query()->sole();
+
+    expect($row->getAttribute('entity_type'))->toBe(Account::class)
+        ->and($row->getAttribute('identity_key'))->toBe($stored->getAttribute('identity_key'));
+});
+
+it('saves a cosmetic edit of a partially loaded permission in strict mode', function (): void {
+    Permission::query()->create(['name' => 'view', 'entity_type' => Account::class]);
+    Model::preventAccessingMissingAttributes();
+
+    try {
+        $partial = Permission::query()->select(['id', 'title'])->sole();
+        $partial->setAttribute('title', 'Renamed');
+        $partial->save();
+    } finally {
+        Model::preventAccessingMissingAttributes(false);
+    }
+
+    expect(Permission::query()->sole()->getAttribute('title'))->toBe('Renamed');
 });
