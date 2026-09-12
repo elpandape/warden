@@ -222,8 +222,13 @@ final class CachedResolver implements Resolver
 
             $restrictions = $viaRole ? $restrictionsByRole[$grant->entity_id] : [[null, null, null]];
 
+            /** @var DateTimeInterface|string|null $grantEnds */
             $grantEnds = $grant->getAttribute('expires_at');
-            $grantEnds = $grantEnds instanceof DateTimeInterface ? $grantEnds->getTimestamp() : null;
+
+            if ($grantEnds !== null) {
+                // A grant model swapped in without warden's datetime cast reads back the stored text.
+                $grantEnds = ($grantEnds instanceof DateTimeInterface ? $grantEnds : Carbon::parse($grantEnds))->getTimestamp();
+            }
 
             foreach ($restrictions as [$contextType, $contextId, $assignmentEnds]) {
                 $key = implode(':', [

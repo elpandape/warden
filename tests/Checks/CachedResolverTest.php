@@ -16,6 +16,7 @@ use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\BareAssignedRole;
 use ElPandaPe\Warden\Tests\Fixtures\BarePivot;
 use ElPandaPe\Warden\Tests\Fixtures\CustomRole;
 use ElPandaPe\Warden\Tests\Fixtures\PlainCacheStore;
@@ -432,6 +433,40 @@ it('invalidates cached checks through a pivot model warden does not own', functi
     $this->user->permissions()->detach($permission);
 
     expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
+});
+
+it('ends a cached grant whose model reads its end date back as text', function (): void {
+    config()->set('warden.models.grant', BarePivot::class);
+    app()->forgetInstance(Context::class);
+
+    $this->warden->allow($this->user)->until(now()->addDay())->to('edit-site');
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeTrue();
+
+    $this->travel(2)->days();
+
+    expect(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
+
+    $this->travelBack();
+});
+
+it('ends a cached nesting edge whose model reads its end date back as text', function (): void {
+    config()->set('warden.roles.nested', true);
+    config()->set('warden.models.assigned_role', BareAssignedRole::class);
+    app()->forgetInstance(Context::class);
+
+    $this->warden->allow('auditor')->to('audit');
+    $editor = Role::query()->firstOrCreate(['name' => 'editor']);
+    $this->warden->assign('auditor')->until(now()->addDay())->to($editor);
+    $this->warden->assign('editor')->to($this->user);
+
+    expect(Gate::forUser($this->user)->allows('audit'))->toBeTrue();
+
+    $this->travel(2)->days();
+
+    expect(Gate::forUser($this->user)->allows('audit'))->toBeFalse();
+
+    $this->travelBack();
 });
 
 it('invalidates cached checks when a catalog row is edited by the model', function (): void {

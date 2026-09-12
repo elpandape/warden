@@ -45,6 +45,12 @@ cached by 3.0.0 goes on reading a grant with a type and no key as a grant to eve
   created; when those rows disagree, the later date wins and no end date beats any — the
   rule the cached engine already applies to two rows that grant the same thing. Row order no
   longer decides anything.
+- **An end date stored as text still ends access in the cached engine.** A grant or
+  role-assignment model swapped in without the `datetime` cast on `expires_at` — the
+  `warden.models` override allows it — handed the cached engine the raw string, which it
+  read as no end date: an expired grant kept authorizing through every rebuild of the
+  payload, and an expired nesting edge until the next one. The string is now parsed, as the
+  database engine already read it.
 - **An unsaved authority is refused instead of granting to everyone.**
   `Warden::allow(new User)->to('delete-site')` wrote a grant whose `entity_id` was `null`,
   and every reader took a grant with no key for a grant to everyone — while

@@ -7,6 +7,7 @@ namespace ElPandaPe\Warden\Support;
 use DateTimeInterface;
 use ElPandaPe\Warden\Context;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * Every role an authority reaches, with the restriction of the assignment it
@@ -181,9 +182,15 @@ final class RoleClosure
                 continue;
             }
 
+            /** @var DateTimeInterface|string|null $ends */
             $ends = $assignment->getAttribute('expires_at');
 
-            $edges[$roleKey][] = [$type, $id, $ends instanceof DateTimeInterface ? $ends->getTimestamp() : null];
+            if ($ends !== null) {
+                // An assignment model swapped in without warden's datetime cast reads back the stored text.
+                $ends = ($ends instanceof DateTimeInterface ? $ends : Carbon::parse($ends))->getTimestamp();
+            }
+
+            $edges[$roleKey][] = [$type, $id, $ends];
         }
 
         return $edges;
