@@ -18,6 +18,9 @@ use Illuminate\Database\Eloquent\Model;
  */
 final class PermissionIdentity
 {
+    /** The columns for() reads, so a row missing one cannot have its key recomputed. */
+    public const array COLUMNS = ['entity_type', 'entity_id', 'only_owned', 'scope', 'options'];
+
     public static function for(Model $permission): string
     {
         return self::from(

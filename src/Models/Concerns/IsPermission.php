@@ -63,20 +63,18 @@ trait IsPermission
         });
 
         static::saving(function (Model $permission): void {
-            $identity = ['entity_type', 'entity_id', 'only_owned', 'scope', 'options'];
-
             if (! $permission->exists) {
                 // The scope is part of the identity, so it has to be settled before
                 // the key is computed rather than stamped afterwards. Only a new row
                 // takes the active tenant: an update that never read the scope is
                 // not a move.
                 BelongsToTenant::stampScope($permission, static::tenantCatalog());
-            } elseif (! $permission->wasRecentlyCreated && array_diff($identity, array_keys($permission->getAttributes())) !== []) {
+            } elseif (! $permission->wasRecentlyCreated && array_diff(PermissionIdentity::COLUMNS, array_keys($permission->getAttributes())) !== []) {
                 // A column that was not read would print as null, so the row keeps
                 // the key it has and may not change what that key identifies. A row
                 // created in this request is whole: what it left unset holds the
                 // column default.
-                if ($permission->isDirty($identity)) {
+                if ($permission->isDirty(PermissionIdentity::COLUMNS)) {
                     throw new ConfigurationException('Load the whole permission row before changing what identifies it.');
                 }
 
