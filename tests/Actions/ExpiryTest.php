@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Actions\GrantsPermissions;
 use ElPandaPe\Warden\Events\PermissionGranted;
 use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
@@ -14,14 +15,21 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
+use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
 
 beforeEach(function (): void {
     migrateWardenTables();
+    withForeignKeys();
 
     $this->warden = app(Warden::class);
     $this->user = User::query()->create(['name' => 'Ada']);
     $this->moment = Carbon::parse('2026-12-31 23:59:59');
 });
+
+dataset('the plain rule', [
+    'left orphaned by the chain' => [fn (): null => null],
+    'kept by another holder' => [fn (): GrantsPermissions => app(Warden::class)->allow(User::query()->create(['name' => 'Grace']))->to('view', Account::class)],
+]);
 
 it('ends a grant at the moment given', function (): void {
     $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
@@ -106,6 +114,66 @@ it('keeps the end date when a condition re-points the concession to a twin', fun
     expect(Grant::query()->sole()->getAttribute('expires_at')?->toDateTimeString())
         ->toBe('2026-12-31 23:59:59');
 });
+
+it('moves the end date of a twin when the chain runs again with a new one', function (Closure $plainRule): void {
+    $plainRule();
+
+    $this->warden->allow($this->user)->until($this->moment)->to('view', Account::class)->where('name', 'Acme');
+    $this->warden->allow($this->user)->until(Carbon::parse('2026-10-31 12:00:00'))->to('view', Account::class)->where('name', 'Acme');
+
+    expect(Grant::query()->whereMorphedTo('entity', $this->user)->sole()->getAttribute('expires_at')?->toDateTimeString())
+        ->toBe('2026-10-31 12:00:00');
+})->with('the plain rule');
+
+it('lifts the end date of a twin when the chain runs again with until(null)', function (Closure $plainRule): void {
+    $plainRule();
+
+    $this->warden->allow($this->user)->until($this->moment)->to('view', Account::class)->where('name', 'Acme');
+    $this->warden->allow($this->user)->until(null)->to('view', Account::class)->where('name', 'Acme');
+
+    expect(Grant::query()->whereMorphedTo('entity', $this->user)->sole()->getAttribute('expires_at'))->toBeNull();
+})->with('the plain rule');
+
+it('keeps the end date of a twin when the chain runs again without until()', function (Closure $plainRule): void {
+    $plainRule();
+
+    $this->warden->allow($this->user)->until($this->moment)->to('view', Account::class)->where('name', 'Acme');
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+
+    expect(Grant::query()->whereMorphedTo('entity', $this->user)->sole()->getAttribute('expires_at')?->toDateTimeString())
+        ->toBe('2026-12-31 23:59:59');
+})->with('the plain rule');
+
+it('keeps the end date of the old condition when the chain edits it without until()', function (Closure $plainRule): void {
+    $plainRule();
+
+    $this->warden->allow($this->user)->until($this->moment)->to('view', Account::class)->where('name', 'Acme');
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Globex');
+
+    expect(Grant::query()->whereMorphedTo('entity', $this->user)->sole()->getAttribute('expires_at')?->toDateTimeString())
+        ->toBe('2026-12-31 23:59:59');
+})->with('the plain rule');
+
+it('leaves the twin without an end when the plain rule it replaces had none', function (Closure $plainRule): void {
+    $plainRule();
+
+    $this->warden->allow($this->user)->until($this->moment)->to('view', Account::class)->where('name', 'Acme');
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+
+    expect(Grant::query()->whereMorphedTo('entity', $this->user)->sole()->getAttribute('expires_at'))->toBeNull();
+})->with('the plain rule');
+
+it('lets the later end date win when the rows a twin replaces disagree', function (Closure $plainRule): void {
+    $plainRule();
+
+    $this->warden->allow($this->user)->until($this->moment)->to('view', Account::class)->where('name', 'Acme');
+    $this->warden->allow($this->user)->until(Carbon::parse('2027-06-30 12:00:00'))->to('view', Account::class);
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+
+    expect(Grant::query()->whereMorphedTo('entity', $this->user)->sole()->getAttribute('expires_at')?->toDateTimeString())
+        ->toBe('2027-06-30 12:00:00');
+})->with('the plain rule');
 
 it('keeps the end date of the rows a sync keeps', function (): void {
     $this->warden->assign('auditor')->until($this->moment)->to($this->user);

@@ -45,6 +45,14 @@ class GrantsPermissions
     /** @var list<Model> */
     private array $lastGranted = [];
 
+    /**
+     * The grant rows the last grant() created, not found: a where() that
+     * refines the chain must not read them as the concession's history.
+     *
+     * @var list<int|string>
+     */
+    private array $freshGrantKeys = [];
+
     private ?Model $lastAuthority = null;
 
     private int|string|null $lastScope = null;
@@ -191,6 +199,7 @@ class GrantsPermissions
             );
 
             $wrote = false;
+            $fresh = [];
 
             foreach ($permissions as $permission) {
                 // firstOrCreate self-heals concurrent races via createOrFirst on Laravel 12+.
@@ -202,6 +211,10 @@ class GrantsPermissions
                     'scope' => $scope,
                 ]);
 
+                if ($grant->wasRecentlyCreated) {
+                    $fresh[] = $this->modelKey($grant);
+                }
+
                 $moved = $this->expiryDeclared && Expiry::apply($grant, $this->expiresAt);
                 $wrote = $wrote || $grant->wasRecentlyCreated || $moved;
             }
@@ -209,6 +222,7 @@ class GrantsPermissions
             // Remembered so a fluent where() can refine this exact concession;
             // a fresh to() starts a fresh constraint set.
             $this->lastGranted = $permissions;
+            $this->freshGrantKeys = $fresh;
             $this->lastAuthority = $authority;
             $this->lastScope = $scope;
             $this->constraints = null;
@@ -281,6 +295,7 @@ class GrantsPermissions
     private function forgetChain(): static
     {
         $this->lastGranted = [];
+        $this->freshGrantKeys = [];
         $this->lastAuthority = null;
         $this->lastScope = null;
         $this->constraints = null;
@@ -348,7 +363,9 @@ class GrantsPermissions
                 // Narrowing a concession must not widen its life: the rows
                 // about to be deleted carry the end date, and re-creating
                 // against the twin would silently hand back an endless grant.
-                $carried = $superseded->clone()->value('expires_at');
+                $carried = $this->carriedExpiry(
+                    $superseded->clone()->get([$superseded->getModel()->getKeyName(), 'permission_id', 'expires_at']),
+                );
 
                 $superseded->delete();
 
@@ -360,10 +377,7 @@ class GrantsPermissions
                     'scope' => $this->lastScope,
                 ]);
 
-                if ($carried !== null) {
-                    $repointedGrant->setAttribute('expires_at', $carried);
-                    $repointedGrant->save();
-                }
+                Expiry::apply($repointedGrant, $carried);
 
                 // A base row this action just created, now orphaned, goes away.
                 $orphaned = $permission->wasRecentlyCreated
@@ -392,6 +406,39 @@ class GrantsPermissions
             : new PermissionGranted($this->lastAuthority, new Collection(array_column($repointed, 1)), $this->lastScope, $this->actor()));
 
         return $this;
+    }
+
+    /**
+     * A declared until() decides, null included. Otherwise the rows that stood
+     * before this chain do, never the one its own to() just created. When they
+     * disagree the later end wins and no end beats any, as CachedResolver reads
+     * two live rows. Decided here, not in SQL: no engine promises a row order.
+     *
+     * @param  iterable<Model>  $superseded
+     */
+    private function carriedExpiry(iterable $superseded): ?DateTimeInterface
+    {
+        if ($this->expiryDeclared) {
+            return $this->expiresAt;
+        }
+
+        $ends = [];
+
+        foreach ($superseded as $row) {
+            if (in_array($this->modelKey($row), $this->freshGrantKeys, true)) {
+                continue;
+            }
+
+            $end = $row->getAttribute('expires_at');
+
+            if (! $end instanceof DateTimeInterface) {
+                return null;
+            }
+
+            $ends[] = $end;
+        }
+
+        return $ends === [] ? null : max($ends);
     }
 
     /**
