@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Events\PermissionsSynced;
 use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
@@ -10,6 +11,7 @@ use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\Plain;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
@@ -184,9 +186,14 @@ it('sweeps only the grants a sync could have named', function (): void {
 
     expect(Gate::forUser($this->user)->allows('delete', $post))->toBeFalse();
 
-    // Names resolve to the plain rows only, so the sweep must not reach a
-    // denial it had no way to declare.
+    Event::fake([PermissionsSynced::class]);
+
     $this->warden->sync($this->user)->forbiddenPermissions(['publish']);
 
     expect(Gate::forUser($this->user)->allows('delete', $post))->toBeFalse();
+
+    Event::assertDispatched(PermissionsSynced::class, fn (PermissionsSynced $event): bool => $event->forbidden
+        && $event->changes->attached->isEmpty()
+        && $event->changes->detached->isEmpty()
+        && $event->changes->kept->pluck('name')->all() === ['publish']);
 });

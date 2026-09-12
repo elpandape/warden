@@ -140,6 +140,39 @@ it('announces permission syncs with the forbidden flag', function (): void {
     });
 });
 
+it('names in detached only the grants a permission sync removed', function (): void {
+    $acme = Account::query()->create(['name' => 'Acme']);
+
+    $this->warden->allow($this->user)->to('edit-site');
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $this->warden->allow($this->user)->to('view', $acme);
+    $this->warden->allow($this->user)->toOwn(Account::class, 'update');
+    $this->warden->allow($this->user)->to('audit', Account::class)->where('name', '=', 'Acme');
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->sync($this->user)->permissions(['publish']);
+
+    Event::assertDispatched(PermissionsSynced::class, fn (PermissionsSynced $event): bool => $event->changes->attached->pluck('name')->all() === ['publish']
+        && $event->changes->detached->pluck('name')->all() === ['edit-site']
+        && $event->changes->kept->isEmpty());
+
+    expect($this->user->can('view', $acme))->toBeTrue();
+});
+
+it('keeps an entity-scoped permission a sync names as a model', function (): void {
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $view = Permission::query()->where('name', 'view')->sole();
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->sync($this->user)->permissions([$view]);
+
+    Event::assertDispatched(PermissionsSynced::class, fn (PermissionsSynced $event): bool => $event->changes->attached->isEmpty()
+        && $event->changes->detached->isEmpty()
+        && $event->changes->kept->sole()->is($view));
+});
+
 it('announces catalog lifecycle from the model layer', function (): void {
     Event::fake(WARDEN_EVENTS);
 

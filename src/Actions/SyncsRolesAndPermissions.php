@@ -121,6 +121,20 @@ class SyncsRolesAndPermissions
             forRoleGrant: $authority instanceof ($context->roleClass()),
         );
 
+        $permissionTable = (new ($context->permissionClass()))->getTable();
+
+        // A name resolves to the plain row only, so the sweep reaches only
+        // what this call could have declared. An entity-scoped rule is not
+        // absent from the declaration: it was never expressible in it.
+        $plainRows = function (QueryBuilder $query) use ($permissionTable): void {
+            $query->select('id')->from($permissionTable)
+                ->whereNull('entity_type')
+                ->whereNull('options')
+                ->where('only_owned', false);
+        };
+
+        // The same reach plus any rule the call named as a model, so detached
+        // lists exactly what the sweep below deletes.
         $beforeKeys = $grantClass::query()
             ->withoutGlobalScope(TenantScope::class)
             ->where('entity_type', $authority->getMorphClass())
@@ -128,10 +142,11 @@ class SyncsRolesAndPermissions
             ->where('forbidden', $forbidden)
             ->where('scope', $scope)
             ->toBase()
+            ->where(function (QueryBuilder $query) use ($plainRows, $keys): void {
+                $query->whereIn('permission_id', $plainRows)->orWhereIn('permission_id', $keys);
+            })
             ->pluck('permission_id')
             ->all();
-
-        $permissionTable = (new ($context->permissionClass()))->getTable();
 
         $grantClass::query()
             ->withoutGlobalScope(TenantScope::class)
@@ -140,15 +155,7 @@ class SyncsRolesAndPermissions
             ->where('forbidden', $forbidden)
             ->where('scope', $scope)
             ->whereNotIn('permission_id', $keys)
-            // A name resolves to the plain row only, so the sweep reaches only
-            // what this call could have declared. An entity-scoped rule is not
-            // absent from the declaration: it was never expressible in it.
-            ->whereIn('permission_id', function (QueryBuilder $query) use ($permissionTable): void {
-                $query->select('id')->from($permissionTable)
-                    ->whereNull('entity_type')
-                    ->whereNull('options')
-                    ->where('only_owned', false);
-            })
+            ->whereIn('permission_id', $plainRows)
             ->delete();
 
         foreach ($keys as $key) {
