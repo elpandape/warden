@@ -21,3 +21,7 @@ parameters:
                 - missingType.iterableValue
                 - missingType.generics
             path: src/Models/Relations/ReadOnlyBelongsToMany.php
+        # ReadOnlyPivot refuses its writes the same way, with the same inherited docblocks.
+        -
+            identifier: missingType.iterableValue
+            path: src/Models/Relations/ReadOnlyPivot.php

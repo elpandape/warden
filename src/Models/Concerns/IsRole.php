@@ -10,6 +10,7 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Models\Relations\ReadOnlyBelongsToMany;
+use ElPandaPe\Warden\Models\Relations\ReadOnlyPivot;
 use ElPandaPe\Warden\Support\Config;
 use ElPandaPe\Warden\Support\Titles\RoleTitle;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
@@ -51,7 +52,7 @@ trait IsRole
             'nestedRoles',
         );
 
-        return $relation->wherePivot('entity_type', $this->getMorphClass());
+        return $relation->using(ReadOnlyPivot::class)->wherePivot('entity_type', $this->getMorphClass());
     }
 
     protected static function bootIsRole(): void

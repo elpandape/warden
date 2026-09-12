@@ -124,7 +124,10 @@ no payload cached by 3.0.0 is read again.
   `save()`, `create()` and the first-or-create family refuse before they save the role they
   would attach. `touch()` stays open, and so do the writes the relation forwards to the
   query builder: `$role->nestedRoles()->delete()` deletes the inner roles themselves, as on
-  any Eloquent relation.
+  any Eloquent relation. The pivot a loaded edge carries refuses writes too — `delete()`, a
+  `save()` that would change it, and the `increment`/`decrement` family: it matched only the
+  two keys, so it could delete or rewrite another model's assignment of the same role, in
+  any tenant, unannounced.
 - **`PermissionsSynced` stops reporting grants a sync did not touch.** A permissions sync
   only deletes plain grants — a name resolves to the plain row — but `$changes->detached` was
   computed from every grant the authority held at that polarity and scope. A class,

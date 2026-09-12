@@ -8,6 +8,7 @@ use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -286,6 +287,42 @@ it('refuses every write through the nesting relation and writes nothing', functi
     ['createOrFirst', fn (Role $inner, Role $outsider): array => [['name' => 'publisher']]],
     ['updateOrCreate', fn (Role $inner, Role $outsider): array => [['name' => 'auditor'], ['title' => 'Renamed']]],
 ]);
+
+it('refuses every write through a loaded nesting pivot', function (string $writer, Closure $write): void {
+    nestRole('auditor', 'editor');
+
+    $editor = Role::query()->where('name', 'editor')->sole();
+    $outsider = Role::query()->create(['name' => 'reviewer']);
+    $pivot = $editor->nestedRoles->first()->pivot;
+
+    $roles = DB::table('roles')->orderBy('id')->get();
+    $edges = DB::table('assigned_roles')->orderBy('id')->get();
+
+    expect(fn (): mixed => $write($pivot, $outsider))
+        ->toThrow(ConfigurationException::class, $writer.'() on a nestedRoles() pivot is refused: nest a role with Warden::assign($inner)->to($outer) and unnest it with Warden::retract($inner)->from($outer).')
+        ->and(DB::table('roles')->orderBy('id')->get())->toEqual($roles)
+        ->and(DB::table('assigned_roles')->orderBy('id')->get())->toEqual($edges);
+})->with([
+    'pivot delete()' => ['delete', fn (Pivot $pivot, Role $outsider): mixed => $pivot->delete()],
+    'pivot save()' => ['save', fn (Pivot $pivot, Role $outsider): mixed => $pivot->forceFill(['role_id' => $outsider->getKey()])->save()],
+    'pivot update()' => ['save', fn (Pivot $pivot, Role $outsider): mixed => $pivot->update(['role_id' => $outsider->getKey()])],
+    'pivot increment()' => ['increment', fn (Pivot $pivot, Role $outsider): mixed => $pivot->increment('role_id')],
+    'pivot incrementEach()' => ['incrementEach', fn (Pivot $pivot, Role $outsider): mixed => $pivot->incrementEach(['role_id' => 1])],
+    'pivot saveOrIgnore()' => ['saveOrIgnore', fn (Pivot $pivot, Role $outsider): mixed => $pivot->saveOrIgnore()],
+]);
+
+it('lets a role with loaded nested roles push when nothing changed', function (): void {
+    nestRole('auditor', 'editor');
+
+    $editor = Role::query()->where('name', 'editor')->sole();
+
+    $roles = DB::table('roles')->orderBy('id')->get();
+    $edges = DB::table('assigned_roles')->orderBy('id')->get();
+
+    expect($editor->load('nestedRoles')->push())->toBeTrue()
+        ->and(DB::table('roles')->orderBy('id')->get())->toEqual($roles)
+        ->and(DB::table('assigned_roles')->orderBy('id')->get())->toEqual($edges);
+});
 
 it('reads the nesting through the read-only relation as before', function (): void {
     nestRole('auditor', 'editor');
