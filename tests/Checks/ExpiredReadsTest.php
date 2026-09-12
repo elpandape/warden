@@ -164,6 +164,16 @@ it('stops holding a role at the moment named, not a tick later', function (): vo
     expect($this->user->isAn('auditor'))->toBeFalse();
 });
 
+it('keeps listing an expired assignment in the roles relation', function (): void {
+    Carbon::setTestNow($this->moment->copy()->subDay());
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    Carbon::setTestNow($this->moment->copy()->addSecond());
+
+    expect($this->user->roles()->pluck('name')->all())->toContain('auditor')
+        ->and($this->user->isA('auditor'))->toBeFalse();
+});
+
 it('drops an expired assignment from the eager-loaded roles too', function (): void {
     $this->warden->assign('auditor')->until($this->moment)->to($this->user);
     $this->warden->assign('editor')->to($this->user);
