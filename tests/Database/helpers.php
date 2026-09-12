@@ -88,12 +88,17 @@ function migrateLegacyCatalog(): void
  * Authorities on a second connection, the way the landlord vs tenant recipe
  * lays them out: warden's tables on one database, the users on another.
  */
-function migrateRemoteUsers(): void
+function migrateRemoteUsers(?string $textKeyCollation = null): void
 {
     config()->set('database.connections.remote', ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
 
-    Schema::connection('remote')->create('users', function (Blueprint $blueprint): void {
-        $blueprint->id();
+    Schema::connection('remote')->create('users', function (Blueprint $blueprint) use ($textKeyCollation): void {
+        if ($textKeyCollation === null) {
+            $blueprint->id();
+        } else {
+            $blueprint->string('id')->collation($textKeyCollation)->primary();
+        }
+
         $blueprint->string('name')->nullable();
         $blueprint->timestamps();
     });

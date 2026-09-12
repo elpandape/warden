@@ -7,6 +7,7 @@ use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\RemoteTextKeyUser;
 use ElPandaPe\Warden\Tests\Fixtures\RemoteUser;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
@@ -298,4 +299,23 @@ it('keeps every grant whose authority exists on its own connection', function ()
         ->assertSuccessful();
 
     expect(Grant::query()->count())->toBe(1);
+});
+
+it('keeps a grant whose holder its own database matches under its collation', function (): void {
+    migrateRemoteUsers(textKeyCollation: 'RTRIM');
+
+    RemoteTextKeyUser::query()->getQuery()->insert(['id' => '41 ', 'name' => 'Ana']);
+
+    $this->warden->allow($this->user)->to('view');
+
+    Grant::query()->getQuery()->insert([
+        'permission_id' => Permission::query()->sole()->getKey(), 'entity_type' => (new RemoteTextKeyUser)->getMorphClass(),
+        'entity_id' => 41, 'forbidden' => false, 'scope' => null,
+    ]);
+
+    $this->artisan('warden:clean', ['--stranded' => true])
+        ->expectsOutputToContain('Deleted 0 stranded row(s).')
+        ->assertSuccessful();
+
+    expect(Grant::query()->where('entity_type', (new RemoteTextKeyUser)->getMorphClass())->pluck('entity_id')->all())->toBe([41]);
 });

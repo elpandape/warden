@@ -192,6 +192,9 @@ final class CleanCommand extends Command
      * subquery on the pivot's: ask the authority model itself, one batch of
      * keys at a time. Without its global scopes, since a row one hides still
      * exists. A row with no key names nobody, as the subquery reads it too.
+     * A key the batch hands back in another form, as a collation or padding
+     * allows, is asked for again on its own, so the authority's database, not
+     * PHP, decides who is gone.
      *
      * @param  class-string<Model>  $class
      */
@@ -207,12 +210,13 @@ final class CleanCommand extends Command
         foreach (array_chunk($keys, self::AUTHORITY_KEY_BATCH) as $batch) {
             $present = array_map(
                 $this->comparableKey(...),
-                $authority->newQueryWithoutScopes()->whereKey($batch)->pluck($authority->getKeyName())->all(),
+                $authority->newQueryWithoutScopes()->whereIn($authority->getQualifiedKeyName(), $batch)->pluck($authority->getKeyName())->all(),
             );
 
             $gone = array_values(array_filter(
                 $batch,
-                fn (mixed $key): bool => ! in_array($this->comparableKey($key), $present, true),
+                fn (mixed $key): bool => ! in_array($this->comparableKey($key), $present, true)
+                    && ! $authority->newQueryWithoutScopes()->where($authority->getQualifiedKeyName(), $key)->exists(),
             ));
 
             if ($gone === []) {
