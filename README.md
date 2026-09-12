@@ -206,7 +206,11 @@ Warden::sync($user)->roles(['editor', 'writer']);
 >
 > **Off by default on purpose**, because turning it on widens what every existing assignment reaches. The switch is read on every check rather than baked into a cached payload, so turning it back off takes effect immediately — it is meant to work as an emergency lever. A cycle stops expanding at the depth ceiling instead of throwing.
 >
-> `can()`, `is()` and `whereIs()` all nest together: a split would let `can('publish')` say yes while `Warden::is($user)->an('editor')` says no, painting a menu wrong for precisely the users with the most access.
+> `can()` and every role check nest together — `isA()` and its variants, `isAll()`, `Warden::is()`, `whereIs()`, `whereIsAll()`, `whereIsNot()` and the `warden.role` middleware: a split would let `can('publish')` say yes while `Warden::is($user)->an('editor')` says no, painting a menu wrong for precisely the users with the most access.
+>
+> `$role->nestedRoles()` only reads the edges; `Warden::assign($inner)->to($outer)` and `Warden::retract($inner)->from($outer)` write them, scoped to the tenant, with the cache invalidated and the event fired. Every writer the relation declares — `attach()`, `detach()`, `sync()`, `toggle()`, `updateExistingPivot()`, `save()`, `create()`, `firstOrCreate()` and the rest, `OrFail` and `Quietly` variants included — throws a `ConfigurationException` pointing to those two, because a write through the relation would reach every tenant and context at once, with no invalidation and no event.
+>
+> `$role->nestedRoles()->delete()` deletes the inner roles themselves, as on any Eloquent relation — it is not an unnest. It runs through the query builder, so no model event fires and the cache is not invalidated, and the foreign key takes every assignment of those roles with them.
 
 ### Best Practices
 
