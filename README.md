@@ -561,9 +561,11 @@ Enable with `warden.cancellable_events`. A listener returning `false` aborts the
 
 > 📌 `sync()` never fires nor honors pre-action events — its declarative diff events tell the whole story.
 
+> 📌 **Deleting a catalog row settles before anyone hears of it.** The cache is invalidated and a role's own grants are swept first; then `RoleDeleted` or `PermissionDeleted` goes out; then, for a permission, the cascade below. A listener that throws can no longer leave checks answering for a row that is gone — it only stops the announcements after it. The flip side: a `RoleDeleted` listener no longer finds the role's grants. Read them in a `deleting` listener on the role model if you need them.
+
 > 📌 **Deleting a catalog row announces what the cascade was predicted to reach.** A foreign key removes a permission's grants inside the engine, where no model event fires, so warden reads the doomed rows *before* the delete and dispatches one `PermissionRevoked` — or `PermissionUnforbidden` — per row afterwards. The read is the announcement: if the foreign key is not enforced, the events describe a deletion that did not happen.
 
-> 📌 **That cascade is blind to the active tenant.** The doomed rows are read with `withoutGlobalScopes()`, on purpose — the delete destroys every tenant's grants regardless of which one is active, so counting only the current tenant would promise a smaller loss than the real one.
+> 📌 **That cascade is blind to the active tenant.** The doomed rows are read with `withoutGlobalScopes()`, on purpose — the delete destroys every tenant's grants regardless of which one is active, so counting only the current tenant would promise a smaller loss than the real one. Each holder is loaded the same way, so one under another tenant arrives named rather than as a `null` authority, which would read as *everyone*. A holder whose row is already gone is not announced — it authorized nobody — and neither is a row with a type and no key; one whose morph alias maps to no class in this process is skipped with a warning in the log.
 
 ---
 
@@ -642,7 +644,7 @@ Warden::disallow($user)->to('publish');   // next check is already correct
 
 ❌ **Don't** — raw database edits (seeders, manual SQL) bypass invalidation. After hand-editing rows, call `Warden::refresh()` — or better, make the edit through the API.
 
-> 📌 **"Through the API" includes the models.** Editing a `Grant`, an `AssignedRole` or a **catalog row** through Eloquent invalidates too — renaming a permission or rewriting its `options` reaches every cached check, because a permission's own columns are baked into the payload. What still needs `Warden::refresh()` is a write that fires no model event: the query builder, `DB::table()`, and a raw statement.
+> 📌 **"Through the API" includes the models.** Editing a `Grant`, an `AssignedRole` or a **catalog row** through Eloquent invalidates too — renaming a permission or rewriting its `options` reaches every cached check, because a permission's own columns are baked into the payload. Moving a row's `scope` that way invalidates the tenant it left as well as the one it joined. What still needs `Warden::refresh()` is a write that fires no model event: the query builder, `DB::table()`, and a raw statement.
 
 > ⚠️ The in-memory matcher compares permission names **byte-exactly**, while a case-insensitive database collation may match `Edit` to `edit`. Use exact, consistent names.
 
@@ -751,6 +753,8 @@ Four tables:
 > $role->permissions()->wherePivot('forbidden', false)->get();   // what it can do
 > $role->permissions()->wherePivot('forbidden', true)->get();    // what it is denied
 > ```
+
+> 📌 **Load the whole permission row before changing what identifies it.** `entity_type`, `entity_id`, `only_owned`, `scope` and `options` make up its identity key, so changing any of them on a permission fetched with a partial `select()` throws a `ConfigurationException` instead of saving a key computed from half a row. A permission created in the same request counts as whole: what it left unset holds the column default. An edit that leaves those five alone — its title, say — still saves, in strict mode too, and a save never moves an existing row into the active tenant: the tenant is stamped on creation only.
 
 > 📌 **Titles are generated once, on creation, and only when none was given.** A rename keeps the old title, and setting `title` to `null` on an update leaves it `null`. Recompute one deliberately with `Support\Titles\PermissionTitle::generate()` or `RoleTitle::generate()` — the same calls the hook makes.
 
