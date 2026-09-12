@@ -148,7 +148,7 @@ final class CleanCommand extends Command
      */
     private function sweepStrandedIn(string $class): int
     {
-        $grantModel = new $class;
+        $pivotModel = new $class;
         $deleted = 0;
 
         $types = $class::query()->withoutGlobalScopes()->getQuery()
@@ -169,7 +169,7 @@ final class CleanCommand extends Command
 
             $authority = new $authorityClass;
 
-            if ($authority->getConnection()->getName() !== $grantModel->getConnection()->getName()) {
+            if ($authority->getConnection()->getName() !== $pivotModel->getConnection()->getName()) {
                 $deleted += $this->sweepStrandedAcrossConnections($class, $type, $authority);
 
                 continue;
@@ -177,9 +177,9 @@ final class CleanCommand extends Command
 
             $deleted += (int) $class::query()->withoutGlobalScopes()->getQuery()
                 ->where('entity_type', $type)
-                ->whereNotExists(function (\Illuminate\Database\Query\Builder $query) use ($authority, $grantModel): void {
+                ->whereNotExists(function (\Illuminate\Database\Query\Builder $query) use ($authority, $pivotModel): void {
                     $query->from($authority->getTable())
-                        ->whereColumn($authority->getQualifiedKeyName(), $grantModel->qualifyColumn('entity_id'));
+                        ->whereColumn($authority->getQualifiedKeyName(), $pivotModel->qualifyColumn('entity_id'));
                 })
                 ->delete();
         }
