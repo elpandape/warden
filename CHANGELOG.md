@@ -3,7 +3,7 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
-## v3.0.1 — Access that ends when it says it does (unreleased)
+## v3.0.1 — Access that ends when it says it does (2026-09-12)
 
 Found while checking 3.0.0 against what an audit log needs from its events. Most of these
 granted more than anyone wrote — an expired role still held, a temporary grant turned
