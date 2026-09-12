@@ -368,12 +368,16 @@ final class CleanCommand extends Command
      * The later of two stored end dates, where no end beats any date: the
      * rule CachedResolver applies when the same grant arrives twice.
      */
-    private function laterEnd(mixed $first, mixed $second): ?string
+    private function laterEnd(mixed $first, mixed $second): string|int|float|null
     {
-        if (! is_string($first) || ! is_string($second)) {
+        if ($first === null || $second === null) {
             return null;
         }
 
+        /**
+         * @var string|int|float $first
+         * @var string|int|float $second
+         */
         return Carbon::parse($first)->greaterThan(Carbon::parse($second)) ? $first : $second;
     }
 }
