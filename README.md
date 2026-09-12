@@ -241,7 +241,13 @@ Warden::allow($user)->until(null)->to('publish', Post::class);
 
 > 📌 **The date lives on the assignment, not on the role.** A role is a shared definition, so an end date there would end it for everyone. On the assignment, the same role can end on different days for different holders — and when it does, the permissions that role lent go with it.
 
+> 📌 **An expired assignment stops counting as held**, not only for `can()`. `isA()`, `isAll()`, `Warden::is()`, `whereIs()`, `whereIsAll()` and `whereIsNot()` read the date too, with nesting on or off, and so does the `warden.role` middleware, which answers an expired role with a 403. The relation is left alone: `$user->roles` still lists the row until something deletes it, with its date on the pivot's `expires_at`.
+
 > 📌 **`until()` goes before `to()`**, like `on()`: writes execute immediately, so calling it afterwards throws rather than quietly doing nothing. Moving a date counts as a write — it invalidates the cache and fires the same event as any other.
+
+> 📌 **A condition keeps the date.** `where()` re-points a grant at its constrained twin (see [Conditional Permissions](#-conditional-permissions-abac)), and the twin takes the date the same chain declared — `until(null)` included, which lifts it. Without `until()` it keeps the date the grant already had; if the authority held that permission both plain and under a condition, with different dates, the later one wins and no end date beats any.
+
+> 📌 **Re-assigning does not revive an expired row.** Saying nothing about time leaves the date alone, and that date has passed: `assign('auditor')->to($user)` or `allow($user)->to('publish')` over an expired row writes nothing, and the access stays ended. Give it a new date, or `until(null)` to make it permanent.
 
 > ⚠️ **A `forbid()` cannot expire**, and `until()` on one throws. A prohibition that lapsed by clock would turn *a forbid beats every grant* into *until Tuesday*, with the grant beneath it still live. Lift it deliberately with `unforbid()`.
 
@@ -316,7 +322,7 @@ Warden::restrictedVia(Post::class, 'organization_id');  // membership by FK
 Warden::restrictedVia(fn ($entity, $context) => ...); // or a closure
 ```
 
-> 📌 A restricted role's grants apply when the checked entity **belongs to the context**. Checks without an instance fail closed. Role membership checks (`isAn('editor')`) ignore restrictions by design.
+> 📌 A restricted role's grants apply when the checked entity **belongs to the context**. Checks without an instance fail closed. Role membership checks (`isAn('editor')`) ignore restrictions by design — but not end dates: an assignment past its `until()` stops counting, restricted or not.
 
 ### Best Practices
 
@@ -705,6 +711,8 @@ Off by default. Enable via config:
 Route::get('/admin', ...)->middleware('warden.role:admin,editor');      // any of
 Route::put('/site', ...)->middleware('warden.permission:edit-site');    // all of
 ```
+
+> 📌 **`warden.role` answers exactly like `isA()`.** An assignment past its end date does not count, and with `warden.roles.nested` on, a role reached through another one does. A denial throws `UnauthorizedException`, which Laravel renders as a 403.
 
 ### Blade
 
