@@ -527,6 +527,8 @@ Every write dispatches a typed, `readonly` event with **hydrated models** (never
 | `RolesSynced` / `PermissionsSynced` | `sync()` | `SyncResult` diff: `attached` / `detached` / `kept` |
 | `RoleCreated/Deleted`, `PermissionCreated/Deleted` | Model layer | The model |
 
+> 📌 **A sync's diff covers what the sync can reach.** A permissions sync names plain rules only — a name resolves to the row with no entity, no condition and no ownership — so it never deletes a class, instance, `toOwn()` or conditioned grant, and `PermissionsSynced` never reports one as `detached`: `detached` names exactly the rows the sync deleted.
+
 ```php
 use ElPandaPe\Warden\Events\PermissionGranted;
 
