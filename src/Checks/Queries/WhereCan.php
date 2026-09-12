@@ -180,7 +180,10 @@ final readonly class WhereCan
                         $viaRole->where('entity_type', $roleMorph)
                             ->whereIn('entity_id', $roleKeys);
                     })
-                    ->orWhereNull('entity_id');
+                    // A holder type without its key names nobody, not everyone.
+                    ->orWhere(function (Builder $everyone): void {
+                        $everyone->whereNull('entity_type')->whereNull('entity_id');
+                    });
             });
     }
 
@@ -218,7 +221,10 @@ final readonly class WhereCan
                         $viaRole->where('entity_type', $roleMorph)
                             ->whereIn('entity_id', $roleKeys);
                     })
-                    ->orWhereNull('entity_id');
+                    // A holder type without its key names nobody, not everyone.
+                    ->orWhere(function (Builder $everyone): void {
+                        $everyone->whereNull('entity_type')->whereNull('entity_id');
+                    });
             })
             ->toBase()
             ->pluck('permission_id');

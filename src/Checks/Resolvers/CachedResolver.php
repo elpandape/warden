@@ -199,7 +199,13 @@ final class CachedResolver implements Resolver
                                     ->whereIn('entity_id', $roleKeys);
                             },
                         )
-                        ->orWhereNull('entity_id');
+                        // A holder type without its key names nobody, not everyone.
+                        ->orWhere(
+                            /** @param Builder<Grant> $everyone */
+                            function (Builder $everyone): void {
+                                $everyone->whereNull('entity_type')->whereNull('entity_id');
+                            },
+                        );
                 },
             )
             ->get();

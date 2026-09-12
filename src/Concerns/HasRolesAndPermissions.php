@@ -251,7 +251,13 @@ trait HasRolesAndPermissions
                                     ->whereIn('entity_id', $roleKeys);
                             },
                         )
-                        ->orWhereNull('entity_id');
+                        // A holder type without its key names nobody, not everyone.
+                        ->orWhere(
+                            /** @param Builder<\ElPandaPe\Warden\Models\Grant> $everyone */
+                            function (Builder $everyone): void {
+                                $everyone->whereNull('entity_type')->whereNull('entity_id');
+                            },
+                        );
                 },
             )
             ->toBase()
