@@ -3,13 +3,20 @@
 declare(strict_types=1);
 
 use ElPandaPe\Warden\Checks\Explain\Cause;
+use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Exceptions\UnauthorizedException;
+use ElPandaPe\Warden\Http\Middleware\RequiresRole;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\BareAssignedRole;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
+use function ElPandaPe\Warden\Tests\nestRole;
+use function ElPandaPe\Warden\Tests\requestAs;
 
 beforeEach(function (): void {
     migrateWardenTables();
@@ -131,4 +138,110 @@ it('lets an endless path outlive a dated one for the same permission', function 
     $this->warden->refresh();
 
     expect(Gate::forUser($this->user)->allows('view', $this->account))->toBeTrue();
+});
+
+it('stops answering is() once the assignment expired', function (): void {
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    Carbon::setTestNow($this->moment->copy()->addSecond());
+
+    expect($this->user->isAn('auditor'))->toBeFalse()
+        ->and($this->user->isNotAn('auditor'))->toBeTrue()
+        ->and($this->user->isAll('auditor'))->toBeFalse()
+        ->and($this->warden->is($this->user)->an('auditor'))->toBeFalse()
+        ->and($this->warden->is($this->user)->all('auditor'))->toBeFalse();
+});
+
+it('stops holding a role at the moment named, not a tick later', function (): void {
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    Carbon::setTestNow($this->moment->copy()->subSecond());
+
+    expect($this->user->isAn('auditor'))->toBeTrue();
+
+    Carbon::setTestNow($this->moment);
+
+    expect($this->user->isAn('auditor'))->toBeFalse();
+});
+
+it('drops an expired assignment from the eager-loaded roles too', function (): void {
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+    $this->warden->assign('editor')->to($this->user);
+    $this->user->load('roles');
+
+    Carbon::setTestNow($this->moment->copy()->subSecond());
+
+    expect($this->user->isAn('auditor'))->toBeTrue()
+        ->and($this->user->isAll('auditor', 'editor'))->toBeTrue();
+
+    Carbon::setTestNow($this->moment);
+
+    expect($this->user->isAn('auditor'))->toBeFalse()
+        ->and($this->user->isAn('editor'))->toBeTrue()
+        ->and($this->user->isAll('auditor', 'editor'))->toBeFalse();
+});
+
+it('reads the end date off a swapped-in pivot that has no datetime cast', function (): void {
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    config()->set('warden.models.assigned_role', BareAssignedRole::class);
+    app()->forgetInstance(Context::class);
+    $this->user->load('roles');
+
+    Carbon::setTestNow($this->moment);
+
+    expect($this->user->isAn('auditor'))->toBeFalse();
+});
+
+it('leaves an expired assignment out of whereIs(), whereIsAll() and whereIsNot()', function (): void {
+    $grace = User::query()->create(['name' => 'Grace']);
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+    $this->warden->assign('auditor')->to($grace);
+
+    Carbon::setTestNow($this->moment->copy()->addSecond());
+
+    expect(User::query()->whereIs('auditor')->pluck('name')->all())->toBe(['Grace'])
+        ->and(User::query()->whereIsAll('auditor')->pluck('name')->all())->toBe(['Grace'])
+        ->and(User::query()->whereIsNot('auditor')->pluck('name')->all())->toBe(['Ada']);
+});
+
+it('turns an expired role away at the warden.role middleware', function (): void {
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+    $middleware = new RequiresRole;
+
+    Carbon::setTestNow($this->moment->copy()->subSecond());
+
+    expect($middleware->handle(requestAs($this->user), fn (): Response => new Response('ok'), 'auditor')->getContent())
+        ->toBe('ok');
+
+    Carbon::setTestNow($this->moment->copy()->addSecond());
+
+    expect(fn () => $middleware->handle(requestAs($this->user), fn (): Response => new Response('ok'), 'auditor'))
+        ->toThrow(UnauthorizedException::class);
+});
+
+it('stops answering isAll() and the role scopes for an expired assignment with nesting on', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    Carbon::setTestNow($this->moment->copy()->addSecond());
+
+    expect($this->user->isAn('auditor'))->toBeFalse()
+        ->and($this->user->isAll('auditor'))->toBeFalse()
+        ->and(User::query()->whereIs('auditor')->count())->toBe(0)
+        ->and(User::query()->whereIsAll('auditor')->count())->toBe(0)
+        ->and(User::query()->whereIsNot('auditor')->count())->toBe(1);
+});
+
+it('stops reaching a nested role through an expired assignment', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    nestRole('auditor', 'editor');
+    $this->warden->assign('editor')->until($this->moment)->to($this->user);
+
+    Carbon::setTestNow($this->moment->copy()->addSecond());
+
+    expect($this->user->isAn('auditor'))->toBeFalse()
+        ->and(User::query()->whereIs('auditor')->count())->toBe(0);
 });

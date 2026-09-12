@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElPandaPe\Warden\Concerns;
 
 use BackedEnum;
+use DateTimeInterface;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Support\Config;
@@ -12,9 +13,11 @@ use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Support\Name;
 use ElPandaPe\Warden\Support\RoleClosure;
 use ElPandaPe\Warden\Tenancy\Tenancy;
+use Illuminate\Contracts\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 trait HasRolesAndPermissions
@@ -50,7 +53,7 @@ trait HasRolesAndPermissions
         }
 
         if (! Config::nestedRoles()) {
-            return $this->roles()->whereIn('name', $names)->exists();
+            return $this->roles()->whereIn('name', $names)->tap(self::onlyLive(...))->exists();
         }
 
         // Nesting reaches roles the eager-loaded relation never held, so the
@@ -86,7 +89,11 @@ trait HasRolesAndPermissions
             return $this->loadedRoleNames()->unique()->intersect($unique)->count() === count($unique);
         }
 
-        return $this->roles()->whereIn('name', $unique)->distinct()->count('name') === count($unique);
+        return $this->roles()
+            ->whereIn('name', $unique)
+            ->tap(self::onlyLive(...))
+            ->distinct()
+            ->count('name') === count($unique);
     }
 
     /**
@@ -101,7 +108,7 @@ trait HasRolesAndPermissions
         if (! Config::nestedRoles()) {
             return $query->whereHas(
                 'roles',
-                fn (Builder $role): Builder => $role->whereIn($column, $names),
+                fn (Builder $role): Builder => $role->whereIn($column, $names)->tap(self::onlyLive(...)),
             );
         }
 
@@ -110,7 +117,7 @@ trait HasRolesAndPermissions
 
         return $query->whereHas(
             'roles',
-            fn (Builder $role): Builder => $role->whereKey($reaching),
+            fn (Builder $role): Builder => $role->whereKey($reaching)->tap(self::onlyLive(...)),
         );
     }
 
@@ -125,7 +132,7 @@ trait HasRolesAndPermissions
         foreach (array_unique(array_map(Name::of(...), $roles)) as $name) {
             $query->whereHas(
                 'roles',
-                fn (Builder $role): Builder => $role->where($column, $name),
+                fn (Builder $role): Builder => $role->where($column, $name)->tap(self::onlyLive(...)),
             );
         }
 
@@ -143,7 +150,7 @@ trait HasRolesAndPermissions
 
         return $query->whereDoesntHave(
             'roles',
-            fn (Builder $role): Builder => $role->whereIn($column, $names),
+            fn (Builder $role): Builder => $role->whereIn($column, $names)->tap(self::onlyLive(...)),
         );
     }
 
@@ -187,6 +194,15 @@ trait HasRolesAndPermissions
     private static function qualifiedRoleName(): string
     {
         return (new (Context::resolve()->roleClass()))->qualifyColumn('name');
+    }
+
+    /**
+     * Expiry is filtered by each role check, on the pivot, and never inside
+     * roles(): that relation is also what $user->roles lists.
+     */
+    private static function onlyLive(QueryBuilder $query): void
+    {
+        Expiry::live($query, Context::resolve()->table('assigned_roles'));
     }
 
     /**
@@ -242,8 +258,10 @@ trait HasRolesAndPermissions
     }
 
     /**
-     * The eager-loaded fast path filters by pivot scope: rows loaded under a
-     * different tenant never leak into the current one (fail-closed).
+     * The eager-loaded fast path filters what the queries filter. By pivot
+     * scope: rows loaded under a different tenant never leak into the current
+     * one (fail-closed). By end date: an assignment that expired after the
+     * load stops counting at the same instant the queries drop it.
      *
      * @return Collection<int, mixed>
      */
@@ -251,6 +269,20 @@ trait HasRolesAndPermissions
     {
         /** @var Collection<int, Model> $loaded */
         $loaded = $this->getRelation('roles');
+
+        $now = Carbon::now()->getTimestamp();
+
+        $loaded = $loaded->filter(function (Model $role) use ($now): bool {
+            $pivot = $role->getRelationValue('pivot');
+            $ends = $pivot instanceof Model ? $pivot->getAttribute('expires_at') : null;
+
+            // A pivot swapped in without warden's datetime cast reads back the stored text.
+            if (is_string($ends)) {
+                $ends = Carbon::parse($ends);
+            }
+
+            return ! $ends instanceof DateTimeInterface || $ends->getTimestamp() > $now;
+        });
 
         $filter = app(Tenancy::class)->readFilter();
 
