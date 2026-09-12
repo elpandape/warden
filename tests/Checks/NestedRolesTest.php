@@ -2,11 +2,14 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Exceptions\ConfigurationException;
+use ElPandaPe\Warden\Models\Relations\ReadOnlyBelongsToMany;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
@@ -242,4 +245,74 @@ it('reaches no nested role through an expired outer assignment in any scope', fu
         ->and(User::query()->whereIsNot('auditor')->count())->toBe(1);
 
     Carbon::setTestNow();
+});
+
+it('refuses every write through the nesting relation and writes nothing', function (string $writer, Closure $arguments): void {
+    nestRole('auditor', 'editor');
+
+    $editor = Role::query()->where('name', 'editor')->sole();
+    $inner = Role::query()->where('name', 'auditor')->sole();
+    $outsider = Role::query()->create(['name' => 'reviewer']);
+
+    $roles = DB::table('roles')->orderBy('id')->get();
+    $edges = DB::table('assigned_roles')->orderBy('id')->get();
+
+    expect(fn (): mixed => $editor->nestedRoles()->{$writer}(...$arguments($inner, $outsider)))
+        ->toThrow(ConfigurationException::class, 'nestedRoles()->'.$writer.'() is read-only: nest a role with Warden::assign($inner)->to($outer) and unnest it with Warden::retract($inner)->from($outer).')
+        ->and(DB::table('roles')->orderBy('id')->get())->toEqual($roles)
+        ->and(DB::table('assigned_roles')->orderBy('id')->get())->toEqual($edges);
+})->with([
+    ['attach', fn (Role $inner, Role $outsider): array => [$outsider]],
+    ['attachOrFail', fn (Role $inner, Role $outsider): array => [$outsider]],
+    ['detach', fn (Role $inner, Role $outsider): array => [$inner]],
+    ['detachOrFail', fn (Role $inner, Role $outsider): array => [$inner]],
+    ['sync', fn (Role $inner, Role $outsider): array => [[$outsider->getKey()]]],
+    ['syncOrFail', fn (Role $inner, Role $outsider): array => [[$outsider->getKey()]]],
+    ['syncWithoutDetaching', fn (Role $inner, Role $outsider): array => [[$outsider->getKey()]]],
+    ['syncWithoutDetachingOrFail', fn (Role $inner, Role $outsider): array => [[$outsider->getKey()]]],
+    ['syncWithPivotValues', fn (Role $inner, Role $outsider): array => [[$inner->getKey()], ['scope' => 5]]],
+    ['syncWithPivotValuesOrFail', fn (Role $inner, Role $outsider): array => [[$inner->getKey()], ['scope' => 5]]],
+    ['toggle', fn (Role $inner, Role $outsider): array => [[$inner->getKey()]]],
+    ['toggleOrFail', fn (Role $inner, Role $outsider): array => [[$inner->getKey()]]],
+    ['updateExistingPivot', fn (Role $inner, Role $outsider): array => [$inner->getKey(), ['scope' => 5]]],
+    ['updateExistingPivotOrFail', fn (Role $inner, Role $outsider): array => [$inner->getKey(), ['scope' => 5]]],
+    ['save', fn (Role $inner, Role $outsider): array => [new Role(['name' => 'publisher'])]],
+    ['saveQuietly', fn (Role $inner, Role $outsider): array => [new Role(['name' => 'publisher'])]],
+    ['saveMany', fn (Role $inner, Role $outsider): array => [[new Role(['name' => 'publisher'])]]],
+    ['saveManyQuietly', fn (Role $inner, Role $outsider): array => [[new Role(['name' => 'publisher'])]]],
+    ['create', fn (Role $inner, Role $outsider): array => [['name' => 'publisher']]],
+    ['createMany', fn (Role $inner, Role $outsider): array => [[['name' => 'publisher']]]],
+    ['firstOrCreate', fn (Role $inner, Role $outsider): array => [['name' => 'publisher']]],
+    ['createOrFirst', fn (Role $inner, Role $outsider): array => [['name' => 'publisher']]],
+    ['updateOrCreate', fn (Role $inner, Role $outsider): array => [['name' => 'auditor'], ['title' => 'Renamed']]],
+]);
+
+it('reads the nesting through the read-only relation as before', function (): void {
+    nestRole('auditor', 'editor');
+    $this->warden->assign('reviewer')->to($this->user);
+
+    $editor = Role::query()->where('name', 'editor')->sole();
+    $inner = Role::query()->where('name', 'auditor')->sole();
+
+    expect($editor->getKey())->toBe($this->user->getKey())
+        ->and($editor->nestedRoles())->toBeInstanceOf(ReadOnlyBelongsToMany::class)
+        ->and($editor->nestedRoles->pluck('name')->all())->toBe(['auditor'])
+        ->and(Role::query()->with('nestedRoles')->whereKey($editor->getKey())->sole()->nestedRoles->pluck('name')->all())->toBe(['auditor'])
+        ->and(Role::query()->whereHas('nestedRoles')->pluck('name')->all())->toBe(['editor'])
+        ->and($editor->nestedRoles()->count())->toBe(1)
+        ->and($editor->nestedRoles()->allRelatedIds()->all())->toEqual([$inner->getKey()]);
+});
+
+it('nests and unnests through assign() and retract() as before', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    $editor = Role::query()->create(['name' => 'editor']);
+    $this->warden->assign('editor')->to($this->user);
+    $this->warden->assign('auditor')->to($editor);
+
+    expect($editor->nestedRoles()->pluck('name')->all())->toBe(['auditor'])
+        ->and($this->warden->is($this->user)->an('auditor'))->toBeTrue()
+        ->and($this->warden->retract('auditor')->from($editor)->retractedCount())->toBe(1)
+        ->and($editor->nestedRoles()->pluck('name')->all())->toBeEmpty()
+        ->and($this->warden->is($this->user)->an('auditor'))->toBeFalse();
 });

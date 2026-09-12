@@ -14,3 +14,10 @@ parameters:
             identifier: argument.type
             message: '#NarrowSignatureAuthority::is(A|All)\(\) expects string, BackedEnum\|string given#'
             path: src/Concerns/HasRolesAndPermissions.php
+        # ReadOnlyBelongsToMany refuses every writer before reading an argument;
+        # its mixed parameters inherit Laravel's untyped array docblocks.
+        -
+            identifiers:
+                - missingType.iterableValue
+                - missingType.generics
+            path: src/Models/Relations/ReadOnlyBelongsToMany.php

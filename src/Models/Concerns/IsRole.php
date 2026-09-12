@@ -9,6 +9,7 @@ use ElPandaPe\Warden\Concerns\HasPermissions;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
+use ElPandaPe\Warden\Models\Relations\ReadOnlyBelongsToMany;
 use ElPandaPe\Warden\Support\Config;
 use ElPandaPe\Warden\Support\Titles\RoleTitle;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
@@ -29,20 +30,28 @@ trait IsRole
      * and make every role an authority for the whole engine.
      *
      * The edge is stored in assigned_roles like any other assignment, with
-     * this role as the authority, so the schema is untouched.
+     * this role as the authority, so the schema is untouched. The relation only
+     * reads it: assign() and retract() write it.
      *
      * @return BelongsToMany<\ElPandaPe\Warden\Models\Role, $this>
      */
     public function nestedRoles(): BelongsToMany
     {
         $context = Context::resolve();
+        $inner = $this->newRelatedInstance($context->roleClass());
 
-        return $this->belongsToMany(
-            $context->roleClass(),
+        $relation = new ReadOnlyBelongsToMany(
+            $inner->newQuery(),
+            $this,
             $context->table('assigned_roles'),
             'entity_id',
             'role_id',
-        )->wherePivot('entity_type', $this->getMorphClass());
+            $this->getKeyName(),
+            $inner->getKeyName(),
+            'nestedRoles',
+        );
+
+        return $relation->wherePivot('entity_type', $this->getMorphClass());
     }
 
     protected static function bootIsRole(): void
