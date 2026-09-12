@@ -197,6 +197,10 @@ Warden::allow('admin')->to('audit');
 Warden::sync($user)->roles(['editor', 'writer']);
 ```
 
+> 📌 **An authority is a saved model with a usable key.** `allow()`, `forbid()`, `assign()->to()` and `sync()` refuse one that is not saved — a deleted one included — or whose key is not an int or a non-empty string, with a `ConfigurationException` thrown before any row is written: the row would name nobody while the event named the model. `disallow()`, `unforbid()` and `retract()->from()` only need the key, so they keep working from a model's own `deleted` hook. When everyone is what you mean, say so with `allowEveryone()`.
+
+> 📌 **Only `allowEveryone()` grants to everyone.** Its rows carry neither an authority type nor a key, and those are the only rows `can()`, `whereCan()` and `getPermissions()` read as everyone's. A row with a type and no key — 3.0.0 wrote one for an unsaved authority — grants nobody.
+
 > 📌 **Assignments are one hop unless you turn nesting on.** `assign('auditor')->to($role)` writes an edge between roles. By default holders of the outer role gain nothing from it — set `warden.roles.nested` to `true` and they inherit the inner role's grants, to `warden.roles.max_depth` levels deep.
 >
 > ```php
