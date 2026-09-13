@@ -481,9 +481,9 @@ it('describes each holder its own row when one is new and another renewed', func
 
 it('carries the end date a revoke removed, a lapsed one included', function (): void {
     Carbon::setTestNow(Carbon::parse('2026-06-01 00:00:00'));
-    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
-    $this->warden->allow($this->user)->until(Carbon::parse('2026-07-01 00:00:00'))->to('archive', Account::class);
     $this->warden->allow($this->user)->to('view', Account::class);
+    $this->warden->allow($this->user)->until(Carbon::parse('2026-07-01 00:00:00'))->to('archive', Account::class);
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
     Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:00'));
 
     Event::fake([PermissionRevoked::class]);
@@ -498,9 +498,9 @@ it('carries the end date a revoke removed, a lapsed one included', function (): 
 
 it('carries the end date a retract removed, a lapsed one included', function (): void {
     Carbon::setTestNow(Carbon::parse('2026-06-01 00:00:00'));
-    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
-    $this->warden->assign('editor')->until(Carbon::parse('2026-07-01 00:00:00'))->to($this->user);
     $this->warden->assign('viewer')->to($this->user);
+    $this->warden->assign('editor')->until(Carbon::parse('2026-07-01 00:00:00'))->to($this->user);
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
     Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:00'));
 
     Event::fake([RoleRetracted::class]);

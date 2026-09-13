@@ -709,8 +709,8 @@ it('announces only the roles an authority lost', function (): void {
 });
 
 it('names what a removal took in the order the call asked for it', function (): void {
-    $this->warden->allow($this->user)->to(['publish', 'archive', 'edit']);
-    $this->warden->assign(['viewer', 'editor', 'auditor'])->to($this->user);
+    $this->warden->allow($this->user)->to(['edit', 'archive', 'publish']);
+    $this->warden->assign(['auditor', 'editor', 'viewer'])->to($this->user);
     $archive = Permission::query()->where('name', 'archive')->sole();
     $editor = Role::query()->where('name', 'editor')->sole();
 
