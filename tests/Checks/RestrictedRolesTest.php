@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\AssignmentRemoval;
 use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
@@ -11,8 +12,10 @@ use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 use function ElPandaPe\Warden\Tests\projectIn;
@@ -278,4 +281,99 @@ it('exposes how a restriction resolves for a context class', function (): void {
 it('refuses an unsaved context when retracting, as assigning already does', function (): void {
     expect(fn (): mixed => $this->warden->retract('editor')->on(new Account)->from($this->user))
         ->toThrow(ConfigurationException::class);
+});
+
+it('names every restriction context a retract without on() removed', function (): void {
+    $this->warden->assign('editor')->to($this->user);
+    $this->warden->assign('editor')->on($this->orgOne)->to($this->user);
+    $this->warden->assign('editor')->on($this->orgTwo)->to($this->user);
+
+    Event::fake([RoleRetracted::class]);
+
+    $retract = $this->warden->retract('editor')->from($this->user);
+
+    Event::assertDispatchedTimes(RoleRetracted::class, 1);
+    Event::assertDispatched(RoleRetracted::class, fn (RoleRetracted $event): bool => ! $event->restrictedTo instanceof Model
+        && $event->roles->pluck('name')->all() === ['editor']
+        && array_map(
+            fn (AssignmentRemoval $assignment): mixed => $assignment->restrictedTo?->getAttribute('name'),
+            $event->assignments,
+        ) === [null, 'Org One', 'Org Two']);
+    expect($retract->retractedCount())->toBe(3);
+});
+
+it('keeps the on() context on the event and on its entry', function (): void {
+    $this->warden->assign('editor')->to($this->user);
+    $this->warden->assign('editor')->on($this->orgOne)->to($this->user);
+
+    Event::fake([RoleRetracted::class]);
+
+    $this->warden->retract('editor')->on($this->orgOne)->from($this->user);
+
+    Event::assertDispatched(RoleRetracted::class, fn (RoleRetracted $event): bool => $event->restrictedTo?->is($this->orgOne) === true
+        && count($event->assignments) === 1
+        && $event->assignments[0]->restrictedTo?->is($this->orgOne) === true);
+    expect(AssignedRole::query()->whereNull('restricted_to_id')->count())->toBe(1);
+});
+
+it('names a context whose row is gone by its key alone', function (): void {
+    $this->warden->assign('editor')->on($this->orgOne)->to($this->user);
+    $key = $this->orgOne->getKey();
+    $this->orgOne->delete();
+
+    Event::fake([RoleRetracted::class]);
+
+    $this->warden->retract('editor')->from($this->user);
+
+    Event::assertDispatched(RoleRetracted::class, function (RoleRetracted $event) use ($key): bool {
+        $context = $event->assignments[0]->restrictedTo;
+
+        return $context instanceof Account && ! $context->exists && $context->getKey() === $key;
+    });
+});
+
+it('leaves out a restriction whose type maps to no class, and logs it', function (): void {
+    $this->warden->assign('editor')->on($this->orgOne)->to($this->user);
+    AssignedRole::query()->update(['restricted_to_type' => 'ghost-type']);
+    $version = Cache::store('array')->get('warden:v:a');
+    Log::spy();
+
+    Event::fake([RoleRetracted::class]);
+
+    $retract = $this->warden->retract('editor')->from($this->user);
+
+    Event::assertNotDispatched(RoleRetracted::class);
+    Log::shouldHaveReceived('warning')
+        ->with('Warden: no model class maps the morph type [ghost-type], so its rows cannot be named.', ['entity_type' => 'ghost-type', 'ids' => [$this->orgOne->getKey()]])
+        ->once();
+    expect($retract->retractedCount())->toBe(1)
+        ->and(AssignedRole::query()->count())->toBe(0)
+        ->and(Cache::store('array')->get('warden:v:a'))->not->toBe($version);
+});
+
+it('leaves out a half-written restriction instead of calling it unrestricted', function (): void {
+    $this->warden->assign('editor')->to($this->user);
+    $this->warden->assign('editor')->on($this->orgOne)->to($this->user);
+    AssignedRole::query()->whereNotNull('restricted_to_id')->update(['restricted_to_id' => null]);
+
+    Event::fake([RoleRetracted::class]);
+
+    $retract = $this->warden->retract('editor')->from($this->user);
+
+    Event::assertDispatched(RoleRetracted::class, fn (RoleRetracted $event): bool => count($event->assignments) === 1
+        && ! $event->assignments[0]->restrictedTo instanceof Model);
+    expect($retract->retractedCount())->toBe(2);
+});
+
+it('retracts without naming contexts when events are off', function (): void {
+    config()->set('warden.events_enabled', false);
+    $this->warden->assign('editor')->on($this->orgOne)->to($this->user);
+    AssignedRole::query()->update(['restricted_to_type' => 'ghost-type']);
+    Log::spy();
+
+    $retract = $this->warden->retract('editor')->from($this->user);
+
+    Log::shouldNotHaveReceived('warning');
+    expect($retract->retractedCount())->toBe(1)
+        ->and(AssignedRole::query()->count())->toBe(0);
 });

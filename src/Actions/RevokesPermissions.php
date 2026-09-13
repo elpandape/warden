@@ -5,23 +5,26 @@ declare(strict_types=1);
 namespace ElPandaPe\Warden\Actions;
 
 use BackedEnum;
+use ElPandaPe\Warden\Actions\Concerns\RemovesByKey;
 use ElPandaPe\Warden\Actions\Concerns\ResolvesAuthority;
 use ElPandaPe\Warden\Actions\Concerns\ResolvesPermissions;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
+use ElPandaPe\Warden\Events\GrantRemoval;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
 use ElPandaPe\Warden\Events\RevokingPermission;
 use ElPandaPe\Warden\Events\UnforbiddingPermission;
+use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Collection;
 
 class RevokesPermissions
 {
     use Concerns\BumpsCacheVersion;
     use DispatchesEvents;
+    use RemovesByKey;
     use ResolvesAuthority;
     use ResolvesPermissions;
 
@@ -89,45 +92,71 @@ class RevokesPermissions
      */
     private function revoke(string|array|Model|BackedEnum $permissions, Model|string|null $entity, bool $onlyOwned): static
     {
-        $context = Context::resolve();
+        return $this->asOneWrite(function () use ($permissions, $entity, $onlyOwned): static {
+            $context = Context::resolve();
 
-        if (! $this->permitsRemoval($permissions, $entity, $onlyOwned)) {
-            return $this;
-        }
+            if (! $this->permitsRemoval($permissions, $entity, $onlyOwned)) {
+                return $this;
+            }
 
-        // Resolve first: revoking from a role that does not exist must fail fast.
-        $authority = $this->authority === null
-            ? null
-            : $this->resolveAuthority($this->authority, createRole: false);
+            // Resolve first: revoking from a role that does not exist must fail fast.
+            $authority = $this->authority === null
+                ? null
+                : $this->resolveAuthority($this->authority, createRole: false);
 
-        $permissionModels = $this->findPermissions($permissions, $entity, $onlyOwned);
+            $requested = $this->inRequestOrder(
+                $this->normalizePermissions($permissions),
+                $this->findPermissions($permissions, $entity, $onlyOwned),
+            );
 
-        if ($permissionModels === []) {
-            return $this;
-        }
+            if ($requested === []) {
+                return $this;
+            }
 
-        // Deletes target the exact write scope: global rows survive tenant-scoped revokes.
-        $scope = app(Tenancy::class)->writeScope(
-            forRoleGrant: $authority instanceof ($context->roleClass()),
-        );
+            // Deletes target the exact write scope: global rows survive tenant-scoped revokes.
+            $scope = app(Tenancy::class)->writeScope(
+                forRoleGrant: $authority instanceof ($context->roleClass()),
+            );
 
-        $deleted = $context->grantClass()::query()
-            ->withoutGlobalScope(TenantScope::class)
-            ->whereIn('permission_id', array_map($this->modelKey(...), $permissionModels))
-            ->where('forbidden', $this->forbidden)
-            ->where('entity_type', $authority?->getMorphClass())
-            ->where('entity_id', $authority?->getKey())
-            ->where('scope', $scope)
-            ->delete() > 0;
+            $query = $context->grantClass()::query()->withoutGlobalScope(TenantScope::class);
+            $key = $query->getModel()->getKeyName();
 
-        if ($deleted) {
+            $rows = $query
+                ->whereIn('permission_id', array_keys($requested))
+                ->where('forbidden', $this->forbidden)
+                ->where('entity_type', $authority?->getMorphClass())
+                ->where('entity_id', $authority?->getKey())
+                ->where('scope', $scope)
+                ->orderBy($key)
+                ->get([$key, 'permission_id', 'expires_at']);
+
+            $removed = [];
+
+            foreach ($this->deleteByKey($rows) as $row) {
+                $removed[$row->permission_id][] = $row;
+            }
+
+            $grants = [];
+
+            foreach ($requested as $permissionKey => $permission) {
+                foreach ($removed[$permissionKey] ?? [] as $row) {
+                    $grants[] = new GrantRemoval($permission, Expiry::of($row));
+                }
+            }
+
+            if ($grants === []) {
+                return $this;
+            }
+
             $this->bumpCacheVersion($scope);
 
-            $this->dispatchWardenEvent($this->forbidden
-                ? new PermissionUnforbidden($authority, new Collection($permissionModels), $scope, $this->actor())
-                : new PermissionRevoked($authority, new Collection($permissionModels), $scope, $this->actor()));
-        }
+            $lost = collect($grants)->map(fn (GrantRemoval $grant): Model => $grant->permission)->uniqueStrict()->values();
 
-        return $this;
+            $this->dispatchWardenEvent($this->forbidden
+                ? new PermissionUnforbidden($authority, $lost, $scope, actor: $this->actor(), grants: $grants)
+                : new PermissionRevoked($authority, $lost, $scope, actor: $this->actor(), grants: $grants));
+
+            return $this;
+        });
     }
 }

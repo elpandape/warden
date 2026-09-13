@@ -5,9 +5,11 @@ declare(strict_types=1);
 use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Events\AssigningRole;
 use ElPandaPe\Warden\Events\AssignmentChange;
+use ElPandaPe\Warden\Events\AssignmentRemoval;
 use ElPandaPe\Warden\Events\ForbiddingPermission;
 use ElPandaPe\Warden\Events\GrantChange;
 use ElPandaPe\Warden\Events\GrantingPermission;
+use ElPandaPe\Warden\Events\GrantRemoval;
 use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
 use ElPandaPe\Warden\Events\PermissionForbidden;
@@ -23,6 +25,7 @@ use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Events\RolesSynced;
 use ElPandaPe\Warden\Events\UnforbiddingPermission;
+use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
@@ -656,4 +659,164 @@ it('resolves the actor once for an assignment to many authorities', function ():
     $this->warden->assign(['editor', 'auditor'])->to([$this->user, $other]);
 
     expect($resolver->calls)->toBe(1);
+});
+
+it('announces only the permissions a revoke removed', function (): void {
+    $other = User::query()->create(['name' => 'Ana']);
+    $this->warden->allow($this->user)->to('publish');
+    $this->warden->allow($other)->to('archive');
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->disallow($this->user)->to(['archive', 'publish']);
+
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->permissions->pluck('name')->all() === ['publish']
+        && array_map(fn (GrantRemoval $grant): mixed => $grant->permission->getAttribute('name'), $event->grants) === ['publish']);
+});
+
+it('announces only the forbids an unforbid lifted', function (): void {
+    $other = User::query()->create(['name' => 'Ana']);
+    $this->warden->forbid($this->user)->to('publish');
+    $this->warden->forbid($other)->to('archive');
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->unforbid($this->user)->to(['archive', 'publish']);
+
+    Event::assertDispatched(PermissionUnforbidden::class, fn (PermissionUnforbidden $event): bool => $event->permissions->pluck('name')->all() === ['publish']
+        && array_map(fn (GrantRemoval $grant): mixed => $grant->permission->getAttribute('name'), $event->grants) === ['publish']);
+});
+
+it('announces only the roles an authority lost', function (): void {
+    $admin = User::query()->create(['name' => 'Admin']);
+    $ana = User::query()->create(['name' => 'Ana']);
+    $this->warden->assign('editor')->to($this->user);
+    $this->warden->assign('auditor')->to($ana);
+    $this->actingAs($admin);
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->retract(['editor', 'auditor'])->from([$this->user, $ana]);
+
+    Event::assertDispatchedTimes(RoleRetracted::class, 2);
+    Event::assertDispatched(RoleRetracted::class, fn (RoleRetracted $event): bool => $event->authority->is($this->user)
+        && $event->roles->pluck('name')->all() === ['editor']
+        && array_map(fn (AssignmentRemoval $assignment): mixed => $assignment->role->getAttribute('name'), $event->assignments) === ['editor']
+        && $event->actor?->is($admin) === true);
+    Event::assertDispatched(RoleRetracted::class, fn (RoleRetracted $event): bool => $event->authority->is($ana)
+        && $event->roles->pluck('name')->all() === ['auditor']
+        && $event->actor?->is($admin) === true);
+});
+
+it('names what a removal took in the order the call asked for it', function (): void {
+    $this->warden->allow($this->user)->to(['publish', 'archive', 'edit']);
+    $this->warden->assign(['viewer', 'editor', 'auditor'])->to($this->user);
+    $archive = Permission::query()->where('name', 'archive')->sole();
+    $editor = Role::query()->where('name', 'editor')->sole();
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->disallow($this->user)->to(['publish', $archive, 'edit']);
+    $this->warden->retract(['viewer', $editor, 'auditor'])->from($this->user);
+
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->permissions->pluck('name')->all() === ['publish', 'archive', 'edit']
+        && array_map(fn (GrantRemoval $grant): mixed => $grant->permission->getAttribute('name'), $event->grants) === ['publish', 'archive', 'edit']);
+    Event::assertDispatched(RoleRetracted::class, fn (RoleRetracted $event): bool => $event->roles->pluck('name')->all() === ['viewer', 'editor', 'auditor']
+        && array_map(fn (AssignmentRemoval $assignment): mixed => $assignment->role->getAttribute('name'), $event->assignments) === ['viewer', 'editor', 'auditor']);
+});
+
+it('retracts from every authority before a listener that throws can stop it', function (): void {
+    $ana = User::query()->create(['name' => 'Ana']);
+    $this->warden->assign('editor')->to([$this->user, $ana]);
+
+    Event::listen(RoleRetracted::class, function (RoleRetracted $event): void {
+        if ($event->authority->is($this->user)) {
+            throw new RuntimeException('The audit log is down.');
+        }
+    });
+
+    $retract = $this->warden->retract('editor');
+
+    expect(fn (): mixed => $retract->from([$this->user, $ana]))->toThrow(RuntimeException::class, 'The audit log is down.')
+        ->and($retract->retractedCount())->toBe(2)
+        ->and(AssignedRole::query()->count())->toBe(0);
+});
+
+it('lets a revoke listener read the revoked state through the cache', function (): void {
+    config()->set('warden.cache.enabled', true);
+    $this->warden->allow($this->user)->to('publish');
+
+    expect($this->user->can('publish'))->toBeTrue();
+
+    $seen = null;
+
+    Event::listen(PermissionRevoked::class, function () use (&$seen): void {
+        $seen = $this->user->can('publish');
+    });
+
+    $this->warden->disallow($this->user)->to('publish');
+
+    expect($seen)->toBeFalse();
+});
+
+it('deletes and announces nothing when a cancellable listener vetoes a removal', function (): void {
+    config()->set('warden.cancellable_events', true);
+    $this->warden->allow($this->user)->to('publish');
+    $this->warden->forbid($this->user)->to('archive');
+    $this->warden->assign('editor')->to($this->user);
+
+    Event::listen(RevokingPermission::class, fn (): bool => false);
+    Event::listen(UnforbiddingPermission::class, fn (): bool => false);
+    Event::listen(RetractingRole::class, fn (): bool => false);
+    Event::fake([PermissionRevoked::class, PermissionUnforbidden::class, RoleRetracted::class]);
+
+    $this->warden->disallow($this->user)->to('publish');
+    $this->warden->unforbid($this->user)->to('archive');
+    $retract = $this->warden->retract('editor')->from($this->user);
+
+    Event::assertNothingDispatched();
+    expect(Grant::query()->count())->toBe(2)
+        ->and(AssignedRole::query()->count())->toBe(1)
+        ->and($retract->retractedCount())->toBe(0);
+});
+
+it('announces only the grants its own deletes removed when another write takes one first', function (): void {
+    $this->warden->allow($this->user)->to(['publish', 'archive']);
+    $archive = Permission::query()->where('name', 'archive')->sole()->getKey();
+    $raced = false;
+
+    DB::connection()->beforeExecuting(function (string $query) use (&$raced, $archive): void {
+        if (! $raced && str_starts_with(strtolower($query), 'delete')) {
+            $raced = true;
+            DB::table('grants')->where('permission_id', $archive)->delete();
+        }
+    });
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->disallow($this->user)->to(['publish', 'archive']);
+
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->permissions->pluck('name')->all() === ['publish']
+        && count($event->grants) === 1);
+});
+
+it('counts and announces only the assignments its own deletes removed when another write takes one first', function (): void {
+    $this->warden->assign(['editor', 'auditor'])->to($this->user);
+    $auditor = Role::query()->where('name', 'auditor')->sole()->getKey();
+    $raced = false;
+
+    DB::connection()->beforeExecuting(function (string $query) use (&$raced, $auditor): void {
+        if (! $raced && str_starts_with(strtolower($query), 'delete')) {
+            $raced = true;
+            DB::table('assigned_roles')->where('role_id', $auditor)->delete();
+        }
+    });
+
+    Event::fake(WARDEN_EVENTS);
+
+    $retract = $this->warden->retract(['editor', 'auditor'])->from($this->user);
+
+    Event::assertDispatched(RoleRetracted::class, fn (RoleRetracted $event): bool => $event->roles->pluck('name')->all() === ['editor']
+        && count($event->assignments) === 1);
+    expect($retract->retractedCount())->toBe(1);
 });

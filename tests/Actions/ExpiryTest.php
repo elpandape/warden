@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 use ElPandaPe\Warden\Actions\GrantsPermissions;
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\AssignmentRemoval;
+use ElPandaPe\Warden\Events\GrantRemoval;
 use ElPandaPe\Warden\Events\PermissionGranted;
+use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\RoleAssigned;
+use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
@@ -473,4 +477,38 @@ it('describes each holder its own row when one is new and another renewed', func
         ->and($events[1]->assignments[0]->created)->toBeTrue()
         ->and($events[1]->assignments[0]->expiresAt?->toDateTimeString())->toBe('2026-06-30 12:00:00')
         ->and($events[1]->assignments[0]->previousExpiresAt)->toBeNull();
+});
+
+it('carries the end date a revoke removed, a lapsed one included', function (): void {
+    Carbon::setTestNow(Carbon::parse('2026-06-01 00:00:00'));
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+    $this->warden->allow($this->user)->until(Carbon::parse('2026-07-01 00:00:00'))->to('archive', Account::class);
+    $this->warden->allow($this->user)->to('view', Account::class);
+    Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:00'));
+
+    Event::fake([PermissionRevoked::class]);
+
+    $this->warden->disallow($this->user)->to(['publish', 'archive', 'view'], Account::class);
+
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => array_map(
+        fn (GrantRemoval $grant): ?string => $grant->expiresAt?->toDateTimeString(),
+        $event->grants,
+    ) === ['2026-12-31 23:59:59', '2026-07-01 00:00:00', null]);
+});
+
+it('carries the end date a retract removed, a lapsed one included', function (): void {
+    Carbon::setTestNow(Carbon::parse('2026-06-01 00:00:00'));
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+    $this->warden->assign('editor')->until(Carbon::parse('2026-07-01 00:00:00'))->to($this->user);
+    $this->warden->assign('viewer')->to($this->user);
+    Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:00'));
+
+    Event::fake([RoleRetracted::class]);
+
+    $this->warden->retract(['auditor', 'editor', 'viewer'])->from($this->user);
+
+    Event::assertDispatched(RoleRetracted::class, fn (RoleRetracted $event): bool => array_map(
+        fn (AssignmentRemoval $assignment): ?string => $assignment->expiresAt?->toDateTimeString(),
+        $event->assignments,
+    ) === ['2026-12-31 23:59:59', '2026-07-01 00:00:00', null]);
 });

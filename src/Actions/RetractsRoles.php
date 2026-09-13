@@ -6,22 +6,27 @@ namespace ElPandaPe\Warden\Actions;
 
 use BackedEnum;
 use ElPandaPe\Warden\Actions\Concerns\NormalizesRoles;
+use ElPandaPe\Warden\Actions\Concerns\RemovesByKey;
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\AssignmentRemoval;
 use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\RetractingRole;
 use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
+use ElPandaPe\Warden\Models\AssignedRole;
+use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\Expiry;
+use ElPandaPe\Warden\Support\MorphHydrator;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Collection;
 
 class RetractsRoles
 {
     use Concerns\BumpsCacheVersion;
     use DispatchesEvents;
     use NormalizesRoles;
+    use RemovesByKey;
 
     /** @var list<string|Model> */
     private readonly array $roles;
@@ -87,29 +92,8 @@ class RetractsRoles
         return $this->asOneWrite(function () use ($authorities): static {
             $this->retracted = true;
             $this->retractedCount = 0;
-            $context = Context::resolve();
-            $roleClass = $context->roleClass();
-            $assignedRole = $context->assignedRoleClass();
 
-            $names = [];
-            /** @var list<Model> $models */
-            $models = [];
-
-            foreach ($this->roles as $role) {
-                if ($role instanceof Model) {
-                    $models[] = $this->assertModelOf($role, $roleClass, 'role');
-                } else {
-                    $names[] = $role;
-                }
-            }
-
-            if ($names !== []) {
-                foreach ($roleClass::query()->whereIn('name', $names)->get() as $found) {
-                    $models[] = $found;
-                }
-            }
-
-            $keys = array_map($this->modelKey(...), $models);
+            $roles = $this->requestedRoles();
 
             // Deletes target the exact write scope: global assignments survive tenant retracts.
             $scope = app(Tenancy::class)->writeScope();
@@ -120,35 +104,173 @@ class RetractsRoles
                 return $this;
             }
 
+            // Every authority loses its rows before any listener runs, so one
+            // that throws cannot leave the next authority holding the role.
+            $lost = [];
+
             foreach ($targets as $authority) {
-                /** @var int $deleted */
-                $deleted = $assignedRole::query()
-                    ->withoutGlobalScope(TenantScope::class)
-                    ->whereIn('role_id', $keys)
-                    ->where('entity_type', $authority->getMorphClass())
-                    ->where('entity_id', $authority->getKey())
-                    ->where('scope', $scope)
-                    ->when(
-                        $this->restrictedTo instanceof Model,
-                        /** @param Builder<Model> $query */
-                        function (Builder $query): void {
-                            $query->where('restricted_to_type', $this->restrictedTo?->getMorphClass())
-                                ->where('restricted_to_id', $this->restrictedTo?->getKey());
-                        },
-                    )
-                    ->delete();
+                $deleted = $this->deleteByKey($this->assignmentsOf($authority, array_keys($roles), $scope));
+                $this->retractedCount += count($deleted);
 
-                $this->retractedCount += $deleted;
-
-                if ($deleted > 0) {
-                    $this->bumpCacheVersion($scope);
-                    $this->dispatchWardenEvent(
-                        new RoleRetracted($authority, new Collection($models), $scope, $this->restrictedTo, $this->actor()),
-                    );
+                if ($deleted !== []) {
+                    $lost[] = [$authority, $deleted];
                 }
+            }
+
+            if ($lost === []) {
+                return $this;
+            }
+
+            $this->bumpCacheVersion($scope);
+
+            if (Config::eventsEnabled()) {
+                $this->announceRemovals($lost, $roles, $scope);
             }
 
             return $this;
         });
+    }
+
+    /**
+     * @return array<int|string, Model>
+     */
+    private function requestedRoles(): array
+    {
+        $roleClass = Context::resolve()->roleClass();
+        $found = [];
+        $names = [];
+
+        foreach ($this->roles as $role) {
+            if ($role instanceof Model) {
+                $found[] = $this->assertModelOf($role, $roleClass, 'role');
+            } else {
+                $names[] = $role;
+            }
+        }
+
+        if ($names !== []) {
+            foreach ($roleClass::query()->whereIn('name', $names)->get() as $role) {
+                $found[] = $role;
+            }
+        }
+
+        return $this->inRequestOrder($this->roles, $found);
+    }
+
+    /**
+     * @param  list<int|string>  $roleKeys
+     * @return iterable<int, AssignedRole>
+     */
+    private function assignmentsOf(Model $authority, array $roleKeys, int|string|null $scope): iterable
+    {
+        $query = Context::resolve()->assignedRoleClass()::query()->withoutGlobalScope(TenantScope::class);
+        $key = $query->getModel()->getKeyName();
+
+        $query->whereIn('role_id', $roleKeys)
+            ->where('entity_type', $authority->getMorphClass())
+            ->where('entity_id', $authority->getKey())
+            ->where('scope', $scope);
+
+        if ($this->restrictedTo instanceof Model) {
+            $query->where('restricted_to_type', $this->restrictedTo->getMorphClass())
+                ->where('restricted_to_id', $this->restrictedTo->getKey());
+        }
+
+        return $query->orderBy($key)->get([$key, 'role_id', 'restricted_to_type', 'restricted_to_id', 'expires_at']);
+    }
+
+    /**
+     * @param  list<array{Model, list<AssignedRole>}>  $lost
+     * @param  array<int|string, Model>  $roles
+     */
+    private function announceRemovals(array $lost, array $roles, int|string|null $scope): void
+    {
+        $contexts = $this->restrictedTo instanceof Model ? [] : MorphHydrator::many($this->restrictionsOf($lost));
+        $actor = $this->actor();
+
+        foreach ($lost as [$authority, $rows]) {
+            $assignments = $this->removals($rows, $roles, $contexts);
+
+            if ($assignments === []) {
+                continue;
+            }
+
+            $this->dispatchWardenEvent(new RoleRetracted(
+                $authority,
+                collect($assignments)->map(fn (AssignmentRemoval $assignment): Model => $assignment->role)->uniqueStrict()->values(),
+                $scope,
+                $this->restrictedTo,
+                actor: $actor,
+                assignments: $assignments,
+            ));
+        }
+    }
+
+    /**
+     * @param  list<array{Model, list<AssignedRole>}>  $lost
+     * @return list<array{string, int|string}>
+     */
+    private function restrictionsOf(array $lost): array
+    {
+        $pairs = [];
+
+        foreach ($lost as [, $rows]) {
+            foreach ($rows as $row) {
+                if ($row->restricted_to_type !== null && $row->restricted_to_id !== null) {
+                    $pairs[] = [$row->restricted_to_type, $row->restricted_to_id];
+                }
+            }
+        }
+
+        return $pairs;
+    }
+
+    /**
+     * @param  list<AssignedRole>  $rows
+     * @param  array<int|string, Model>  $roles
+     * @param  array<string, Model>  $contexts
+     * @return list<AssignmentRemoval>
+     */
+    private function removals(array $rows, array $roles, array $contexts): array
+    {
+        $byRole = [];
+
+        foreach ($rows as $row) {
+            $byRole[$row->role_id][] = $row;
+        }
+
+        $removals = [];
+
+        foreach ($roles as $key => $role) {
+            foreach ($byRole[$key] ?? [] as $row) {
+                $restricted = $row->restricted_to_type !== null || $row->restricted_to_id !== null;
+                $context = $this->restrictedTo ?? $this->contextOf($row, $contexts);
+
+                // Null would read as unrestricted: a restriction nobody can name gets no entry.
+                if ($restricted && ! $context instanceof Model) {
+                    continue;
+                }
+
+                $removals[] = new AssignmentRemoval($role, $context, Expiry::of($row));
+            }
+        }
+
+        return $removals;
+    }
+
+    /**
+     * @param  AssignedRole  $row
+     * @param  array<string, Model>  $contexts
+     */
+    private function contextOf(Model $row, array $contexts): ?Model
+    {
+        $type = $row->restricted_to_type;
+        $id = $row->restricted_to_id;
+
+        if ($type === null || $id === null) {
+            return null;
+        }
+
+        return $contexts[MorphHydrator::key($type, $id)] ?? MorphHydrator::standIn($type, $id);
     }
 }
