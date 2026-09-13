@@ -9,6 +9,7 @@ use DateTimeInterface;
 use ElPandaPe\Warden\Actions\Concerns\NormalizesRoles;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\AssigningRole;
+use ElPandaPe\Warden\Events\AssignmentChange;
 use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
@@ -110,13 +111,16 @@ class AssignsRoles
             }
 
             $models = $this->resolveRoleModels($this->roles);
+            $entries = [];
 
-            $wrote = false;
+            // An assignment model that will not mass assign the date would drop
+            // it silently, or throw: assignmentChange() then writes it on its own.
+            $insertsExpiry = $this->expiryDeclared && (new $assignedRole)->isFillable('expires_at');
 
             foreach ($models as $role) {
                 $roleKey = $this->modelKey($role);
 
-                foreach ($targets as $authority) {
+                foreach ($targets as $index => $authority) {
                     $assignment = $assignedRole::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
                         'role_id' => $roleKey,
                         'entity_type' => $authority->getMorphClass(),
@@ -124,25 +128,63 @@ class AssignsRoles
                         'restricted_to_type' => $this->restrictedTo?->getMorphClass(),
                         'restricted_to_id' => $this->restrictedTo?->getKey(),
                         'scope' => $scope,
-                    ]);
+                    ], $insertsExpiry ? ['expires_at' => $this->expiresAt] : []);
 
-                    $moved = $this->expiryDeclared && Expiry::apply($assignment, $this->expiresAt);
-                    $wrote = $wrote || $assignment->wasRecentlyCreated || $moved;
+                    $entry = $this->assignmentChange($assignment, $role);
+
+                    if ($entry instanceof AssignmentChange) {
+                        $entries[$index][] = $entry;
+                    }
                 }
             }
 
             // A write that wrote nothing announces nothing, as removals already do.
-            if (! $wrote) {
+            if ($entries === []) {
                 return $this;
             }
 
             $this->bumpCacheVersion($scope);
 
-            foreach ($targets as $authority) {
-                $this->dispatchWardenEvent(new RoleAssigned($authority, new Collection($models), $scope, $this->restrictedTo, $this->actor()));
+            $actor = $this->actor();
+
+            // Each authority hears only what its own rows became, in the order asked.
+            foreach ($targets as $index => $authority) {
+                if (! isset($entries[$index])) {
+                    continue;
+                }
+
+                $this->dispatchWardenEvent(new RoleAssigned(
+                    $authority,
+                    new Collection(array_map(fn (AssignmentChange $entry): Model => $entry->role, $entries[$index])),
+                    $scope,
+                    $this->restrictedTo,
+                    actor: $actor,
+                    assignments: $entries[$index],
+                ));
             }
 
             return $this;
         });
+    }
+
+    private function assignmentChange(Model $assignment, Model $role): ?AssignmentChange
+    {
+        if ($assignment->wasRecentlyCreated) {
+            if ($this->expiryDeclared) {
+                Expiry::apply($assignment, $this->expiresAt);
+            }
+
+            return new AssignmentChange(role: $role, created: true, expiresAt: Expiry::of($assignment), previousExpiresAt: null);
+        }
+
+        if (! $this->expiryDeclared) {
+            return null;
+        }
+
+        $previous = Expiry::of($assignment);
+
+        return Expiry::apply($assignment, $this->expiresAt)
+            ? new AssignmentChange(role: $role, created: false, expiresAt: Expiry::of($assignment), previousExpiresAt: $previous)
+            : null;
     }
 }

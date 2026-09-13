@@ -11,6 +11,7 @@ use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\BarePivot;
+use ElPandaPe\Warden\Tests\Fixtures\GuardedDateAssignedRole;
 use ElPandaPe\Warden\Tests\Fixtures\GuardedDatePivot;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
@@ -361,4 +362,115 @@ it('keeps the end date of a new grant when models may not silently discard attri
     $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
 
     expect(Grant::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59');
+});
+
+it('keeps the end date of a new assignment when the assignment model will not mass assign it', function (): void {
+    config()->set('warden.models.assigned_role', GuardedDateAssignedRole::class);
+    app()->forgetInstance(Context::class);
+    Event::fake([RoleAssigned::class]);
+
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    expect(AssignedRole::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and(Event::dispatched(RoleAssigned::class)->sole()[0]->assignments[0]->expiresAt?->toDateTimeString())
+        ->toBe('2026-12-31 23:59:59');
+});
+
+it('keeps the end date of a new assignment when models may not silently discard attributes', function (): void {
+    config()->set('warden.models.assigned_role', GuardedDateAssignedRole::class);
+    app()->forgetInstance(Context::class);
+    Model::preventSilentlyDiscardingAttributes();
+
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    expect(AssignedRole::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59');
+});
+
+it('describes a new assignment as created, born with its end date in one insert', function (): void {
+    $updates = 0;
+    Event::listen('eloquent.updated: '.AssignedRole::class, function () use (&$updates): void {
+        $updates++;
+    });
+    Event::fake([RoleAssigned::class]);
+
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    $change = Event::dispatched(RoleAssigned::class)->sole()[0]->assignments[0];
+
+    expect($change->created)->toBeTrue()
+        ->and($change->expiresAt?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and($change->previousExpiresAt)->toBeNull()
+        ->and($updates)->toBe(0);
+});
+
+it('describes a moved assignment date with the dates before and after', function (): void {
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    Event::fake([RoleAssigned::class]);
+
+    $this->warden->assign('auditor')->until(Carbon::parse('2026-06-30 12:00:00'))->to($this->user);
+
+    $change = Event::dispatched(RoleAssigned::class)->sole()[0]->assignments[0];
+
+    expect($change->created)->toBeFalse()
+        ->and($change->expiresAt?->toDateTimeString())->toBe('2026-06-30 12:00:00')
+        ->and($change->previousExpiresAt?->toDateTimeString())->toBe('2026-12-31 23:59:59');
+});
+
+it('describes a lifted assignment date as null after the one it replaced', function (): void {
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    Event::fake([RoleAssigned::class]);
+
+    $this->warden->assign('auditor')->until(null)->to($this->user);
+
+    $change = Event::dispatched(RoleAssigned::class)->sole()[0]->assignments[0];
+
+    expect($change->created)->toBeFalse()
+        ->and($change->expiresAt)->toBeNull()
+        ->and($change->previousExpiresAt?->toDateTimeString())->toBe('2026-12-31 23:59:59');
+});
+
+it('describes a first end date on an endless assignment as a renewal from null', function (): void {
+    $this->warden->assign('auditor')->to($this->user);
+
+    Event::fake([RoleAssigned::class]);
+
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    $change = Event::dispatched(RoleAssigned::class)->sole()[0]->assignments[0];
+
+    expect($change->created)->toBeFalse()
+        ->and($change->expiresAt?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and($change->previousExpiresAt)->toBeNull();
+});
+
+it('stays quiet when the assignment date it was asked to write is the one already there', function (): void {
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    Event::fake([RoleAssigned::class]);
+
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    Event::assertNotDispatched(RoleAssigned::class);
+});
+
+it('describes each holder its own row when one is new and another renewed', function (): void {
+    $other = User::query()->create(['name' => 'Grace']);
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    Event::fake([RoleAssigned::class]);
+
+    $this->warden->assign('auditor')->until(Carbon::parse('2026-06-30 12:00:00'))->to([$this->user, $other]);
+
+    $events = Event::dispatched(RoleAssigned::class)->map(fn (array $arguments): RoleAssigned => $arguments[0])->values();
+
+    expect($events)->toHaveCount(2)
+        ->and($events[0]->authority->is($this->user))->toBeTrue()
+        ->and($events[0]->assignments[0]->created)->toBeFalse()
+        ->and($events[0]->assignments[0]->previousExpiresAt?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and($events[1]->authority->is($other))->toBeTrue()
+        ->and($events[1]->assignments[0]->created)->toBeTrue()
+        ->and($events[1]->assignments[0]->expiresAt?->toDateTimeString())->toBe('2026-06-30 12:00:00')
+        ->and($events[1]->assignments[0]->previousExpiresAt)->toBeNull();
 });

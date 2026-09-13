@@ -487,6 +487,15 @@ it('leaves the cache version alone when a write changes nothing', function (): v
     expect(Cache::store('array')->get('warden:v:a'))->toBe($version);
 });
 
+it('leaves the cache version alone when an assignment changes nothing', function (): void {
+    $this->warden->assign('editor')->to($this->user);
+    $version = Cache::store('array')->get('warden:v:a');
+
+    $this->warden->assign('editor')->to($this->user);
+
+    expect(Cache::store('array')->get('warden:v:a'))->toBe($version);
+});
+
 it('invalidates cached checks through a pivot model warden does not own', function (): void {
     config()->set('warden.models.grant', BarePivot::class);
     app()->forgetInstance(Context::class);

@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Events\AssigningRole;
+use ElPandaPe\Warden\Events\AssignmentChange;
 use ElPandaPe\Warden\Events\ForbiddingPermission;
 use ElPandaPe\Warden\Events\GrantChange;
 use ElPandaPe\Warden\Events\GrantingPermission;
@@ -25,6 +27,7 @@ use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\CountingActorResolver;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Carbon;
@@ -592,4 +595,65 @@ it('restores the grant entries of a queued grant event after their rows are gone
         ->and($restored->authority->is($this->user))->toBeTrue()
         ->and($restored->grants[0]->permission->getAttribute('name'))->toBe('edit-site')
         ->and($restored->grants[0]->expiresAt?->toDateTimeString())->toBe('2026-12-31 23:59:59');
+});
+
+it('announces an assignment only to the authorities that gained the role', function (): void {
+    $other = User::query()->create(['name' => 'Luis']);
+    $this->warden->assign('editor')->to($this->user);
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->assign('editor')->to([$this->user, $other]);
+
+    Event::assertDispatchedTimes(RoleAssigned::class, 1);
+    Event::assertDispatched(RoleAssigned::class, fn (RoleAssigned $event): bool => $event->authority->is($other)
+        && $event->roles->sole()->getAttribute('name') === 'editor');
+});
+
+it('announces only the roles an authority gained', function (): void {
+    $this->warden->assign('editor')->to($this->user);
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->assign(['editor', 'auditor'])->to($this->user);
+
+    $event = Event::dispatched(RoleAssigned::class)->sole()[0];
+
+    expect($event->roles->pluck('name')->all())->toBe(['auditor'])
+        ->and($event->assignments)->toHaveCount(1)
+        ->and($event->assignments[0]->role->is($event->roles->sole()))->toBeTrue()
+        ->and($event->assignments[0]->created)->toBeTrue()
+        ->and($event->assignments[0]->expiresAt)->toBeNull()
+        ->and($event->assignments[0]->previousExpiresAt)->toBeNull();
+});
+
+it('keeps each assignment event to its own authority, in the order asked', function (): void {
+    $other = User::query()->create(['name' => 'Luis']);
+    $this->warden->assign('editor')->to($other);
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->assign(['editor', 'auditor'])->to([$other, $this->user]);
+
+    $events = Event::dispatched(RoleAssigned::class)->map(fn (array $arguments): RoleAssigned => $arguments[0])->values();
+
+    expect($events)->toHaveCount(2)
+        ->and($events[0]->authority->is($other))->toBeTrue()
+        ->and($events[0]->roles->pluck('name')->all())->toBe(['auditor'])
+        ->and($events[1]->authority->is($this->user))->toBeTrue()
+        ->and($events[1]->roles->pluck('name')->all())->toBe(['editor', 'auditor'])
+        ->and(array_map(fn (AssignmentChange $change): mixed => $change->role->getAttribute('name'), $events[1]->assignments))
+        ->toBe(['editor', 'auditor']);
+});
+
+it('resolves the actor once for an assignment to many authorities', function (): void {
+    Role::query()->create(['name' => 'editor']);
+    Role::query()->create(['name' => 'auditor']);
+    $other = User::query()->create(['name' => 'Luis']);
+    $resolver = new CountingActorResolver;
+    app()->instance(ActorResolver::class, $resolver);
+
+    $this->warden->assign(['editor', 'auditor'])->to([$this->user, $other]);
+
+    expect($resolver->calls)->toBe(1);
 });

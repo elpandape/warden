@@ -10,8 +10,8 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
 
 /**
- * Post-action: roles were assigned. The restriction context stays null
- * until restricted roles land in v0.8.
+ * Post-action: roles were assigned. The restriction context is the one on()
+ * named, null when the call named none.
  */
 final readonly class RoleAssigned
 {
@@ -20,6 +20,7 @@ final readonly class RoleAssigned
 
     /**
      * @param  Collection<int, Model>  $roles
+     * @param  list<AssignmentChange>  $assignments
      */
     public function __construct(
         public Model $authority,
@@ -27,5 +28,6 @@ final readonly class RoleAssigned
         public int|string|null $scope,
         public ?Model $restrictedTo = null,
         public ?Model $actor = null,
+        public array $assignments = [],
     ) {}
 }
