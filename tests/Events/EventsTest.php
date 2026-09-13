@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use ElPandaPe\Warden\Events\AssigningRole;
 use ElPandaPe\Warden\Events\ForbiddingPermission;
+use ElPandaPe\Warden\Events\GrantChange;
 use ElPandaPe\Warden\Events\GrantingPermission;
 use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
@@ -20,11 +21,13 @@ use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Events\RolesSynced;
 use ElPandaPe\Warden\Events\UnforbiddingPermission;
+use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
@@ -525,4 +528,68 @@ it('announces nothing for a cascaded row that names a holder type but no key', f
 
     Event::assertDispatchedTimes(PermissionRevoked::class, 1);
     Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($this->user) === true);
+});
+
+it('announces only the permissions a grant wrote', function (): void {
+    $this->warden->allow($this->user)->to('view', Account::class);
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->allow($this->user)->to(['view', 'update'], Account::class);
+
+    $event = Event::dispatched(PermissionGranted::class)->sole()[0];
+
+    expect($event->permissions->pluck('name')->all())->toBe(['update'])
+        ->and($event->grants)->toHaveCount(1)
+        ->and($event->grants[0]->permission->is($event->permissions->sole()))->toBeTrue()
+        ->and($event->grants[0]->created)->toBeTrue()
+        ->and($event->grants[0]->expiresAt)->toBeNull()
+        ->and($event->grants[0]->previousExpiresAt)->toBeNull();
+});
+
+it('announces only the forbids a forbid wrote', function (): void {
+    $this->warden->forbid($this->user)->to('delete', Account::class);
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->forbid($this->user)->to(['delete', 'archive'], Account::class);
+
+    $event = Event::dispatched(PermissionForbidden::class)->sole()[0];
+
+    expect($event->permissions->pluck('name')->all())->toBe(['archive'])
+        ->and($event->grants)->toHaveCount(1)
+        ->and($event->grants[0]->permission->is($event->permissions->sole()))->toBeTrue()
+        ->and($event->grants[0]->created)->toBeTrue()
+        ->and($event->grants[0]->expiresAt)->toBeNull()
+        ->and($event->grants[0]->previousExpiresAt)->toBeNull();
+});
+
+it('keeps a grant event in step with its entries, in the order asked', function (): void {
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->allow($this->user)->to(['publish', 'archive', 'publish']);
+
+    $event = Event::dispatched(PermissionGranted::class)->sole()[0];
+
+    expect($event->permissions->pluck('name')->all())->toBe(['publish', 'archive'])
+        ->and(array_map(fn (GrantChange $change): mixed => $change->permission->getAttribute('name'), $event->grants))
+        ->toBe(['publish', 'archive']);
+});
+
+it('restores the grant entries of a queued grant event after their rows are gone', function (): void {
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->allow($this->user)->until(Carbon::parse('2026-12-31 23:59:59'))->to('edit-site');
+
+    $payload = serialize(Event::dispatched(PermissionGranted::class)->sole()[0]);
+
+    Grant::query()->delete();
+    Permission::query()->withoutGlobalScopes()->delete();
+
+    $restored = unserialize($payload);
+
+    expect(Permission::query()->withoutGlobalScopes()->exists())->toBeFalse()
+        ->and($restored->authority->is($this->user))->toBeTrue()
+        ->and($restored->grants[0]->permission->getAttribute('name'))->toBe('edit-site')
+        ->and($restored->grants[0]->expiresAt?->toDateTimeString())->toBe('2026-12-31 23:59:59');
 });

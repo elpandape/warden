@@ -19,11 +19,13 @@ final readonly class PermissionForbidden
 
     /**
      * @param  Collection<int, Model>  $permissions
+     * @param  list<GrantChange>  $grants
      */
     public function __construct(
         public ?Model $authority,
         public Collection $permissions,
         public int|string|null $scope,
         public ?Model $actor = null,
+        public array $grants = [],
     ) {}
 }

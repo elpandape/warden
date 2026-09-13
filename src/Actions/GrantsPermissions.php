@@ -15,6 +15,7 @@ use ElPandaPe\Warden\Constraints\Group;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\ForbiddingPermission;
+use ElPandaPe\Warden\Events\GrantChange;
 use ElPandaPe\Warden\Events\GrantingPermission;
 use ElPandaPe\Warden\Events\PermissionForbidden;
 use ElPandaPe\Warden\Events\PermissionGranted;
@@ -199,8 +200,8 @@ class GrantsPermissions
                 forRoleGrant: $authority instanceof ($context->roleClass()),
             );
 
-            $wrote = false;
             $fresh = [];
+            $entries = [];
 
             foreach ($permissions as $permission) {
                 // firstOrCreate self-heals concurrent races via createOrFirst on Laravel 12+.
@@ -210,18 +211,22 @@ class GrantsPermissions
                     'entity_id' => $authority?->getKey(),
                     'forbidden' => $this->forbidding,
                     'scope' => $scope,
-                ]);
+                ], $this->expiryDeclared ? ['expires_at' => $this->expiresAt] : []);
 
                 if ($grant->wasRecentlyCreated) {
                     $fresh[] = $this->modelKey($grant);
                 }
 
-                $moved = $this->expiryDeclared && Expiry::apply($grant, $this->expiresAt);
-                $wrote = $wrote || $grant->wasRecentlyCreated || $moved;
+                $entry = $this->grantChange($grant, $permission, $this->expiryDeclared, $this->expiresAt);
+
+                if ($entry instanceof GrantChange) {
+                    $entries[] = $entry;
+                }
             }
 
-            // Remembered so a fluent where() can refine this exact concession;
-            // a fresh to() starts a fresh constraint set.
+            // Remembered whole, written now or already there, so a fluent
+            // where() refines the concession asked for; a fresh to() starts a
+            // fresh constraint set.
             $this->lastGranted = $permissions;
             $this->freshGrantKeys = $fresh;
             $this->lastAuthority = $authority;
@@ -230,16 +235,35 @@ class GrantsPermissions
 
             // A write that wrote nothing announces nothing, as removals already
             // do. The chain state above still moves, so where() can refine it.
-            if (! $wrote) {
+            if ($entries === []) {
                 return;
             }
 
             $this->bumpCacheVersion($scope);
 
+            $written = new Collection(array_map(fn (GrantChange $entry): Model => $entry->permission, $entries));
+
             $this->dispatchWardenEvent($this->forbidding
-                ? new PermissionForbidden($authority, new Collection($permissions), $scope, $this->actor())
-                : new PermissionGranted($authority, new Collection($permissions), $scope, $this->actor()));
+                ? new PermissionForbidden($authority, $written, $scope, actor: $this->actor(), grants: $entries)
+                : new PermissionGranted($authority, $written, $scope, actor: $this->actor(), grants: $entries));
         });
+    }
+
+    private function grantChange(Model $grant, Model $permission, bool $dated, ?DateTimeInterface $expiresAt): ?GrantChange
+    {
+        if ($grant->wasRecentlyCreated) {
+            return new GrantChange(permission: $permission, created: true, expiresAt: Expiry::of($grant), previousExpiresAt: null);
+        }
+
+        if (! $dated) {
+            return null;
+        }
+
+        $previous = Expiry::of($grant);
+
+        return Expiry::apply($grant, $expiresAt)
+            ? new GrantChange(permission: $permission, created: false, expiresAt: Expiry::of($grant), previousExpiresAt: $previous)
+            : null;
     }
 
     /**

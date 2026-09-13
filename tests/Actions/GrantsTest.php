@@ -113,3 +113,15 @@ it('rejects entity strings that are not model classes', function (): void {
 it('rejects invalid permission inputs', function (): void {
     $this->warden->allow($this->user)->to([123]);
 })->throws(InvalidArgumentException::class, 'names or permission models');
+
+it('refines the whole request even when part of it was already granted', function (): void {
+    $this->warden->allow($this->user)->to('view', Account::class);
+
+    $this->warden->allow($this->user)->to(['view', 'update'], Account::class)->where('name', 'Acme');
+
+    $twins = Permission::query()->whereNotNull('options')->get();
+
+    expect($twins->pluck('name')->sort()->values()->all())->toBe(['update', 'view'])
+        ->and(Grant::query()->pluck('permission_id')->sort()->values()->all())
+        ->toBe($twins->pluck('id')->sort()->values()->all());
+});

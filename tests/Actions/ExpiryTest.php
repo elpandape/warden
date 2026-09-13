@@ -275,3 +275,62 @@ it('stays quiet when a grant pivot that casts nothing already holds the date', f
 
     Event::assertNotDispatched(PermissionGranted::class);
 });
+
+it('describes a new grant as created, born with its end date in one insert', function (): void {
+    $updates = 0;
+    Event::listen('eloquent.updated: '.Grant::class, function () use (&$updates): void {
+        $updates++;
+    });
+    Event::fake([PermissionGranted::class]);
+
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+
+    $change = Event::dispatched(PermissionGranted::class)->sole()[0]->grants[0];
+
+    expect($change->created)->toBeTrue()
+        ->and($change->expiresAt?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and($change->previousExpiresAt)->toBeNull()
+        ->and($updates)->toBe(0);
+});
+
+it('describes a moved grant date with the dates before and after', function (): void {
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+
+    Event::fake([PermissionGranted::class]);
+
+    $this->warden->allow($this->user)->until(Carbon::parse('2026-06-30 12:00:00'))->to('publish', Account::class);
+
+    $change = Event::dispatched(PermissionGranted::class)->sole()[0]->grants[0];
+
+    expect($change->created)->toBeFalse()
+        ->and($change->expiresAt?->toDateTimeString())->toBe('2026-06-30 12:00:00')
+        ->and($change->previousExpiresAt?->toDateTimeString())->toBe('2026-12-31 23:59:59');
+});
+
+it('describes a lifted grant date as null after the one it replaced', function (): void {
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+
+    Event::fake([PermissionGranted::class]);
+
+    $this->warden->allow($this->user)->until(null)->to('publish', Account::class);
+
+    $change = Event::dispatched(PermissionGranted::class)->sole()[0]->grants[0];
+
+    expect($change->created)->toBeFalse()
+        ->and($change->expiresAt)->toBeNull()
+        ->and($change->previousExpiresAt?->toDateTimeString())->toBe('2026-12-31 23:59:59');
+});
+
+it('describes a first end date on an endless grant as a renewal from null', function (): void {
+    $this->warden->allow($this->user)->to('publish', Account::class);
+
+    Event::fake([PermissionGranted::class]);
+
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+
+    $change = Event::dispatched(PermissionGranted::class)->sole()[0]->grants[0];
+
+    expect($change->created)->toBeFalse()
+        ->and($change->expiresAt?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and($change->previousExpiresAt)->toBeNull();
+});
