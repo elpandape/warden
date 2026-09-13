@@ -34,11 +34,14 @@ use ElPandaPe\Warden\Tests\Fixtures\CountingActorResolver;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
+use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
 
 // Fake ONLY Warden's events: model hooks (titles, tenancy stamps) must stay live.
 const WARDEN_EVENTS = [
@@ -367,6 +370,163 @@ it('announces the re-point on the forbid polarity too', function (): void {
 
     Event::assertDispatched(PermissionUnforbidden::class, 1);
     Event::assertDispatched(PermissionForbidden::class, 2);
+});
+
+it('announces an identical constrained chain as its ephemeral base alone', function (): void {
+    withForeignKeys();
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+    $twinGrant = Grant::query()->sole()->getKey();
+
+    $seen = [];
+    Event::listen(WARDEN_EVENTS, function (object $event) use (&$seen): void {
+        $seen[] = $event;
+    });
+
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+
+    expect(array_map(fn (object $event): string => $event::class, $seen))->toBe([
+        PermissionCreated::class,
+        PermissionGranted::class,
+        PermissionRevoked::class,
+        PermissionDeleted::class,
+    ]);
+
+    [$created, $granted, $revoked, $deleted] = $seen;
+
+    expect($created->permission->getAttribute('options'))->toBeNull()
+        ->and($granted->permissions->sole()->is($created->permission))->toBeTrue()
+        ->and($revoked->permissions->sole()->is($created->permission))->toBeTrue()
+        ->and($deleted->permission->is($created->permission))->toBeTrue()
+        ->and(Grant::query()->sole()->getKey())->toBe($twinGrant);
+});
+
+it('announces the twin a changed condition replaced', function (): void {
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+    $acme = Permission::query()->whereNotNull('options')->sole();
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Globex');
+
+    Event::assertDispatchedTimes(PermissionRevoked::class, 1);
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->permissions->count() === 2
+        && $event->permissions->first()?->is($acme) === true
+        && $event->permissions->last()?->getAttribute('options') === null
+        && collect($event->grants)->pluck('permission')->all() === $event->permissions->all());
+});
+
+it('announces the prohibition a changed condition lifted', function (): void {
+    $this->warden->forbid($this->user)->to('view', Account::class)->where('name', 'Acme');
+    $acme = Permission::query()->whereNotNull('options')->sole();
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->forbid($this->user)->to('view', Account::class)->where('name', 'Globex');
+
+    Event::assertDispatchedTimes(PermissionUnforbidden::class, 1);
+    Event::assertDispatched(PermissionUnforbidden::class, fn (PermissionUnforbidden $event): bool => $event->permissions->first()?->is($acme) === true
+        && $event->grants[0]->permission->is($acme));
+    Event::assertNotDispatched(PermissionRevoked::class);
+});
+
+it('stays silent when where() restates the condition of the twin it was given', function (): void {
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+    $twin = Permission::query()->whereNotNull('options')->sole();
+    $grant = Grant::query()->sole()->getKey();
+    $version = Cache::store('array')->get('warden:v:a');
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->allow($this->user)->to($twin)->where('name', 'Acme');
+
+    Event::assertNothingDispatched();
+
+    expect(Grant::query()->sole()->getKey())->toBe($grant)
+        ->and(Cache::store('array')->get('warden:v:a'))->toBe($version);
+});
+
+it('keeps a plain grant beside the twin when where() restates its condition', function (): void {
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $twin = Permission::query()->whereNotNull('options')->sole();
+    $grants = Grant::query()->orderBy('id')->pluck('id')->all();
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->allow($this->user)->to($twin)->where('name', 'Acme');
+
+    Event::assertNothingDispatched();
+
+    expect($grants)->toHaveCount(2)
+        ->and(Grant::query()->orderBy('id')->pluck('id')->all())->toBe($grants);
+});
+
+it('leaves the twin a throwing creation listener was told about', function (): void {
+    $globex = Account::query()->create(['name' => 'Globex'])->refresh();
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $outside = DB::transactionLevel();
+
+    $levels = [];
+    Event::listen(PermissionCreated::class, function () use (&$levels): void {
+        $levels[] = DB::transactionLevel();
+
+        throw new RuntimeException('interrupted');
+    });
+
+    expect(fn (): mixed => $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme'))
+        ->toThrow(RuntimeException::class, 'interrupted')
+        ->and($levels)->toBe([$outside])
+        ->and(Permission::query()->whereNotNull('options')->count())->toBe(1)
+        ->and(Gate::forUser($this->user)->allows('view', $globex))->toBeTrue();
+});
+
+it('finishes the re-point before a listener of the orphaned base can throw', function (): void {
+    withForeignKeys();
+    $acme = Account::query()->create(['name' => 'Acme'])->refresh();
+    $globex = Account::query()->create(['name' => 'Globex'])->refresh();
+
+    Event::listen(PermissionDeleted::class, function (): void {
+        throw new RuntimeException('interrupted');
+    });
+
+    expect(fn (): mixed => $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme'))
+        ->toThrow(RuntimeException::class, 'interrupted')
+        ->and(Gate::forUser($this->user)->allows('view', $acme))->toBeTrue()
+        ->and(Gate::forUser($this->user)->allows('view', $globex))->toBeFalse()
+        ->and(Permission::query()->whereNull('options')->exists())->toBeFalse();
+});
+
+it('announces every grant of a narrowing chain at the caller\'s transaction level', function (): void {
+    $levels = [];
+    $outside = DB::transactionLevel();
+
+    Event::listen(PermissionGranted::class, function () use (&$levels): void {
+        $levels[] = DB::transactionLevel();
+    });
+
+    DB::transaction(function (): void {
+        $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+    });
+
+    expect($levels)->toHaveCount(2)
+        ->and(array_unique($levels))->toBe([$outside + 1]);
+});
+
+it('keeps the catalog writes of a narrowing chain outside its own transaction', function (): void {
+    $levels = [];
+    $outside = DB::transactionLevel();
+
+    DB::transaction(function () use (&$levels): void {
+        $chain = $this->warden->allow($this->user)->to('view', Account::class);
+
+        Event::listen([PermissionCreated::class, PermissionDeleted::class], function () use (&$levels): void {
+            $levels[] = DB::transactionLevel();
+        });
+
+        $chain->where('name', 'Acme');
+    });
+
+    expect($levels)->toBe([$outside + 1, $outside + 1]);
 });
 
 it('carries the acting user in write events', function (): void {

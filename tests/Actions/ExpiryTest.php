@@ -200,6 +200,61 @@ it('keeps the end date of a twin when the grant model casts no dates', function 
         ->toBe('2026-12-31 23:59:59');
 });
 
+it('describes the constrained twin as created with the end date it carried', function (): void {
+    Event::fake([PermissionGranted::class]);
+
+    $this->warden->allow($this->user)->until($this->moment)->to('view', Account::class)->where('name', 'Acme');
+
+    Event::assertDispatched(PermissionGranted::class, fn (PermissionGranted $event): bool => $event->grants !== []
+        && $event->grants[0]->permission->getAttribute('options') !== null
+        && $event->grants[0]->created
+        && $event->grants[0]->expiresAt?->toDateTimeString() === '2026-12-31 23:59:59'
+        && ! $event->grants[0]->previousExpiresAt instanceof DateTimeInterface);
+});
+
+it('describes the end date a repeated chain moved on the twin, and the one its base left with', function (): void {
+    $this->warden->allow($this->user)->until($this->moment)->to('view', Account::class)->where('name', 'Acme');
+
+    Event::fake([PermissionGranted::class, PermissionRevoked::class]);
+
+    $this->warden->allow($this->user)->until(Carbon::parse('2027-06-30 12:00:00'))->to('view', Account::class)->where('name', 'Acme');
+
+    Event::assertDispatched(PermissionGranted::class, fn (PermissionGranted $event): bool => $event->grants !== []
+        && $event->grants[0]->permission->getAttribute('options') !== null
+        && ! $event->grants[0]->created
+        && $event->grants[0]->expiresAt?->toDateTimeString() === '2027-06-30 12:00:00'
+        && $event->grants[0]->previousExpiresAt?->toDateTimeString() === '2026-12-31 23:59:59');
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->grants[0]->permission->getAttribute('options') === null
+        && $event->grants[0]->expiresAt?->toDateTimeString() === '2027-06-30 12:00:00');
+});
+
+it('carries the later end date when the rows a timeless chain replaces disagree', function (): void {
+    $this->warden->allow($this->user)->until($this->moment)->to('view', Account::class)->where('name', 'Acme');
+    $this->warden->allow($this->user)->until(Carbon::parse('2027-06-30 12:00:00'))->to('view', Account::class);
+
+    Event::fake([PermissionGranted::class]);
+
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+
+    expect(Grant::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2027-06-30 12:00:00');
+    Event::assertDispatched(PermissionGranted::class, fn (PermissionGranted $event): bool => $event->grants !== []
+        && ! $event->grants[0]->created
+        && $event->grants[0]->previousExpiresAt?->toDateTimeString() === '2026-12-31 23:59:59');
+});
+
+it('keeps the end date a new twin carries when models may not silently discard attributes', function (): void {
+    config()->set('warden.models.grant', GuardedDatePivot::class);
+    app()->forgetInstance(Context::class);
+    Model::preventSilentlyDiscardingAttributes();
+
+    $this->warden->allow($this->user)->until($this->moment)->to('view', Account::class)->where('name', 'Acme');
+
+    $grant = Grant::query()->sole();
+
+    expect($grant->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and($grant->permission?->getAttribute('options'))->not->toBeNull();
+});
+
 it('keeps the end date of the rows a sync keeps', function (): void {
     $this->warden->assign('auditor')->until($this->moment)->to($this->user);
 

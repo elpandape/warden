@@ -7,6 +7,7 @@ namespace ElPandaPe\Warden\Actions;
 use BackedEnum;
 use Closure;
 use DateTimeInterface;
+use ElPandaPe\Warden\Actions\Concerns\RemovesByKey;
 use ElPandaPe\Warden\Actions\Concerns\ResolvesAuthority;
 use ElPandaPe\Warden\Actions\Concerns\ResolvesPermissions;
 use ElPandaPe\Warden\Constraints\Builder;
@@ -17,6 +18,7 @@ use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\ForbiddingPermission;
 use ElPandaPe\Warden\Events\GrantChange;
 use ElPandaPe\Warden\Events\GrantingPermission;
+use ElPandaPe\Warden\Events\GrantRemoval;
 use ElPandaPe\Warden\Events\PermissionForbidden;
 use ElPandaPe\Warden\Events\PermissionGranted;
 use ElPandaPe\Warden\Events\PermissionRevoked;
@@ -35,6 +37,7 @@ class GrantsPermissions
 {
     use Concerns\BumpsCacheVersion;
     use DispatchesEvents;
+    use RemovesByKey;
     use ResolvesAuthority;
     use ResolvesPermissions;
 
@@ -303,28 +306,6 @@ class GrantsPermissions
     }
 
     /**
-     * Every catalog row of this permission's shape, conditions aside.
-     *
-     * @return list<int|string>
-     */
-    private function siblingKeys(Model $permission): array
-    {
-        $keys = Context::resolve()->permissionClass()::query()
-            ->withoutGlobalScope(TenantScope::class)
-            ->where('name', $permission->getAttribute('name'))
-            ->where('entity_type', $permission->getAttribute('entity_type'))
-            ->where('entity_id', $permission->getAttribute('entity_id'))
-            ->where('only_owned', $permission->getAttribute('only_owned'))
-            ->where('scope', $permission->getAttribute('scope'))
-            ->toBase()
-            ->pluck('id')
-            ->all();
-
-        /** @var list<int|string> $keys */
-        return $keys;
-    }
-
-    /**
      * A call that wrote nothing leaves nothing to refine.
      *
      * Without this a vetoed to() keeps the previous concession armed, and the
@@ -372,78 +353,147 @@ class GrantsPermissions
 
         $this->rejectUnsatisfiable($group);
 
-        $grantClass = Context::resolve()->grantClass();
         $options = ConstraintSerializer::serialize($group);
 
-        /** @var list<array{0: Model, 1: Model}> $repointed */
-        $repointed = [];
+        $this->asOneWrite(function () use ($options): void {
+            $grantClass = Context::resolve()->grantClass();
 
-        // Deleting a grant and re-creating it against the twin is one edit: a
-        // failure between the two would leave the concession simply gone.
-        (new ($grantClass))->getConnection()->transaction(function () use (&$repointed, $grantClass, $options): void {
-            foreach ($this->lastGranted as $index => $permission) {
-                $twin = $this->twinWithOptions($permission, $options);
+            // Catalog writes stay outside the grant transaction, so a listener
+            // of the twin's creation can no longer roll back the re-point.
+            $targets = [];
+            $twins = [];
 
-                if ($twin->is($permission)) {
-                    continue; // @codeCoverageIgnore
+            foreach ($this->lastGranted as $base) {
+                $siblings = $this->siblingsOf($base);
+                $twin = $this->twinWithOptions($base, $options, $siblings);
+
+                // The chain was handed the twin itself: its condition, restated, edits nothing.
+                if ($twin->is($base)) {
+                    continue;
                 }
 
-                // Every sibling twin of this shape, not just the row resolved here:
-                // a second where() EDITS the rule, and leaving the previous twin's
-                // grant alive would make the two conditions authorise as a union.
-                $superseded = $grantClass::query()->withoutGlobalScope(TenantScope::class)
-                    ->whereIn('permission_id', $this->siblingKeys($permission))
+                $siblings[$this->modelKey($twin)] = $twin;
+                $twins[$this->modelKey($base)] = $twin;
+                $targets[] = [$base, $twin, $siblings];
+            }
+
+            [$removals, $changes] = $this->repoint($targets);
+
+            $this->lastGranted = array_map(fn (Model $permission): Model => $twins[$this->modelKey($permission)] ?? $permission, $this->lastGranted);
+
+            $this->announceRepoint($removals, $changes);
+
+            // A base row this chain just created, now orphaned, goes away.
+            foreach ($targets as [$base]) {
+                $orphaned = $base->wasRecentlyCreated
+                    && ! $grantClass::query()->withoutGlobalScope(TenantScope::class)
+                        ->where('permission_id', $this->modelKey($base))
+                        ->exists();
+
+                if ($orphaned) {
+                    $base->delete();
+                }
+            }
+        });
+
+        return $this;
+    }
+
+    /**
+     * Deleting a grant and re-pointing it to the twin is one edit: a failure
+     * between the two would leave the concession simply gone. Every sibling's
+     * grant goes, not just the base's: a second where() edits the rule, and
+     * leaving the previous twin's grant alive would authorise a union.
+     *
+     * @param  list<array{Model, Model, array<int|string, Model>}>  $targets
+     * @return array{list<GrantRemoval>, list<GrantChange>}
+     */
+    private function repoint(array $targets): array
+    {
+        $grantClass = Context::resolve()->grantClass();
+        $keyName = (new $grantClass)->getKeyName();
+
+        // As in grant(): a model that will not mass assign the date gets it from grantChange().
+        $insertsExpiry = (new $grantClass)->isFillable('expires_at');
+
+        return (new $grantClass)->getConnection()->transaction(function () use ($targets, $grantClass, $keyName, $insertsExpiry): array {
+            $removals = [];
+            $changes = [];
+
+            foreach ($targets as [, $twin, $siblings]) {
+                $held = $grantClass::query()->withoutGlobalScope(TenantScope::class)
+                    ->whereIn('permission_id', array_keys($siblings))
                     ->where('entity_type', $this->lastAuthority?->getMorphClass())
                     ->where('entity_id', $this->lastAuthority?->getKey())
                     ->where('forbidden', $this->forbidding)
-                    ->where('scope', $this->lastScope);
+                    ->where('scope', $this->lastScope)
+                    ->orderBy($keyName)
+                    ->get([$keyName, 'permission_id', 'expires_at']);
 
-                // Narrowing a concession must not widen its life: the rows
-                // about to be deleted carry the end date, and re-creating
-                // against the twin would silently hand back an endless grant.
-                $carried = $this->carriedExpiry(
-                    $superseded->clone()->get([$superseded->getModel()->getKeyName(), 'permission_id', 'expires_at']),
-                );
+                $expiresAt = $this->carriedExpiry($held);
+                $twinKey = $this->modelKey($twin);
+                $superseded = [];
 
-                $superseded->delete();
+                foreach ($held as $row) {
+                    if ((string) $row->permission_id !== (string) $twinKey) {
+                        $superseded[] = $row;
+                    }
+                }
 
-                $repointedGrant = $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
-                    'permission_id' => $this->modelKey($twin),
+                foreach ($this->deleteByKey($superseded) as $row) {
+                    $removals[] = new GrantRemoval(permission: $siblings[$row->permission_id], expiresAt: Expiry::of($row));
+                }
+
+                // The twin's row is kept, never deleted and recreated: it only takes the carried date.
+                $grant = $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
+                    'permission_id' => $twinKey,
                     'entity_type' => $this->lastAuthority?->getMorphClass(),
                     'entity_id' => $this->lastAuthority?->getKey(),
                     'forbidden' => $this->forbidding,
                     'scope' => $this->lastScope,
-                ]);
+                ], $insertsExpiry ? ['expires_at' => $expiresAt] : []);
 
-                Expiry::apply($repointedGrant, $carried);
+                $change = $this->grantChange($grant, $twin, dated: true, expiresAt: $expiresAt);
 
-                // A base row this action just created, now orphaned, goes away.
-                $orphaned = $permission->wasRecentlyCreated
-                    && ! $grantClass::query()->withoutGlobalScope(TenantScope::class)
-                        ->where('permission_id', $this->modelKey($permission))
-                        ->exists();
-
-                if ($orphaned) {
-                    $permission->delete();
+                if ($change instanceof GrantChange) {
+                    $changes[] = $change;
                 }
-
-                $this->lastGranted[$index] = $twin;
-                $repointed[] = [$permission, $twin];
             }
+
+            return [$removals, $changes];
         });
+    }
 
-        $this->bumpCacheVersion($this->lastScope);
+    /**
+     * @param  list<GrantRemoval>  $removals
+     * @param  list<GrantChange>  $changes
+     */
+    private function announceRepoint(array $removals, array $changes): void
+    {
+        if ($removals === [] && $changes === []) {
+            return;
+        }
 
-        // A narrowing chain is two writes: the audit trail says so, in order.
-        $this->dispatchWardenEvent($this->forbidding
-            ? new PermissionUnforbidden($this->lastAuthority, new Collection(array_column($repointed, 0)), $this->lastScope, $this->actor())
-            : new PermissionRevoked($this->lastAuthority, new Collection(array_column($repointed, 0)), $this->lastScope, $this->actor()));
+        $actor = $this->actor();
 
-        $this->dispatchWardenEvent($this->forbidding
-            ? new PermissionForbidden($this->lastAuthority, new Collection(array_column($repointed, 1)), $this->lastScope, $this->actor())
-            : new PermissionGranted($this->lastAuthority, new Collection(array_column($repointed, 1)), $this->lastScope, $this->actor()));
+        if ($removals !== []) {
+            // A delete by key fires no model hook; the twin's own save marks itself.
+            $this->bumpCacheVersion($this->lastScope);
 
-        return $this;
+            $permissions = new Collection(array_map(static fn (GrantRemoval $removal): Model => $removal->permission, $removals));
+
+            $this->dispatchWardenEvent($this->forbidding
+                ? new PermissionUnforbidden($this->lastAuthority, $permissions, $this->lastScope, actor: $actor, grants: $removals)
+                : new PermissionRevoked($this->lastAuthority, $permissions, $this->lastScope, actor: $actor, grants: $removals));
+        }
+
+        if ($changes !== []) {
+            $permissions = new Collection(array_map(static fn (GrantChange $change): Model => $change->permission, $changes));
+
+            $this->dispatchWardenEvent($this->forbidding
+                ? new PermissionForbidden($this->lastAuthority, $permissions, $this->lastScope, actor: $actor, grants: $changes)
+                : new PermissionGranted($this->lastAuthority, $permissions, $this->lastScope, actor: $actor, grants: $changes));
+        }
     }
 
     /**
@@ -512,29 +562,44 @@ class GrantsPermissions
     }
 
     /**
-     * @param  array{v: int, g: array<string, mixed>}  $options
+     * Every catalog row of this permission's shape, conditions aside, by key.
+     *
+     * @return array<int|string, Model>
      */
-    private function twinWithOptions(Model $base, array $options): Model
+    private function siblingsOf(Model $permission): array
     {
-        $permissionClass = Context::resolve()->permissionClass();
-
-        // Options compare in PHP: JSON equality is not portable across engines.
-        $candidates = $permissionClass::query()
+        $rows = Context::resolve()->permissionClass()::query()
             ->withoutGlobalScope(TenantScope::class)
-            ->where('name', $base->getAttribute('name'))
-            ->where('entity_type', $base->getAttribute('entity_type'))
-            ->where('entity_id', $base->getAttribute('entity_id'))
-            ->where('only_owned', $base->getAttribute('only_owned'))
-            ->where('scope', $base->getAttribute('scope'))
+            ->where('name', $permission->getAttribute('name'))
+            ->where('entity_type', $permission->getAttribute('entity_type'))
+            ->where('entity_id', $permission->getAttribute('entity_id'))
+            ->where('only_owned', $permission->getAttribute('only_owned'))
+            ->where('scope', $permission->getAttribute('scope'))
             ->get();
 
-        foreach ($candidates as $candidate) {
-            if (ConstraintSerializer::sameRule($candidate->getAttribute('options'), $options)) {
-                return $candidate;
+        $siblings = [];
+
+        foreach ($rows as $sibling) {
+            $siblings[$this->modelKey($sibling)] = $sibling;
+        }
+
+        return $siblings;
+    }
+
+    /**
+     * @param  array{v: int, g: array<string, mixed>}  $options
+     * @param  array<int|string, Model>  $siblings
+     */
+    private function twinWithOptions(Model $base, array $options, array $siblings): Model
+    {
+        // Options compare in PHP: JSON equality is not portable across engines.
+        foreach ($siblings as $sibling) {
+            if (ConstraintSerializer::sameRule($sibling->getAttribute('options'), $options)) {
+                return $sibling;
             }
         }
 
-        return $permissionClass::query()->create([
+        return Context::resolve()->permissionClass()::query()->create([
             'name' => $base->getAttribute('name'),
             'entity_type' => $base->getAttribute('entity_type'),
             'entity_id' => $base->getAttribute('entity_id'),

@@ -402,6 +402,19 @@ it('bumps again after commit for writes inside a transaction', function (): void
         ->and(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
 });
 
+it('advances the cache version once when where() narrows a grant', function (): void {
+    $other = User::query()->create(['name' => 'Ana']);
+    $this->warden->allow($other)->to('view', Account::class);
+    $chain = $this->warden->allow($this->user)->to('view', Account::class);
+    Cache::store('array')->put('warden:v:a', 40, 60);
+    Cache::store('array')->put('warden:v:g', 70, 60);
+
+    $chain->where('name', 'Acme');
+
+    expect(Cache::store('array')->get('warden:v:a'))->toBe(41)
+        ->and(Cache::store('array')->get('warden:v:g'))->toBe(71);
+});
+
 it('forgets what a listener cached when another listener rolls the grant back', function (): void {
     $seen = null;
     Event::listen(PermissionGranted::class, function () use (&$seen): void {
