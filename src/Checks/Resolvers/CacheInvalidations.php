@@ -135,27 +135,37 @@ final class CacheInvalidations
     {
         $context = Context::resolve();
         $key = $model->getKey();
+        $id = spl_object_id($model);
+
+        // PHP reuses object ids: what a vetoed delete read must not reach this one.
+        unset($this->cascading[$id], $this->doomed[$id]);
 
         if (! is_int($key) && ! is_string($key)) {
             return; // @codeCoverageIgnore
         }
 
+        if ($this->softDeleting($model)) {
+            return;
+        }
+
         if ($model::class === $context->permissionClass()) {
-            $this->doomed[spl_object_id($model)] = $this->grantsPointingAt($key);
+            $this->doomed[$id] = $this->grantsPointingAt($key);
+            $this->cascading[$id] = $this->scopesOf($context->grantClass(), 'permission_id', $key);
+
+            return;
         }
 
-        $scopes = match ($model::class) {
-            $context->permissionClass() => $this->scopesOf($context->grantClass(), 'permission_id', $key),
-            $context->roleClass() => [
-                ...$this->scopesOf($context->assignedRoleClass(), 'role_id', $key),
-                ...$this->scopesOf($context->grantClass(), 'entity_id', $key, $model->getMorphClass()),
-            ],
-            default => null,
-        };
-
-        if ($scopes !== null) {
-            $this->cascading[spl_object_id($model)] = $scopes;
+        if ($model::class !== $context->roleClass()) {
+            return;
         }
+
+        $morph = $model->getMorphClass();
+
+        $this->cascading[$id] = [
+            ...$this->scopesOf($context->assignedRoleClass(), 'role_id', $key),
+            ...$this->scopesOf($context->grantClass(), 'entity_id', $key, $morph),
+            ...$this->scopesOf($context->assignedRoleClass(), 'entity_id', $key, $morph),
+        ];
     }
 
     /**
@@ -182,7 +192,7 @@ final class CacheInvalidations
             $this->mark($scope);
         }
 
-        $this->sweepStrandedGrants($model);
+        $this->sweepHoldings($model);
     }
 
     /**
@@ -285,15 +295,15 @@ final class CacheInvalidations
     }
 
     /**
-     * A role holds its grants through polymorphic columns, which no foreign key
-     * reaches: deleting the role would otherwise leave them behind forever,
-     * invisible to warden:clean.
+     * A role holds grants, and the roles nested inside it, through polymorphic
+     * columns no foreign key reaches: deleting the role would otherwise leave
+     * both behind, and RoleClosure::reaching() would still climb the edges.
      */
-    private function sweepStrandedGrants(Model $model): void
+    private function sweepHoldings(Model $model): void
     {
         $context = Context::resolve();
 
-        if ($model::class !== $context->roleClass()) {
+        if ($model::class !== $context->roleClass() || $this->softDeleting($model)) {
             return;
         }
 
@@ -303,12 +313,23 @@ final class CacheInvalidations
             return; // @codeCoverageIgnore
         }
 
-        $context->grantClass()::query()
-            ->withoutGlobalScopes()
-            ->getQuery()
-            ->where('entity_type', $model->getMorphClass())
-            ->where('entity_id', $key)
-            ->delete();
+        foreach ([$context->grantClass(), $context->assignedRoleClass()] as $pivot) {
+            $pivot::query()
+                ->withoutGlobalScopes()
+                ->getQuery()
+                ->where('entity_type', $model->getMorphClass())
+                ->where('entity_id', $key)
+                ->delete();
+        }
+    }
+
+    /**
+     * Model::delete() fires the delete events for a soft delete too, yet the
+     * row stays and nothing cascades.
+     */
+    private function softDeleting(Model $model): bool
+    {
+        return method_exists($model, 'isForceDeleting') && $model->isForceDeleting() === false;
     }
 
     /**

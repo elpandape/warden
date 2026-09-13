@@ -103,3 +103,17 @@ function migrateRemoteUsers(?string $textKeyCollation = null): void
         $blueprint->timestamps();
     });
 }
+
+function addSoftDeletesToRoles(): void
+{
+    Schema::table('roles', function (Blueprint $blueprint): void {
+        $blueprint->softDeletes();
+    });
+}
+
+function addSoftDeletesToPermissions(): void
+{
+    Schema::table('permissions', function (Blueprint $blueprint): void {
+        $blueprint->softDeletes();
+    });
+}

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\GrantRemoval;
 use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
@@ -14,6 +15,7 @@ use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\FixedActorResolver;
+use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingPermission;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Eloquent\Model;
@@ -21,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 
+use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToPermissions;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
 
@@ -367,4 +370,20 @@ it('announces no revoke for an old grant that names a type but no holder', funct
 
     Event::assertDispatchedTimes(PermissionRevoked::class, 1);
     Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => ! $event->authority instanceof Model);
+});
+
+it('leaves a soft-deleted permission and its grants in place and announces no cascade', function (): void {
+    withForeignKeys();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $this->warden->allow($this->user)->to('publish');
+
+    Event::fake([PermissionDeleted::class, PermissionRevoked::class]);
+
+    SoftDeletingPermission::query()->where('name', 'publish')->sole()->delete();
+
+    Event::assertDispatched(PermissionDeleted::class);
+    Event::assertNotDispatched(PermissionRevoked::class);
+    expect(Grant::query()->withoutGlobalScopes()->count())->toBe(1);
 });
