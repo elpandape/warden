@@ -373,6 +373,27 @@ it('announces no revoke for an old grant that names a type but no holder', funct
     Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => ! $event->authority instanceof Model);
 });
 
+it('announces a permission cascade in grant-key order, whatever order the engine reads it in', function (): void {
+    withForeignKeys();
+
+    $ana = User::query()->create(['name' => 'Ana']);
+    $luis = User::query()->create(['name' => 'Luis']);
+
+    $this->warden->allow($luis)->to('publish');
+    $this->warden->allow($ana)->to('publish');
+
+    Event::fake([PermissionRevoked::class]);
+
+    Permission::query()->where('name', 'publish')->sole()->delete();
+
+    $revoked = Event::dispatched(PermissionRevoked::class)
+        ->map(fn (array $arguments): mixed => $arguments[0]->authority?->getKey())
+        ->values()
+        ->all();
+
+    expect($revoked)->toBe([$luis->getKey(), $ana->getKey()]);
+});
+
 it('reads nothing to announce a permission cascade when events are disabled', function (): void {
     withForeignKeys();
     config()->set('warden.events_enabled', false);

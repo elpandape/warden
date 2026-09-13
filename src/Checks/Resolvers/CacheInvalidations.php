@@ -306,10 +306,9 @@ final class CacheInvalidations
     {
         // Models, not the base builder: Expiry::of() reads the end date the way
         // the write paths do.
-        $rows = Context::resolve()->grantClass()::query()
-            ->withoutGlobalScopes()
-            ->where('permission_id', $permissionKey)
-            ->get(['entity_type', 'entity_id', 'forbidden', 'scope', 'expires_at']);
+        $rows = $this->pivotRows(Context::resolve()->grantClass(), 'permission_id', $permissionKey, null, [
+            'entity_type', 'entity_id', 'forbidden', 'scope', 'expires_at',
+        ]);
 
         /** @var list<array{string|null, int|string|null, bool, int|string|null, CarbonImmutable|null}> $grants */
         $grants = $rows->map(function (Model $grant): array {
