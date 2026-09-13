@@ -459,9 +459,9 @@ it('carries the deleted role in each retraction without the relations the caller
     $retraction = ($this->retractions)()->sole();
     $restored = unserialize(serialize($retraction));
 
-    expect($retraction->roles->sole()->getRelations())->toBe([])
-        ->and($retraction->assignments[0]->role->getRelations())->toBe([])
-        ->and($restored->assignments[0]->role->getRelations())->toBe([])
+    expect($retraction->roles->sole()->getRelations())->toBeEmpty()
+        ->and($retraction->assignments[0]->role->getRelations())->toBeEmpty()
+        ->and($restored->assignments[0]->role->getRelations())->toBeEmpty()
         ->and($editor->relationLoaded('permissions'))->toBeTrue();
 });
 
