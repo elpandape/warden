@@ -534,6 +534,20 @@ it('keeps the catalog writes of a narrowing chain outside its own transaction', 
     expect($levels)->toBe([$outside + 1, $outside + 1]);
 });
 
+it('undoes the re-point when a listener of the narrowing grant throws inside the caller\'s transaction', function (): void {
+    $this->warden->allow($this->user)->to('view', Account::class);
+    $plain = Permission::query()->sole();
+
+    Event::listen(PermissionGranted::class, function (): void {
+        throw new RuntimeException('interrupted');
+    });
+
+    expect(fn (): mixed => DB::transaction(fn (): mixed => $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme')))
+        ->toThrow(RuntimeException::class, 'interrupted')
+        ->and(Grant::query()->sole()->permission_id)->toBe($plain->getKey())
+        ->and(Permission::query()->count())->toBe(1);
+});
+
 it('carries the acting user in write events', function (): void {
     $admin = User::query()->create(['name' => 'Admin']);
     $this->actingAs($admin);
@@ -797,6 +811,7 @@ it('announces only the roles an authority gained', function (): void {
 
 it('keeps each assignment event to its own authority, in the order asked', function (): void {
     $other = User::query()->create(['name' => 'Luis']);
+    Role::query()->create(['name' => 'auditor']);
     $this->warden->assign('editor')->to($other);
 
     Event::fake(WARDEN_EVENTS);
@@ -1154,6 +1169,61 @@ it('photographs a partially loaded role from its whole row, a column it never re
         ->and($updates[0]->before)->toBe(RoleSnapshot::of($role))
         ->and($updates[0]->after)->toBe([...RoleSnapshot::of($role), 'title' => 'Chief editor'])
         ->and($updates[0]->changed)->toBe(['title']);
+});
+
+it('reads the snapshot columns a partially loaded row is missing in one query', function (): void {
+    Permission::query()->create(['name' => 'delete-accounts', 'entity_type' => Account::class]);
+    Role::query()->create(['name' => 'editor']);
+    $permission = Permission::query()->select(['id', 'title'])->sole();
+    $role = Role::query()->select(['id'])->sole();
+    $selects = fn (): int => collect(DB::getQueryLog())->filter(fn (array $entry): bool => str_starts_with($entry['query'], 'select'))->count();
+
+    Event::fake(WARDEN_EVENTS);
+    DB::enableQueryLog();
+
+    $permission->update(['title' => 'Remove accounts']);
+    $permissionReads = $selects();
+    DB::flushQueryLog();
+    $role->update(['title' => 'Chief editor']);
+
+    expect($permissionReads)->toBe(1)
+        ->and($selects())->toBe(1);
+    Event::assertDispatched(PermissionUpdated::class);
+    Event::assertDispatched(RoleUpdated::class);
+});
+
+it('reads nothing more to photograph a whole row', function (): void {
+    $permission = Permission::query()->create(['name' => 'delete-accounts', 'entity_type' => Account::class])->refresh();
+    $role = Role::query()->create(['name' => 'editor'])->refresh();
+
+    Event::fake(WARDEN_EVENTS);
+    DB::enableQueryLog();
+
+    $permission->update(['title' => 'Remove accounts']);
+    $role->update(['title' => 'Chief editor']);
+
+    $selects = collect(DB::getQueryLog())->filter(fn (array $entry): bool => str_starts_with($entry['query'], 'select'));
+
+    expect($selects->all())->toBeEmpty();
+    Event::assertDispatched(PermissionUpdated::class);
+    Event::assertDispatched(RoleUpdated::class);
+});
+
+it('reads nothing more for a partially loaded row when events are disabled', function (): void {
+    Permission::query()->create(['name' => 'delete-accounts', 'entity_type' => Account::class]);
+    Role::query()->create(['name' => 'editor']);
+    $permission = Permission::query()->select(['id', 'title'])->sole();
+    $role = Role::query()->select(['id'])->sole();
+    config()->set('warden.events_enabled', false);
+
+    DB::enableQueryLog();
+
+    $permission->update(['title' => 'Remove accounts']);
+    $role->update(['title' => 'Chief editor']);
+
+    $selects = collect(DB::getQueryLog())->filter(fn (array $entry): bool => str_starts_with($entry['query'], 'select'));
+
+    expect($selects->all())->toBeEmpty();
 });
 
 it('carries the acting user on catalog edits', function (): void {
