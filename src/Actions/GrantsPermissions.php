@@ -203,6 +203,10 @@ class GrantsPermissions
             $fresh = [];
             $entries = [];
 
+            // A grant model that will not mass assign the date would drop it
+            // silently, or throw: grantChange() then writes it on its own.
+            $insertsExpiry = $this->expiryDeclared && (new $grantClass)->isFillable('expires_at');
+
             foreach ($permissions as $permission) {
                 // firstOrCreate self-heals concurrent races via createOrFirst on Laravel 12+.
                 $grant = $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
@@ -211,7 +215,7 @@ class GrantsPermissions
                     'entity_id' => $authority?->getKey(),
                     'forbidden' => $this->forbidding,
                     'scope' => $scope,
-                ], $this->expiryDeclared ? ['expires_at' => $this->expiresAt] : []);
+                ], $insertsExpiry ? ['expires_at' => $this->expiresAt] : []);
 
                 if ($grant->wasRecentlyCreated) {
                     $fresh[] = $this->modelKey($grant);
@@ -252,6 +256,10 @@ class GrantsPermissions
     private function grantChange(Model $grant, Model $permission, bool $dated, ?DateTimeInterface $expiresAt): ?GrantChange
     {
         if ($grant->wasRecentlyCreated) {
+            if ($dated) {
+                Expiry::apply($grant, $expiresAt);
+            }
+
             return new GrantChange(permission: $permission, created: true, expiresAt: Expiry::of($grant), previousExpiresAt: null);
         }
 

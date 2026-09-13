@@ -11,8 +11,10 @@ use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\BarePivot;
+use ElPandaPe\Warden\Tests\Fixtures\GuardedDatePivot;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -27,6 +29,10 @@ beforeEach(function (): void {
     $this->warden = app(Warden::class);
     $this->user = User::query()->create(['name' => 'Ada']);
     $this->moment = Carbon::parse('2026-12-31 23:59:59');
+});
+
+afterEach(function (): void {
+    Model::preventSilentlyDiscardingAttributes(false);
 });
 
 dataset('the plain rule', [
@@ -333,4 +339,26 @@ it('describes a first end date on an endless grant as a renewal from null', func
     expect($change->created)->toBeFalse()
         ->and($change->expiresAt?->toDateTimeString())->toBe('2026-12-31 23:59:59')
         ->and($change->previousExpiresAt)->toBeNull();
+});
+
+it('keeps the end date of a new grant when the grant model will not mass assign it', function (): void {
+    config()->set('warden.models.grant', GuardedDatePivot::class);
+    app()->forgetInstance(Context::class);
+    Event::fake([PermissionGranted::class]);
+
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+
+    expect(Grant::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and(Event::dispatched(PermissionGranted::class)->sole()[0]->grants[0]->expiresAt?->toDateTimeString())
+        ->toBe('2026-12-31 23:59:59');
+});
+
+it('keeps the end date of a new grant when models may not silently discard attributes', function (): void {
+    config()->set('warden.models.grant', GuardedDatePivot::class);
+    app()->forgetInstance(Context::class);
+    Model::preventSilentlyDiscardingAttributes();
+
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+
+    expect(Grant::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59');
 });
