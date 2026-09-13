@@ -3,19 +3,26 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use ElPandaPe\Warden\Events\GrantRemoval;
 use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
+use ElPandaPe\Warden\Events\PermissionRevoked;
+use ElPandaPe\Warden\Events\PermissionUnforbidden;
 use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
+use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\FixedActorResolver;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
+use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
 
 beforeEach(function (): void {
     migrateWardenTables();
@@ -231,4 +238,133 @@ it('carries the rows a RoleDeleted describes across a queue by value', function 
     expect($restored->heldGrants)->toEqual($heldGrants)
         ->and($restored->heldGrants[0]['expires_at']?->equalTo($ends))->toBeTrue()
         ->and($restored->heldRoles)->toBe($heldRoles);
+});
+
+it('carries each removed grant and its end date in a permission cascade', function (): void {
+    withForeignKeys();
+
+    $ends = CarbonImmutable::now()->addDay()->startOfSecond();
+    $luis = User::query()->create(['name' => 'Luis']);
+    $ana = User::query()->create(['name' => 'Ana']);
+
+    $this->warden->allow($this->user)->until($ends)->to('edit-site');
+    $this->warden->allow($luis)->to('edit-site');
+    $this->warden->forbid($ana)->to('edit-site');
+
+    Event::fake([PermissionRevoked::class, PermissionUnforbidden::class]);
+
+    $permission = Permission::query()->where('name', 'edit-site')->sole();
+    $permission->delete();
+
+    Event::assertDispatchedTimes(PermissionRevoked::class, 2);
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($this->user) === true
+        && count($event->grants) === 1
+        && $event->grants[0] instanceof GrantRemoval
+        && $event->grants[0]->permission->is($permission)
+        && $event->grants[0]->expiresAt?->equalTo($ends) === true);
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($luis) === true
+        && count($event->grants) === 1
+        && $event->grants[0]->permission->is($permission)
+        && ! $event->grants[0]->expiresAt instanceof CarbonImmutable);
+    Event::assertDispatched(PermissionUnforbidden::class, fn (PermissionUnforbidden $event): bool => $event->authority?->is($ana) === true
+        && count($event->grants) === 1
+        && $event->grants[0]->permission->is($permission)
+        && ! $event->grants[0]->expiresAt instanceof CarbonImmutable);
+
+    expect(Grant::query()->withoutGlobalScopes()->count())->toBe(0);
+});
+
+it('announces a cascaded grant that had already expired, with the date it had', function (): void {
+    withForeignKeys();
+
+    $ends = CarbonImmutable::now()->addDay()->startOfSecond();
+    $this->warden->allow($this->user)->until($ends)->to('edit-site');
+
+    $this->travel(2)->days();
+
+    Event::fake([PermissionRevoked::class]);
+
+    Permission::query()->where('name', 'edit-site')->sole()->delete();
+
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($this->user) === true
+        && count($event->grants) === 1
+        && $event->grants[0]->expiresAt?->equalTo($ends) === true);
+
+    expect(Grant::query()->withoutGlobalScopes()->count())->toBe(0);
+});
+
+it('keeps an everyone-grant null while naming a holder its tenant hides', function (): void {
+    withForeignKeys();
+
+    $this->warden->tenant()->to(7);
+    $this->warden->allow('auditor')->to('publish');
+    $this->warden->allowEveryone()->to('publish');
+
+    $this->warden->tenant()->to(8);
+
+    Event::fake([PermissionRevoked::class]);
+
+    Permission::query()->withoutGlobalScopes()->where('name', 'publish')->sole()->delete();
+
+    Event::assertDispatchedTimes(PermissionRevoked::class, 2);
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority instanceof Role
+        && $event->authority->getAttribute('name') === 'auditor'
+        && $event->scope === 7
+        && count($event->grants) === 1);
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => ! $event->authority instanceof Model
+        && $event->scope === 7
+        && count($event->grants) === 1);
+
+    expect(Grant::query()->withoutGlobalScopes()->count())->toBe(0);
+});
+
+it('announces nothing for a cascaded holder it cannot name', function (): void {
+    withForeignKeys();
+
+    $luis = User::query()->create(['name' => 'Luis']);
+    $this->warden->allow($luis)->to('publish');
+
+    $permission = Permission::query()->where('name', 'publish')->sole();
+
+    DB::table('grants')->insert([
+        'permission_id' => $permission->getKey(),
+        'entity_type' => 'ghost',
+        'entity_id' => 1,
+        'forbidden' => false,
+        'scope' => null,
+    ]);
+    DB::table('users')->where('id', $luis->getKey())->delete();
+
+    Log::spy();
+    Event::fake([PermissionRevoked::class]);
+
+    $permission->delete();
+
+    Event::assertNotDispatched(PermissionRevoked::class);
+    Log::shouldHaveReceived('warning')->once()->withArgs(
+        fn (string $message): bool => $message === 'Warden: no model class maps the morph type [ghost], so its rows cannot be named.',
+    );
+    expect(Grant::query()->withoutGlobalScopes()->count())->toBe(0);
+});
+
+it('announces no revoke for an old grant that names a type but no holder', function (): void {
+    withForeignKeys();
+
+    $this->warden->allowEveryone()->to('publish');
+    $permission = Permission::query()->where('name', 'publish')->sole();
+
+    DB::table('grants')->insert([
+        'permission_id' => $permission->getKey(),
+        'entity_type' => $this->user->getMorphClass(),
+        'entity_id' => null,
+        'forbidden' => false,
+        'scope' => null,
+    ]);
+
+    Event::fake([PermissionRevoked::class]);
+
+    $permission->delete();
+
+    Event::assertDispatchedTimes(PermissionRevoked::class, 1);
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => ! $event->authority instanceof Model);
 });

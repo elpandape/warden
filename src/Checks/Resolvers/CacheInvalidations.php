@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Checks\Resolvers;
 
+use Carbon\CarbonImmutable;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\ActorResolver;
+use ElPandaPe\Warden\Events\GrantRemoval;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
 use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\Expiry;
+use ElPandaPe\Warden\Support\MorphHydrator;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 
 /**
  * What happens when rows change outside the fluent actions: the counter moves,
@@ -30,7 +32,7 @@ final class CacheInvalidations
     /** @var array<int, list<int|string|null>> */
     private array $cascading = [];
 
-    /** @var array<int, list<array{string|null, int|string|null, bool, int|string|null}>> */
+    /** @var array<int, list<array{string|null, int|string|null, bool, int|string|null, CarbonImmutable|null}>> */
     private array $doomed = [];
 
     public function __construct(private readonly CacheKeyVersioner $versioner) {}
@@ -202,10 +204,11 @@ final class CacheInvalidations
 
         $actor = app(ActorResolver::class)->resolve();
         $permissions = new Collection([$model]);
+        $authorities = $this->authoritiesOf($grants);
 
-        foreach ($grants as [$type, $key, $forbidden, $scope]) {
+        foreach ($grants as [$type, $key, $forbidden, $scope, $expiresAt]) {
             $everyone = $type === null && $key === null;
-            $authority = $everyone ? null : $this->hydrate($type, $key);
+            $authority = $type === null || $key === null ? null : $authorities[MorphHydrator::key($type, $key)] ?? null;
 
             // Only a row with neither holder column reached everyone. Any other
             // row whose holder cannot be named authorized nobody, and a null
@@ -214,9 +217,11 @@ final class CacheInvalidations
                 continue;
             }
 
+            $removed = [new GrantRemoval(permission: $model, expiresAt: $expiresAt)];
+
             Announcer::announce($forbidden
-                ? new PermissionUnforbidden($authority, $permissions, $scope, actor: $actor)
-                : new PermissionRevoked($authority, $permissions, $scope, actor: $actor));
+                ? new PermissionUnforbidden($authority, $permissions, $scope, actor: $actor, grants: $removed)
+                : new PermissionRevoked($authority, $permissions, $scope, actor: $actor, grants: $removed));
         }
     }
 
@@ -233,44 +238,50 @@ final class CacheInvalidations
     }
 
     /**
-     * @return list<array{string|null, int|string|null, bool, int|string|null}>
+     * @return list<array{string|null, int|string|null, bool, int|string|null, CarbonImmutable|null}>
      */
     private function grantsPointingAt(int|string $permissionKey): array
     {
+        // Models, not the base builder: Expiry::of() reads the end date the way
+        // the write paths do.
         $rows = Context::resolve()->grantClass()::query()
             ->withoutGlobalScopes()
-            ->getQuery()
             ->where('permission_id', $permissionKey)
-            ->get(['entity_type', 'entity_id', 'forbidden', 'scope']);
+            ->get(['entity_type', 'entity_id', 'forbidden', 'scope', 'expires_at']);
 
-        /** @var list<array{string|null, int|string|null, bool, int|string|null}> $grants */
-        $grants = $rows->map(fn (object $row): array => [
-            is_string($row->entity_type) ? $row->entity_type : null,
-            is_int($row->entity_id) || is_string($row->entity_id) ? $row->entity_id : null,
-            (bool) $row->forbidden,
-            is_int($row->scope) || is_string($row->scope) ? $row->scope : null,
-        ])->values()->all();
+        /** @var list<array{string|null, int|string|null, bool, int|string|null, CarbonImmutable|null}> $grants */
+        $grants = $rows->map(function (Model $grant): array {
+            $type = $grant->getAttribute('entity_type');
+            $key = $grant->getAttribute('entity_id');
+            $scope = $grant->getAttribute('scope');
+
+            return [
+                is_string($type) ? $type : null,
+                is_int($key) || is_string($key) ? $key : null,
+                (bool) $grant->getAttribute('forbidden'),
+                is_int($scope) || is_string($scope) ? $scope : null,
+                Expiry::of($grant),
+            ];
+        })->values()->all();
 
         return $grants;
     }
 
-    private function hydrate(?string $type, int|string|null $key): ?Model
+    /**
+     * @param  list<array{string|null, int|string|null, bool, int|string|null, CarbonImmutable|null}>  $grants
+     * @return array<string, Model>
+     */
+    private function authoritiesOf(array $grants): array
     {
-        if ($type === null || $key === null) {
-            return null;
+        $pairs = [];
+
+        foreach ($grants as [$type, $key]) {
+            if ($type !== null && $key !== null) {
+                $pairs[] = [$type, $key];
+            }
         }
 
-        $class = Relation::getMorphedModel($type) ?? $type;
-
-        if (! is_subclass_of($class, Model::class)) {
-            Log::warning("Warden: no model class maps the morph type [{$type}], so its rows cannot be named.", ['ids' => [$key]]);
-
-            return null;
-        }
-
-        // Unscoped: naming a holder is not an authorization read, and a tenant
-        // or soft-delete filter would hide one the cascade still reached.
-        return $class::query()->withoutGlobalScopes()->find($key);
+        return MorphHydrator::many($pairs);
     }
 
     /**
