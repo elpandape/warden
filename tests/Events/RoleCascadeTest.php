@@ -312,7 +312,10 @@ it('skips a holder whose row is gone and warns about a type no class maps', func
     $editor->delete();
 
     expect(($this->retractions)()->sole()->authority->is($luis))->toBeTrue();
-    Log::shouldHaveReceived('warning')->once();
+    Log::shouldHaveReceived('warning')->once()->withArgs(
+        fn (string $message, array $context): bool => $message === 'Warden: no model class maps the morph type [nothing.maps.here], so its rows cannot be named.'
+            && $context === ['entity_type' => 'nothing.maps.here', 'ids' => [1]],
+    );
 });
 
 it('drops a context no class maps instead of reading it as unrestricted', function (): void {
@@ -347,7 +350,10 @@ it('drops a context no class maps instead of reading it as unrestricted', functi
     expect($retraction->authority->is($this->ana))->toBeTrue()
         ->and($retraction->assignments)->toHaveCount(1)
         ->and($retraction->assignments[0]->restrictedTo)->toBeNull();
-    Log::shouldHaveReceived('warning')->once();
+    Log::shouldHaveReceived('warning')->once()->withArgs(
+        fn (string $message, array $context): bool => $message === 'Warden: no model class maps the morph type [nothing.maps.here], so its rows cannot be named.'
+            && $context === ['entity_type' => 'nothing.maps.here', 'ids' => [1, 2]],
+    );
 });
 
 it('never reads a half-written restriction as unrestricted', function (): void {
@@ -411,6 +417,34 @@ it('cascades once a soft-deleting role is force-deleted', function (): void {
 
     expect(($this->retractions)()->sole()->authority->is($this->ana))->toBeTrue()
         ->and(Grant::query()->withoutGlobalScopes()->exists())->toBeFalse();
+});
+
+it('announces what a trashed role still held once it is force-deleted', function (): void {
+    addSoftDeletesToRoles();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+
+    $editor = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->assign('editor')->to($this->ana);
+
+    Event::fake([RoleDeleted::class, RoleRetracted::class]);
+
+    $editor->delete();
+
+    Event::assertDispatchedTimes(RoleDeleted::class, 1);
+    Event::assertNotDispatched(RoleRetracted::class);
+
+    SoftDeletingRole::withTrashed()->whereKey($editor->getKey())->sole()->forceDelete();
+
+    $deletions = Event::dispatched(RoleDeleted::class)->map(fn (array $arguments): RoleDeleted => $arguments[0])->values();
+
+    expect($deletions)->toHaveCount(2)
+        ->and($deletions[0]->heldGrants)->toBeEmpty()
+        ->and($deletions[1]->heldGrants)->toHaveCount(1)
+        ->and($deletions[1]->heldGrants[0]['permission']['name'])->toBe('publish')
+        ->and(($this->retractions)()->sole()->authority->is($this->ana))->toBeTrue()
+        ->and(Grant::query()->withoutGlobalScopes()->count())->toBe(0)
+        ->and(AssignedRole::query()->withoutGlobalScopes()->count())->toBe(0);
 });
 
 it('carries the deleted role in each retraction without the relations the caller loaded on it', function (): void {

@@ -478,6 +478,35 @@ it('leaves a soft-deleted permission and its grants in place and announces no ca
     expect(Grant::query()->withoutGlobalScopes()->count())->toBe(1);
 });
 
+it('cascades and announces what a trashed permission still granted once it is force-deleted', function (): void {
+    withForeignKeys();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $luis = User::query()->create(['name' => 'Luis']);
+    $this->warden->allow($this->user)->to('publish');
+    $this->warden->forbid($luis)->to('publish');
+
+    Event::fake([PermissionDeleted::class, PermissionRevoked::class, PermissionUnforbidden::class]);
+
+    $permission = SoftDeletingPermission::query()->where('name', 'publish')->sole();
+    $permission->delete();
+
+    Event::assertDispatchedTimes(PermissionDeleted::class, 1);
+    Event::assertNotDispatched(PermissionRevoked::class);
+    Event::assertNotDispatched(PermissionUnforbidden::class);
+
+    SoftDeletingPermission::withTrashed()->whereKey($permission->getKey())->sole()->forceDelete();
+
+    Event::assertDispatchedTimes(PermissionDeleted::class, 2);
+    Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($this->user) === true
+        && count($event->grants) === 1
+        && $event->grants[0]->permission->is($permission));
+    Event::assertDispatched(PermissionUnforbidden::class, fn (PermissionUnforbidden $event): bool => $event->authority?->is($luis) === true
+        && count($event->grants) === 1);
+    expect(Grant::query()->withoutGlobalScopes()->count())->toBe(0);
+});
+
 it('lets a listener of a soft-deleted permission already see it grant nothing', function (): void {
     withForeignKeys();
     addSoftDeletesToPermissions();
