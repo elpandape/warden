@@ -373,6 +373,27 @@ it('announces no revoke for an old grant that names a type but no holder', funct
     Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => ! $event->authority instanceof Model);
 });
 
+it('reads nothing to announce a permission cascade when events are disabled', function (): void {
+    withForeignKeys();
+    config()->set('warden.events_enabled', false);
+    $this->warden->allow($this->user)->to('publish');
+    $permission = Permission::query()->where('name', 'publish')->sole();
+
+    Event::fake([PermissionDeleted::class, PermissionRevoked::class]);
+    DB::enableQueryLog();
+
+    $permission->delete();
+
+    $announcing = collect(DB::getQueryLog())
+        ->pluck('query')
+        ->filter(fn (string $query): bool => str_contains($query, 'expires_at'));
+
+    expect($announcing->all())->toBeEmpty()
+        ->and(Grant::query()->withoutGlobalScopes()->exists())->toBeFalse();
+    Event::assertNotDispatched(PermissionDeleted::class);
+    Event::assertNotDispatched(PermissionRevoked::class);
+});
+
 it('leaves a soft-deleted permission and its grants in place and announces no cascade', function (): void {
     withForeignKeys();
     addSoftDeletesToPermissions();

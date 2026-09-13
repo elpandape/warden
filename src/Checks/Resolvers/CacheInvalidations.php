@@ -166,7 +166,8 @@ final class CacheInvalidations
             // granting at once: the scopes its grants live in move all the same.
             $this->cascading[$id] = $this->scopesOf($context->grantClass(), 'permission_id', $key);
 
-            if (! $this->softDeleting($model)) {
+            // Only a hard delete cascades, and its grants are read only to be announced.
+            if (! $this->softDeleting($model) && Config::eventsEnabled()) {
                 $this->doomed[$id] = $this->grantsPointingAt($key);
             }
 
@@ -240,10 +241,10 @@ final class CacheInvalidations
     }
 
     /**
-     * The cascade removed grants nobody asked to remove: say so, with the
-     * payload shape the write paths already publish. Called after the catalog
-     * event, so a listener of that event that throws loses these announcements
-     * and nothing else.
+     * The cascade removed rows nobody asked to remove — a role's assignments,
+     * a permission's grants: say so, with the payload shape the write paths
+     * already publish. Called after the catalog event, so a listener of that
+     * event that throws loses these announcements and nothing else.
      */
     public function announceCascade(Model $model): void
     {
@@ -258,8 +259,7 @@ final class CacheInvalidations
         $grants = $this->doomed[$object] ?? [];
         unset($this->doomed[$object]);
 
-        // Events off: the hydration reads below would name nobody.
-        if ($model::class !== Context::resolve()->permissionClass() || $grants === [] || ! Config::eventsEnabled()) {
+        if ($model::class !== Context::resolve()->permissionClass() || $grants === []) {
             return;
         }
 
