@@ -34,8 +34,9 @@ moment in another timezone now ends access at the wall time it names.
   are not called `$changes` because `RolesSynced::$changes` and
   `PermissionsSynced::$changes` already are a `SyncResult`.
 - **Deleting a role says who lost it.** One `RoleRetracted` per holder and scope follows
-  `RoleDeleted`, with an `AssignmentRemoval` for every row the foreign key took, context and
-  end date included; until now the holders lost the role in silence. `RoleDeleted` itself
+  `RoleDeleted`, with an `AssignmentRemoval` per row whose holder, and its context if it
+  has one, can still be named — context and end date included, and the README says which
+  rows get none; until now the holders lost the role in silence. `RoleDeleted` itself
   carries `$heldGrants` and `$heldRoles`, snapshots of what the role held — the only record
   left once those rows are swept.
 - **`RoleUpdated` and `PermissionUpdated`.** A model save that changes a role's or a
@@ -76,8 +77,9 @@ moment in another timezone now ends access at the wall time it names.
   travels by value, without the relations it had loaded, so a queued listener gets it as it
   was when it went, every column included — `$hidden` ones too. The actor travels as an
   identifier and is read again when the job runs; if its row is gone by then, it arrives as
-  an unsaved stand-in carrying only its key (`exists` is `false`) instead of failing the
-  job. A job either event queued under 3.0 cannot be restored in this shape.
+  an unsaved stand-in carrying only its key, on the connection the actor came from
+  (`exists` is `false`), instead of failing the job. A job either event queued under 3.0
+  cannot be restored in this shape.
 - **A soft-deleted role keeps lending its grants until it is force-deleted.** With
   `SoftDeletes` on the role model, 3.0 swept the role's grants on `delete()` — see
   **Fixed** — so its holders lost what it granted. Nothing is swept now: the trashed role
@@ -108,9 +110,9 @@ moment in another timezone now ends access at the wall time it names.
   not still gets the date in an update right after the insert.
 - **Removals read before they delete.** `disallow()`, `unforbid()` and `retract()` read the
   rows they are about to remove and delete them one by one, by primary key, so each event
-  names exactly the rows that went even with two callers racing. Such a call pays a SELECT
-  plus a DELETE per row where it paid one DELETE, and deleting a role, with events on, first
-  reads every holder's row and what the role held.
+  names exactly the rows that went even with two callers racing. Such a call pays at least
+  a SELECT per authority plus a DELETE per row, where it paid one DELETE per authority, and
+  deleting a role, with events on, first reads every holder's row and what the role held.
 - **Saving a partially read role or permission reads the rest of its snapshot.** A row
   fetched with a partial `select()` and saved through its model reads the snapshot columns
   it is missing, in one query, so `RoleUpdated` and `PermissionUpdated` describe the whole

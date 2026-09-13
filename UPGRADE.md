@@ -30,9 +30,9 @@ that 3.0.1's CHANGELOG entry asks for, unless each tenant has its own users data
   shapes arrays and JSON. The roles and permissions in `$roles` and `$permissions` already
   travelled that way; 3.1 adds the deleted row of `RoleDeleted` and `PermissionDeleted` and
   every model in a `$grants` or `$assignments` entry, the context an `AssignmentRemoval`
-  names included. If your models (`warden.models.*`, or a context model) hold a sensitive
-  column, make the queued listeners of any warden event that carries them implement
-  `ShouldBeEncrypted`.
+  names included — without the relations your model had loaded. If your models
+  (`warden.models.*`, or a context model) hold a sensitive column, make the queued
+  listeners of any warden event that carries them implement `ShouldBeEncrypted`.
 
 ### What listeners see differently
 
@@ -64,8 +64,8 @@ that 3.0.1's CHANGELOG entry asks for, unless each tenant has its own users data
   to get around stale answers is no longer needed.
 - **Queued listeners of `RoleDeleted` and `PermissionDeleted` now run**, with the deleted row
   by value, without the relations it had loaded. The actor is read again when the job runs;
-  if its row is gone by then, it arrives as an unsaved stand-in carrying only its key
-  (`exists` is `false`) instead of failing the job.
+  if its row is gone by then, it arrives as an unsaved stand-in carrying only its key, on
+  the connection the actor came from (`exists` is `false`), instead of failing the job.
 
 ### What else changes
 
@@ -95,7 +95,8 @@ that 3.0.1's CHANGELOG entry asks for, unless each tenant has its own users data
   the wall time named, read in your application's zone. Hand `until()` moments in that zone.
 - `disallow()`, `unforbid()` and `retract()` read the rows they remove before deleting them
   one by one, and deleting a role, with events on, reads every holder's row and what the
-  role held first. A call pays one SELECT and a DELETE per row where it paid a single DELETE.
+  role held first. A call pays at least a SELECT per authority and a DELETE per row where it
+  paid one DELETE per authority.
 - A new grant or assignment with `until()` is inserted with its date when your grant or
   assignment model accepts `expires_at` by mass assignment, as warden's own do: an observer
   of that model sees its `created` with the date, and no `updated` after it. A model that
