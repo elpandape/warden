@@ -12,12 +12,16 @@ use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Models\Relations\ReadOnlyBelongsToMany;
 use ElPandaPe\Warden\Models\Relations\ReadOnlyPivot;
 use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\Snapshots\RoleSnapshot;
 use ElPandaPe\Warden\Support\Titles\RoleTitle;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Facades\Event;
 
+/**
+ * @phpstan-import-type RoleShape from RoleSnapshot
+ */
 trait IsRole
 {
     use BelongsToTenant;
@@ -53,6 +57,14 @@ trait IsRole
         );
 
         return $relation->using(ReadOnlyPivot::class)->wherePivot('entity_type', $this->getMorphClass());
+    }
+
+    /**
+     * @return RoleShape
+     */
+    public function snapshot(): array
+    {
+        return RoleSnapshot::of($this);
     }
 
     protected static function bootIsRole(): void

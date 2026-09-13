@@ -12,6 +12,7 @@ use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Support\Config;
 use ElPandaPe\Warden\Support\PermissionIdentity;
+use ElPandaPe\Warden\Support\Snapshots\PermissionSnapshot;
 use ElPandaPe\Warden\Support\Titles\PermissionTitle;
 use ElPandaPe\Warden\Tenancy\AppliesPivotTenancy;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
@@ -19,6 +20,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Facades\Event;
 
+/**
+ * @phpstan-import-type PermissionShape from PermissionSnapshot
+ */
 trait IsPermission
 {
     use AppliesPivotTenancy;
@@ -43,6 +47,14 @@ trait IsPermission
         $relation = $this->applyPivotTenancy($relation, $context->table('grants'));
 
         return Config::pivotTimestamps() ? $relation->withTimestamps() : $relation;
+    }
+
+    /**
+     * @return PermissionShape
+     */
+    public function snapshot(): array
+    {
+        return PermissionSnapshot::of($this);
     }
 
     protected static function bootIsPermission(): void
