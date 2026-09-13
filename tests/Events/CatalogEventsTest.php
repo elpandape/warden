@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToPermissions;
+use function ElPandaPe\Warden\Tests\Database\migrateRemoteUsers;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
 
@@ -181,6 +182,52 @@ it('restores a key-only stand-in for a catalog actor whose row is gone', functio
         ->and($permissionDeleted->actor)->toBeInstanceOf(User::class)
         ->and($permissionDeleted->actor?->exists)->toBeFalse()
         ->and($permissionDeleted->actor?->getAttributes())->toBe(['id' => $admin->getKey()]);
+});
+
+it('restores the stand-in for a gone catalog actor on the connection the actor came from', function (): void {
+    migrateRemoteUsers();
+    $admin = User::query()->create(['name' => 'Admin']);
+    $admin->setConnection('remote');
+    $this->actingAs($admin);
+
+    $queued = [];
+    Event::listen([RoleDeleted::class, PermissionDeleted::class], function (object $event) use (&$queued): void {
+        $queued[] = serialize($event);
+    });
+
+    Role::query()->create(['name' => 'editor'])->delete();
+    Permission::query()->create(['name' => 'publish'])->delete();
+
+    $actors = array_map(fn (string $payload): ?Model => unserialize($payload)->actor, $queued);
+
+    expect($actors)->toHaveCount(2)
+        ->and($actors[0])->toBeInstanceOf(User::class)
+        ->and($actors[0]?->exists)->toBeFalse()
+        ->and($actors[0]?->getKey())->toBe($admin->getKey())
+        ->and($actors[0]?->getConnectionName())->toBe('remote')
+        ->and($actors[1]?->getConnectionName())->toBe('remote');
+});
+
+it('queues the catalog actor without the relations it had loaded, and restores it without them', function (): void {
+    $admin = User::query()->create(['name' => 'Admin']);
+    $this->warden->assign('auditor')->to($admin);
+    $admin->load('roles');
+    $this->actingAs($admin);
+
+    $identifiers = [];
+    $queued = [];
+    Event::listen([RoleDeleted::class, PermissionDeleted::class], function (RoleDeleted|PermissionDeleted $event) use (&$identifiers, &$queued): void {
+        $identifiers[] = $event->__serialize()['actor']?->relations;
+        $queued[] = serialize($event);
+    });
+
+    Role::query()->create(['name' => 'editor'])->delete();
+    Permission::query()->create(['name' => 'publish'])->delete();
+
+    expect($identifiers)->toBe([[], []])
+        ->and(unserialize($queued[0])->actor?->getRelations())->toBe([])
+        ->and(unserialize($queued[1])->actor?->getRelations())->toBe([])
+        ->and($admin->relationLoaded('roles'))->toBeTrue();
 });
 
 it('restores an absent catalog actor as null from the queue', function (): void {

@@ -18,7 +18,9 @@ trait CarriesActorByIdentifier
 {
     private function actorIdentifier(?Model $actor): ?ModelIdentifier
     {
-        $identifier = $this->getSerializedPropertyValue($actor, withRelations: false);
+        // Without relations. By position: Laravel does not promise its
+        // parameter names.
+        $identifier = $this->getSerializedPropertyValue($actor, false);
 
         return $identifier instanceof ModelIdentifier ? $identifier : null;
     }
@@ -34,6 +36,7 @@ trait CarriesActorByIdentifier
         } catch (ModelNotFoundException $gone) {
             $class = $gone->getModel();
             $standIn = new $class;
+            $standIn->setConnection($identifier->connection);
             $standIn->setAttribute($standIn->getKeyName(), $identifier->id);
 
             return $standIn;
