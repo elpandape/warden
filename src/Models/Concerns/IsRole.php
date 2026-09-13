@@ -87,7 +87,14 @@ trait IsRole
             $invalidations = app(CacheInvalidations::class);
 
             $invalidations->settleCascade($role);
-            Announcer::announce(new RoleDeleted($role, actor: app(ActorResolver::class)->resolve()));
+            $held = $invalidations->pullHeld($role);
+
+            Announcer::announce(new RoleDeleted(
+                $role,
+                actor: app(ActorResolver::class)->resolve(),
+                heldGrants: $held['grants'],
+                heldRoles: $held['roles'],
+            ));
             $invalidations->announceCascade($role);
         });
     }

@@ -10,10 +10,14 @@ use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Events\GrantRemoval;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
+use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Config;
 use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Support\MorphHydrator;
+use ElPandaPe\Warden\Support\Snapshots\PermissionSnapshot;
+use ElPandaPe\Warden\Support\Snapshots\RoleSnapshot;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
@@ -21,6 +25,9 @@ use Illuminate\Support\Collection;
  * What happens when rows change outside the fluent actions: the counter moves,
  * and the writes nobody performed get announced. CacheKeyVersioner is still the
  * only thing that touches the counter.
+ *
+ * @phpstan-import-type HeldGrant from RoleDeleted
+ * @phpstan-import-type HeldRole from RoleDeleted
  */
 final class CacheInvalidations
 {
@@ -34,6 +41,9 @@ final class CacheInvalidations
 
     /** @var array<int, list<array{string|null, int|string|null, bool, int|string|null, CarbonImmutable|null}>> */
     private array $doomed = [];
+
+    /** @var array<int, array{grants: list<HeldGrant>, roles: list<HeldRole>}> */
+    private array $held = [];
 
     public function __construct(private readonly CacheKeyVersioner $versioner) {}
 
@@ -138,7 +148,7 @@ final class CacheInvalidations
         $id = spl_object_id($model);
 
         // PHP reuses object ids: what a vetoed delete read must not reach this one.
-        unset($this->cascading[$id], $this->doomed[$id]);
+        unset($this->cascading[$id], $this->doomed[$id], $this->held[$id]);
 
         if (! is_int($key) && ! is_string($key)) {
             return; // @codeCoverageIgnore
@@ -165,6 +175,16 @@ final class CacheInvalidations
             ...$this->scopesOf($context->assignedRoleClass(), 'role_id', $key),
             ...$this->scopesOf($context->grantClass(), 'entity_id', $key, $morph),
             ...$this->scopesOf($context->assignedRoleClass(), 'entity_id', $key, $morph),
+        ];
+
+        // The rest is read only to be announced.
+        if (! Config::eventsEnabled()) {
+            return;
+        }
+
+        $this->held[$id] = [
+            'grants' => $this->grantsHeldBy($morph, $key),
+            'roles' => $this->rolesHeldBy($morph, $key),
         ];
     }
 
@@ -193,6 +213,21 @@ final class CacheInvalidations
         }
 
         $this->sweepHoldings($model);
+    }
+
+    /**
+     * What a role being deleted held, as prepareCascade() read it. Handed over
+     * once: the entry goes with it.
+     *
+     * @return array{grants: list<HeldGrant>, roles: list<HeldRole>}
+     */
+    public function pullHeld(Model $role): array
+    {
+        $id = spl_object_id($role);
+        $held = $this->held[$id] ?? ['grants' => [], 'roles' => []];
+        unset($this->held[$id]);
+
+        return $held;
     }
 
     /**
@@ -245,6 +280,7 @@ final class CacheInvalidations
     {
         $this->settleCascade($model);
         $this->announceCascade($model);
+        unset($this->held[spl_object_id($model)]);
     }
 
     /**
@@ -295,6 +331,107 @@ final class CacheInvalidations
     }
 
     /**
+     * @return list<HeldGrant>
+     */
+    private function grantsHeldBy(string $morph, int|string $roleKey): array
+    {
+        $context = Context::resolve();
+        $catalog = (new ($context->permissionClass()))->getMorphClass();
+        $held = [];
+
+        foreach ($this->heldRows($context->grantClass(), 'permission_id', $catalog, $morph, $roleKey, ['forbidden', 'scope', 'expires_at']) as [$permission, $row]) {
+            $held[] = [
+                'permission' => PermissionSnapshot::of($permission),
+                'forbidden' => (bool) $row->getAttribute('forbidden'),
+                'scope' => $this->scalar($row->getAttribute('scope')),
+                'expires_at' => Expiry::of($row),
+            ];
+        }
+
+        return $held;
+    }
+
+    /**
+     * @return list<HeldRole>
+     */
+    private function rolesHeldBy(string $morph, int|string $roleKey): array
+    {
+        $held = [];
+
+        foreach ($this->heldRows(Context::resolve()->assignedRoleClass(), 'role_id', $morph, $morph, $roleKey, ['scope', 'restricted_to_type', 'restricted_to_id', 'expires_at']) as [$role, $row]) {
+            $contextType = $row->getAttribute('restricted_to_type');
+
+            $held[] = [
+                'role' => RoleSnapshot::of($role),
+                'scope' => $this->scalar($row->getAttribute('scope')),
+                'restricted_to_type' => is_string($contextType) ? $contextType : null,
+                'restricted_to_id' => $this->scalar($row->getAttribute('restricted_to_id')),
+                'expires_at' => Expiry::of($row),
+            ];
+        }
+
+        return $held;
+    }
+
+    /**
+     * The rows a role holds on one pivot, each beside the catalog row it points
+     * at, read before the sweep takes them.
+     *
+     * @param  class-string<Model>  $pivot
+     * @param  list<string>  $columns
+     * @return list<array{Model, Model}>
+     */
+    private function heldRows(string $pivot, string $pointer, string $catalog, string $morph, int|string $roleKey, array $columns): array
+    {
+        $rows = $this->pivotRows($pivot, 'entity_id', $roleKey, $morph, [$pointer, ...$columns]);
+        $pairs = [];
+
+        foreach ($rows as $row) {
+            $key = $this->scalar($row->getAttribute($pointer));
+
+            if ($key !== null) {
+                $pairs[] = [$catalog, $key];
+            }
+        }
+
+        $models = MorphHydrator::many($pairs);
+        $held = [];
+
+        foreach ($rows as $row) {
+            $key = $this->scalar($row->getAttribute($pointer));
+            $model = $key === null ? null : $models[MorphHydrator::key($catalog, $key)] ?? null;
+
+            if ($model instanceof Model) {
+                $held[] = [$model, $row];
+            }
+        }
+
+        return $held;
+    }
+
+    /**
+     * Read unscoped and in key order: the tenant filter hides rows the cascade
+     * destroys anyway, and nothing may hang on the order an engine returns.
+     *
+     * @param  class-string<Model>  $pivot
+     * @param  list<string>  $columns
+     * @return EloquentCollection<int, Model>
+     */
+    private function pivotRows(string $pivot, string $column, int|string $key, ?string $morph, array $columns): EloquentCollection
+    {
+        $query = $pivot::query()->withoutGlobalScopes();
+        $query->getQuery()->where($column, $key);
+
+        if ($morph !== null) {
+            $query->getQuery()->where('entity_type', $morph);
+        }
+
+        $keyName = $query->getModel()->getKeyName();
+
+        return $query->orderBy($keyName)->get([$keyName, ...$columns]);
+    }
+
+    /**
      * A role holds grants, and the roles nested inside it, through polymorphic
      * columns no foreign key reaches: deleting the role would otherwise leave
      * both behind, and RoleClosure::reaching() would still climb the edges.
@@ -330,6 +467,11 @@ final class CacheInvalidations
     private function softDeleting(Model $model): bool
     {
         return method_exists($model, 'isForceDeleting') && $model->isForceDeleting() === false;
+    }
+
+    private function scalar(mixed $value): int|string|null
+    {
+        return is_int($value) || is_string($value) ? $value : null;
     }
 
     /**
