@@ -161,18 +161,19 @@ final class CacheInvalidations
             return; // @codeCoverageIgnore
         }
 
-        if ($this->softDeleting($model)) {
-            return;
-        }
-
         if ($model::class === $context->permissionClass()) {
-            $this->doomed[$id] = $this->grantsPointingAt($key);
+            // A soft delete cascades nothing, yet the trashed permission stops
+            // granting at once: the scopes its grants live in move all the same.
             $this->cascading[$id] = $this->scopesOf($context->grantClass(), 'permission_id', $key);
 
+            if (! $this->softDeleting($model)) {
+                $this->doomed[$id] = $this->grantsPointingAt($key);
+            }
+
             return;
         }
 
-        if ($model::class !== $context->roleClass()) {
+        if ($model::class !== $context->roleClass() || $this->softDeleting($model)) {
             return;
         }
 
@@ -197,10 +198,10 @@ final class CacheInvalidations
     }
 
     /**
-     * The engine has cascaded: mark the scopes it reached and sweep what no
-     * foreign key covers. The catalog model calls this from its own deleted
-     * hook, ahead of every listener of its event, so a listener that throws
-     * cannot leave the cache granting what the delete removed.
+     * The delete has landed: mark the scopes prepareCascade() read and sweep
+     * what no foreign key covers. The catalog model calls this from its own
+     * deleted hook, ahead of every listener of its event, so a listener that
+     * throws cannot leave the cache granting what the delete removed.
      */
     public function settleCascade(Model $model): void
     {

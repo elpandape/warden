@@ -21,6 +21,7 @@ use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToPermissions;
@@ -386,4 +387,47 @@ it('leaves a soft-deleted permission and its grants in place and announces no ca
     Event::assertDispatched(PermissionDeleted::class);
     Event::assertNotDispatched(PermissionRevoked::class);
     expect(Grant::query()->withoutGlobalScopes()->count())->toBe(1);
+});
+
+it('lets a listener of a soft-deleted permission already see it grant nothing', function (): void {
+    withForeignKeys();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    config()->set('warden.cache.enabled', true);
+
+    $this->warden->allow($this->user)->to('publish');
+    $seen = [];
+
+    expect(Gate::forUser($this->user)->allows('publish'))->toBeTrue();
+
+    Event::listen(PermissionDeleted::class, function () use (&$seen): void {
+        $seen[] = Gate::forUser($this->user)->allows('publish');
+    });
+
+    SoftDeletingPermission::query()->where('name', 'publish')->sole()->delete();
+
+    expect($seen)->toBe([false]);
+});
+
+it('invalidates the tenant a soft-deleted permission was granted under, not only its own', function (): void {
+    withForeignKeys();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    config()->set('warden.cache.enabled', true);
+    $this->warden->tenant()->onlyRelations();
+
+    $created = SoftDeletingPermission::query()->create(['name' => 'report']);
+    DB::table('permissions')->where('id', $created->getKey())->update(['scope' => 5]);
+    $report = SoftDeletingPermission::query()->whereKey($created->getKey())->sole();
+
+    $this->warden->tenant()->to(7);
+    $this->warden->allow($this->user)->to($report);
+
+    expect($report->getAttribute('scope'))->toBe(5)
+        ->and(Grant::query()->withoutGlobalScopes()->sole()->getAttribute('scope'))->toBe(7)
+        ->and(Gate::forUser($this->user)->allows('report'))->toBeTrue();
+
+    $report->delete();
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeFalse();
 });
