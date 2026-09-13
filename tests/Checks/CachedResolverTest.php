@@ -8,7 +8,9 @@ use ElPandaPe\Warden\Checks\Resolvers\CacheKeyVersioner;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\Resolver;
 use ElPandaPe\Warden\Events\PermissionDeleted;
+use ElPandaPe\Warden\Events\PermissionGranted;
 use ElPandaPe\Warden\Events\PermissionRevoked;
+use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
@@ -398,6 +400,73 @@ it('bumps again after commit for writes inside a transaction', function (): void
     // concurrent reader from pre-commit rows gets orphaned too.
     expect(Cache::store('array')->get('warden:v:g'))->toBe($before + 2)
         ->and(Gate::forUser($this->user)->allows('edit-site'))->toBeFalse();
+});
+
+it('forgets what a listener cached when another listener rolls the grant back', function (): void {
+    $seen = null;
+    Event::listen(PermissionGranted::class, function () use (&$seen): void {
+        $seen = Gate::forUser($this->user)->allows('publish');
+    });
+    Event::listen(PermissionGranted::class, function (): void {
+        throw new RuntimeException('grant listener failed');
+    });
+
+    expect(fn (): mixed => DB::transaction(function (): void {
+        $this->warden->allow($this->user)->to('publish');
+    }))->toThrow(RuntimeException::class, 'grant listener failed')
+        ->and($seen)->toBeTrue()
+        ->and(Gate::forUser($this->user)->allows('publish'))->toBeFalse();
+});
+
+it('forgets what a listener cached when another listener rolls the assignment back', function (): void {
+    $this->warden->allow('editor')->to('publish');
+
+    $seen = null;
+    Event::listen(RoleAssigned::class, function () use (&$seen): void {
+        $seen = Gate::forUser($this->user)->allows('publish');
+    });
+    Event::listen(RoleAssigned::class, function (): void {
+        throw new RuntimeException('assignment listener failed');
+    });
+
+    expect(fn (): mixed => DB::transaction(function (): void {
+        $this->warden->assign('editor')->to($this->user);
+    }))->toThrow(RuntimeException::class, 'assignment listener failed')
+        ->and($seen)->toBeTrue()
+        ->and(Gate::forUser($this->user)->allows('publish'))->toBeFalse();
+});
+
+it('forgets what the caller cached before rolling its own transaction back', function (): void {
+    $seen = null;
+    $write = function () use (&$seen): void {
+        $this->warden->allow($this->user)->to('publish');
+        $seen = Gate::forUser($this->user)->allows('publish');
+
+        throw new RuntimeException('caller failed');
+    };
+
+    expect(fn (): mixed => DB::transaction($write))->toThrow(RuntimeException::class, 'caller failed')
+        ->and($seen)->toBeTrue()
+        ->and(Gate::forUser($this->user)->allows('publish'))->toBeFalse();
+});
+
+it('forgets what a rolled-back savepoint cached while the outer transaction goes on', function (): void {
+    $seen = null;
+    $savepoint = function () use (&$seen): void {
+        $this->warden->allow($this->user)->to('publish');
+        $seen = Gate::forUser($this->user)->allows('publish');
+
+        throw new RuntimeException('savepoint failed');
+    };
+
+    DB::transaction(function () use ($savepoint, &$seen): void {
+        expect(fn (): mixed => DB::transaction($savepoint))->toThrow(RuntimeException::class, 'savepoint failed')
+            ->and($seen)->toBeTrue()
+            ->and(DB::transactionLevel())->toBe(1)
+            ->and(Gate::forUser($this->user)->allows('publish'))->toBeFalse();
+    });
+
+    expect(Gate::forUser($this->user)->allows('publish'))->toBeFalse();
 });
 
 it('applies config-backed tenancy splits on fresh lifecycles', function (): void {

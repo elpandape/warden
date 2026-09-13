@@ -15,7 +15,8 @@ trait BumpsCacheVersion
 
     /**
      * One logical write: the action's own bump and the model hooks its rows
-     * fire describe the same thing, and coalesce to one.
+     * fire describe the same thing, and coalesce until the write ends or an
+     * announcement applies them first.
      *
      * @template T
      *

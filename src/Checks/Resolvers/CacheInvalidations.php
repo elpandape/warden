@@ -39,9 +39,10 @@ final class CacheInvalidations
      * One logical write, however many rows it touches.
      *
      * An action and the model hooks beneath it describe the same write, and a
-     * batch describes one: inside this boundary they coalesce to a single bump
-     * per scope. Without a boundary a mark bumps immediately, so any path that
-     * does not declare itself keeps today's behaviour.
+     * batch describes one: inside this boundary their marks coalesce per scope
+     * until it closes, or until an announcement applies them first. Without a
+     * boundary a mark bumps immediately, so any path that does not declare
+     * itself keeps today's behaviour.
      *
      * @template T
      *
@@ -301,8 +302,10 @@ final class CacheInvalidations
 
     /**
      * Inside a database transaction the bump runs twice: immediately, so this
-     * request's own checks see the write, and again after commit, so a payload
-     * rebuilt by a concurrent reader from pre-commit rows gets orphaned too.
+     * request's own checks see the write, and again once the transaction ends.
+     * After a commit, a payload rebuilt by a concurrent reader from pre-commit
+     * rows gets orphaned too; after a rollback, savepoints included, so does
+     * one this request cached from rows that never landed.
      */
     private function bump(int|string|null $scope): void
     {
@@ -311,9 +314,12 @@ final class CacheInvalidations
         $connection = (new (Context::resolve()->grantClass()))->getConnection();
 
         if ($connection->transactionLevel() > 0) {
-            $connection->afterCommit(function () use ($scope): void {
+            $again = function () use ($scope): void {
                 $this->versioner->bump($scope);
-            });
+            };
+
+            $connection->afterCommit($again);
+            $connection->afterRollBack($again);
         }
     }
 
