@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Events;
 
+use ElPandaPe\Warden\Events\Concerns\CarriesActorByIdentifier;
+use Illuminate\Contracts\Database\ModelIdentifier;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -11,12 +13,12 @@ use Illuminate\Queue\SerializesModels;
 /**
  * Catalog lifecycle: a permission row was deleted.
  *
- * The row is gone before any queued listener runs, so the event travels by
- * value instead of as an identifier to read back. SerializesModels stays:
- * dropping it would take its public methods with it.
+ * The row is gone before any queued listener runs, so it travels by value,
+ * without its relations; the actor travels as an identifier.
  */
 final readonly class PermissionDeleted
 {
+    use CarriesActorByIdentifier;
     use Dispatchable;
     use SerializesModels;
 
@@ -26,22 +28,22 @@ final readonly class PermissionDeleted
     ) {}
 
     /**
-     * @return array{permission: Model, actor: Model|null}
+     * @return array{permission: Model, actor: ModelIdentifier|null}
      */
     public function __serialize(): array
     {
         return [
-            'permission' => $this->permission,
-            'actor' => $this->actor,
+            'permission' => $this->permission->withoutRelations(),
+            'actor' => $this->actorIdentifier($this->actor),
         ];
     }
 
     /**
-     * @param  array{permission: Model, actor: Model|null}  $values
+     * @param  array{permission: Model, actor: ModelIdentifier|null}  $values
      */
     public function __unserialize(array $values): void
     {
         $this->permission = $values['permission'];
-        $this->actor = $values['actor'];
+        $this->actor = $this->restoreActor($values['actor']);
     }
 }

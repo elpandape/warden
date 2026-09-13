@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace ElPandaPe\Warden\Events;
 
 use Carbon\CarbonImmutable;
+use ElPandaPe\Warden\Events\Concerns\CarriesActorByIdentifier;
 use ElPandaPe\Warden\Support\Snapshots\PermissionSnapshot;
 use ElPandaPe\Warden\Support\Snapshots\RoleSnapshot;
+use Illuminate\Contracts\Database\ModelIdentifier;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -14,9 +16,8 @@ use Illuminate\Queue\SerializesModels;
 /**
  * Catalog lifecycle: a role row was deleted.
  *
- * The row is gone before any queued listener runs, so the event travels by
- * value instead of as an identifier to read back. SerializesModels stays:
- * dropping it would take its public methods with it.
+ * The row is gone before any queued listener runs, so it travels by value,
+ * without its relations; the actor travels as an identifier.
  *
  * @phpstan-import-type PermissionShape from PermissionSnapshot
  * @phpstan-import-type RoleShape from RoleSnapshot
@@ -26,6 +27,7 @@ use Illuminate\Queue\SerializesModels;
  */
 final readonly class RoleDeleted
 {
+    use CarriesActorByIdentifier;
     use Dispatchable;
     use SerializesModels;
 
@@ -41,25 +43,25 @@ final readonly class RoleDeleted
     ) {}
 
     /**
-     * @return array{role: Model, actor: Model|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>}
+     * @return array{role: Model, actor: ModelIdentifier|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>}
      */
     public function __serialize(): array
     {
         return [
-            'role' => $this->role,
-            'actor' => $this->actor,
+            'role' => $this->role->withoutRelations(),
+            'actor' => $this->actorIdentifier($this->actor),
             'heldGrants' => $this->heldGrants,
             'heldRoles' => $this->heldRoles,
         ];
     }
 
     /**
-     * @param  array{role: Model, actor: Model|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>}  $values
+     * @param  array{role: Model, actor: ModelIdentifier|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>}  $values
      */
     public function __unserialize(array $values): void
     {
         $this->role = $values['role'];
-        $this->actor = $values['actor'];
+        $this->actor = $this->restoreActor($values['actor']);
         $this->heldGrants = $values['heldGrants'];
         $this->heldRoles = $values['heldRoles'];
     }
