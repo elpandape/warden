@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Support;
 
+use ElPandaPe\Warden\Checks\Resolvers\CacheInvalidations;
 use Illuminate\Support\Facades\Event;
 
 /**
@@ -18,6 +19,10 @@ final class Announcer
         if (! Config::eventsEnabled()) {
             return;
         }
+
+        // A listener that asks can() is answered after the write it hears
+        // about, never from a version the open boundary has not bumped yet.
+        app(CacheInvalidations::class)->flush();
 
         Event::dispatch($event);
     }

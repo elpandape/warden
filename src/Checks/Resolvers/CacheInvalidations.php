@@ -58,13 +58,22 @@ final class CacheInvalidations
             $this->depth--;
 
             if ($this->depth === 0) {
-                $pending = $this->pending;
-                $this->pending = [];
-
-                foreach ($pending as $scope) {
-                    $this->bump($scope);
-                }
+                $this->flush();
             }
+        }
+    }
+
+    /**
+     * Apply the bumps a boundary is holding without closing it: whoever hears
+     * about a write next must not be answered from before it.
+     */
+    public function flush(): void
+    {
+        $pending = $this->pending;
+        $this->pending = [];
+
+        foreach ($pending as $scope) {
+            $this->bump($scope);
         }
     }
 
