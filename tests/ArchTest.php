@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Events\AssignmentChange;
+use ElPandaPe\Warden\Events\AssignmentRemoval;
+use ElPandaPe\Warden\Events\GrantChange;
+use ElPandaPe\Warden\Events\GrantRemoval;
+use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Event;
 
 use function ElPandaPe\Warden\Tests\phpFilesOffending;
@@ -23,6 +28,12 @@ arch('post-write events leave through one door')
     ->and('ElPandaPe\Warden\Checks')->not->toUse(Event::class)
     ->and('ElPandaPe\Warden\Models')->not->toUse(Event::class)
     ->and('ElPandaPe\Warden\Console')->not->toUse(Event::class);
+
+arch('per-row event values travel by value')
+    ->expect([GrantChange::class, AssignmentChange::class, GrantRemoval::class, AssignmentRemoval::class])
+    ->toBeFinal()
+    ->toBeReadonly()
+    ->not->toUseTrait(SerializesModels::class);
 
 it('leaves no doc block stranded above another', function (): void {
     expect(phpFilesOffending('#\*/\s*\n\s*/\*\*#'))->toBeEmpty();
