@@ -65,7 +65,7 @@
 | 🪆 **Nested roles** | A role inside a role lends its grants, off by default and switchable live. |
 | 🏢 **Multi-tenancy** | Tenant-scoped rows with global fallback, injectable resolver, exception-safe `onceTo()`. |
 | 💾 **Smart caching** | O(1) invalidation, versioned payloads, anti-stampede locking, Octane-safe. |
-| 📡 **Typed events** | Warden's verbs and catalog models announce exactly the rows they changed — hydrated models, end dates and contexts, never raw IDs. |
+| 📡 **Typed events** | Warden's verbs and catalog models announce exactly the rows they changed — hydrated models, end dates and contexts. |
 | 🔢 **Enum support** | `BackedEnum` accepted everywhere a name string is. |
 | 🧪 **Testing helpers** | `Warden::fake()`, `WithPermissions` trait, artisan commands. |
 | 🔄 **Migration path** | `warden:upgrade` + Rector set for silber/bouncer users. |
@@ -517,7 +517,7 @@ Which of `permission` and `role` are populated depends on the cause:
 
 ## 📡 Events
 
-Warden announces its own writes. Every verb — `allow()`, `forbid()`, `disallow()`, `unforbid()`, `assign()`, `retract()`, `sync()`, and the `where()` that narrows a grant — dispatches a typed, `readonly` event, and so does creating, editing or deleting a role or permission through its model. Each event names what it touched with **hydrated models** (never raw IDs) and lists exactly the rows that changed. Writes made around warden are not announced: [Events for auditing](#events-for-auditing) says which, and when each event is dispatched. Disable globally with `warden.events_enabled`.
+Warden announces its own writes. Every verb — `allow()`, `forbid()`, `disallow()`, `unforbid()`, `assign()`, `retract()`, `sync()`, and the `where()` that narrows a grant — dispatches a typed, `readonly` event, and so does creating, editing or deleting a role or permission through its model. Each event names what it touched with **hydrated models** (never raw IDs; what a deleted role held arrives as [snapshots](#snapshots)) and lists exactly the rows that changed. Writes made around warden are not announced: [Events for auditing](#events-for-auditing) says which, and when each event is dispatched. Disable globally with `warden.events_enabled`.
 
 | Event | Fired By | Payload |
 |---|---|---|
@@ -620,7 +620,7 @@ An event describes **rows** warden wrote or deleted at `$scope` — not the acce
 - **Moving an end date is a write.** `until()` over an existing row dispatches the same event as a new row, told apart by its entry: `created: false`, with the dates after and before. Reaching the date dispatches nothing — expiry by clock is silent by design, and the date was announced when it was written.
 - **Re-assigning an expired row without `until()` announces nothing**, because it writes nothing: [Temporary Access](#-temporary-access) explains why the row stays as it was. `sync()` lists that row under `kept`. Give it a new date, or `until(null)`, and the write is announced as a moved date.
 - **`retract()` without `on()` removes every context of the role.** `RoleRetracted::$restrictedTo` is the context the call named — `null` when it named none — and each `AssignmentRemoval` carries the context its own row had. Losing `editor` with no context and in two organizations is one event with three entries, and `editor` once in `$roles`.
-- **A call writes everything before it announces anything.** Every row, for every authority it names, is written first. A listener that throws cannot interrupt the write, only the announcements still to come — and the exception leaves the call. The one write left for after the announcements is the unused plain row a `where()` deletes, below.
+- **A call writes its rows before it announces them.** Every grant and assignment row the call touches, for every authority it names, is written or deleted before its first write event goes out: a listener that throws on one cannot interrupt those writes, only the announcements still to come — and the exception leaves the call. Two kinds of write fall outside that. A role or permission the call creates by name dispatches its `RoleCreated` or `PermissionCreated` as it is created, before the rows that use it are written, so a listener that throws there stops the call before them — see [Implicit creation](#implicit-creation-and-the-narrowing-chain). And the unused plain row a `where()` deletes goes after the announcements, below.
 
 #### Implicit creation and the narrowing chain
 
@@ -699,7 +699,7 @@ A queued listener receives the event serialized, and its values come back in two
 
 `RoleDeleted` and `PermissionDeleted` differ on both counts. The deleted row travels by value, without the relations it had loaded, so the listener gets it as it was when it went. The actor travels as an identifier and is read again when the job runs; if its row is gone by then, it arrives as an unsaved stand-in carrying only its key (`exists` is `false`) instead of failing the job.
 
-> ⚠️ **A model that travels by value keeps every column, `$hidden` included** — `$hidden` only shapes arrays and JSON. The deleted row of `RoleDeleted` and `PermissionDeleted` is one, as are the roles and permissions in the lists and entries, and the context an `AssignmentRemoval` names. If your own models (`warden.models.*`, or a context model) hold a sensitive column, make the queued listeners of these events implement `ShouldBeEncrypted`.
+> ⚠️ **A model that travels by value keeps every column, `$hidden` included** — `$hidden` only shapes arrays and JSON. The deleted row of `RoleDeleted` and `PermissionDeleted` is one, as are the roles and permissions in the lists and entries, and the context an `AssignmentRemoval` names. If your own models (`warden.models.*`, or a context model) hold a sensitive column, make the queued listeners of any warden event that carries them implement `ShouldBeEncrypted`.
 
 #### When an event is dispatched
 
@@ -1078,7 +1078,7 @@ Warden::assign('editor')->to($user);
 
 ### Long-lived processes (Tinker, Octane, queues)
 
-Writes through the API invalidate caches automatically. Only raw DB edits need `Warden::refresh()`. Tenant state lives in container-scoped bindings, so Octane requests and queue jobs reset themselves.
+Writes through the API invalidate caches automatically. What still needs `Warden::refresh()` is a write that fires no model event — the query builder, `DB::table()`, a raw statement, or a model write with its events off: see [Caching](#-caching). Tenant state lives in container-scoped bindings, so Octane requests and queue jobs reset themselves.
 
 ---
 
