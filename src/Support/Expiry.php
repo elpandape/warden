@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Support;
 
+use Carbon\CarbonImmutable;
+use Carbon\Exceptions\InvalidFormatException;
 use DateTimeInterface;
 use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -46,5 +48,33 @@ final class Expiry
         $row->save();
 
         return true;
+    }
+
+    /**
+     * The end date a row holds, read back the way the column keeps it: wall
+     * time in the application's zone, whether or not the row casts it.
+     */
+    public static function of(Model $row): ?CarbonImmutable
+    {
+        $stored = self::stored($row);
+
+        if ($stored === null) {
+            return null;
+        }
+
+        try {
+            return CarbonImmutable::createFromFormat($row->getDateFormat(), $stored);
+        } catch (InvalidFormatException) {
+            // MySQL's zero date comes back as year -1, which the format cannot
+            // read again: parse it instead, as Eloquent's asDateTime() does.
+            return CarbonImmutable::parse($stored);
+        }
+    }
+
+    private static function stored(Model $row): ?string
+    {
+        $stored = $row->fromDateTime($row->getAttributes()['expires_at'] ?? null);
+
+        return is_string($stored) && $stored !== '' ? $stored : null;
     }
 }
