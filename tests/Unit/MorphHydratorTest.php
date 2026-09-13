@@ -50,6 +50,29 @@ it('reads every row of a type in one query', function (): void {
         ->and($found[MorphHydrator::key($editor->getMorphClass(), $editor->getKey())]->is($editor))->toBeTrue();
 });
 
+it('reads a type in batches any engine can bind, and still warns once about a type no class maps', function (): void {
+    Log::spy();
+    $rows = array_map(fn (int $index): array => ['name' => "Holder {$index}"], range(1, 1001));
+
+    foreach (array_chunk($rows, 500) as $batch) {
+        DB::table('users')->insert($batch);
+    }
+
+    $morph = (new StringKeyUser)->getMorphClass();
+    $holders = DB::table('users')->pluck('id')->map(fn (mixed $id): array => [$morph, (string) $id])->all();
+    $unmapped = array_map(fn (int $id): array => ['nothing.maps.here', $id], range(1, 1001));
+
+    DB::enableQueryLog();
+
+    $found = MorphHydrator::many([...$holders, ...$unmapped]);
+
+    expect(DB::getQueryLog())->toHaveCount(3)
+        ->and($found)->toHaveCount(1001);
+    Log::shouldHaveReceived('warning')->once()->withArgs(
+        fn (string $message, array $context): bool => $context['entity_type'] === 'nothing.maps.here' && count($context['ids']) === 1001,
+    );
+});
+
 it('leaves out a row that is gone', function (): void {
     $ana = User::query()->create(['name' => 'Ana']);
 

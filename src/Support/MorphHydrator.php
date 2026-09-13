@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\Log;
  */
 final class MorphHydrator
 {
+    private const int BATCH = 500;
+
     /**
      * @param  iterable<array{string, int|string}>  $pairs
      * @return array<string, Model>
@@ -41,11 +43,15 @@ final class MorphHydrator
                 continue;
             }
 
-            foreach ($class::query()->withoutGlobalScopes()->whereKey(array_values(array_unique($ids)))->get() as $model) {
-                $key = $model->getKey();
+            // A string key binds one parameter per id, and engines cap how many
+            // parameters a single statement takes.
+            foreach (array_chunk(array_values(array_unique($ids)), self::BATCH) as $batch) {
+                foreach ($class::query()->withoutGlobalScopes()->whereKey($batch)->get() as $model) {
+                    $key = $model->getKey();
 
-                if (is_int($key) || is_string($key)) {
-                    $found[self::key($type, $key)] = $model;
+                    if (is_int($key) || is_string($key)) {
+                        $found[self::key($type, $key)] = $model;
+                    }
                 }
             }
         }
