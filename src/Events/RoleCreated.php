@@ -16,5 +16,8 @@ final readonly class RoleCreated
     use Dispatchable;
     use SerializesModels;
 
-    public function __construct(public Model $role) {}
+    public function __construct(
+        public Model $role,
+        public ?Model $actor = null,
+    ) {}
 }

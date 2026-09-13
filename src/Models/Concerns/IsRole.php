@@ -7,6 +7,7 @@ namespace ElPandaPe\Warden\Models\Concerns;
 use ElPandaPe\Warden\Checks\Resolvers\CacheInvalidations;
 use ElPandaPe\Warden\Concerns\HasPermissions;
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Models\Relations\ReadOnlyBelongsToMany;
@@ -79,14 +80,14 @@ trait IsRole
 
         // Lifecycle events fire at the model layer: every creation path counts.
         static::created(function (Model $role): void {
-            Announcer::announce(new RoleCreated($role));
+            Announcer::announce(new RoleCreated($role, actor: app(ActorResolver::class)->resolve()));
         });
 
         static::deleted(function (Model $role): void {
             $invalidations = app(CacheInvalidations::class);
 
             $invalidations->settleCascade($role);
-            Announcer::announce(new RoleDeleted($role));
+            Announcer::announce(new RoleDeleted($role, actor: app(ActorResolver::class)->resolve()));
             $invalidations->announceCascade($role);
         });
     }

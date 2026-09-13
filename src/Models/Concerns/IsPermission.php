@@ -6,6 +6,7 @@ namespace ElPandaPe\Warden\Models\Concerns;
 
 use ElPandaPe\Warden\Checks\Resolvers\CacheInvalidations;
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
@@ -98,14 +99,14 @@ trait IsPermission
 
         // Lifecycle events fire at the model layer: every creation path counts.
         static::created(function (Model $permission): void {
-            Announcer::announce(new PermissionCreated($permission));
+            Announcer::announce(new PermissionCreated($permission, actor: app(ActorResolver::class)->resolve()));
         });
 
         static::deleted(function (Model $permission): void {
             $invalidations = app(CacheInvalidations::class);
 
             $invalidations->settleCascade($permission);
-            Announcer::announce(new PermissionDeleted($permission));
+            Announcer::announce(new PermissionDeleted($permission, actor: app(ActorResolver::class)->resolve()));
             $invalidations->announceCascade($permission);
         });
     }

@@ -16,5 +16,8 @@ final readonly class PermissionCreated
     use Dispatchable;
     use SerializesModels;
 
-    public function __construct(public Model $permission) {}
+    public function __construct(
+        public Model $permission,
+        public ?Model $actor = null,
+    ) {}
 }
