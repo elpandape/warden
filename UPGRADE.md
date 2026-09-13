@@ -30,7 +30,8 @@ that 3.0.1's CHANGELOG entry asks for, unless each tenant has its own users data
   shapes arrays and JSON. The roles and permissions in `$roles` and `$permissions` already
   travelled that way; 3.1 adds the deleted row of `RoleDeleted` and `PermissionDeleted` and
   every model in a `$grants` or `$assignments` entry, the context an `AssignmentRemoval`
-  names included — without the relations your model had loaded. If your models
+  names included — that context as a copy without the relations your model had loaded, a
+  role or permission you handed to a verb with them, as in 3.0. If your models
   (`warden.models.*`, or a context model) hold a sensitive column, make the queued
   listeners of any warden event that carries them implement `ShouldBeEncrypted`.
 
@@ -76,8 +77,9 @@ that 3.0.1's CHANGELOG entry asks for, unless each tenant has its own users data
   forbids, and `restore()` brings it back whole. To end the access, force-delete it, or
   `retract()` it or `disallow()` what it grants **before** the soft delete: by name, the
   verbs no longer reach a trashed role — `retract('editor')` takes nothing,
-  `disallow('editor')` throws `RoleDoesNotExist` and `assign('editor')` tries to create a
-  second `editor` — so pass the trashed model (`Role::withTrashed()`) once it is there.
+  `disallow('editor')` throws `RoleDoesNotExist`, and `assign('editor')` creates a second,
+  empty `editor`, or fails on the `(name, scope)` index under the tenant that holds the
+  trashed one — so pass the trashed model (`Role::withTrashed()`) once it is there.
   `RoleDeleted` goes out with empty `$heldGrants` and `$heldRoles`, and no `RoleRetracted`
   follows; a later `forceDelete()` from the trash dispatches a second `RoleDeleted`, with
   the lists, then the `RoleRetracted`s, and sweeps as usual.
