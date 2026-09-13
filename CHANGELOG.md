@@ -9,12 +9,16 @@ Built for an audit log. An event used to repeat what the call asked for; it now 
 rows the call wrote or deleted, with their end dates and contexts, and the writes that went
 unannounced — deleting a role, editing the catalog — have events of their own. No signature
 changes, no migration and no new configuration: every addition is a class, an event, a
-model method or an optional parameter appended to an event's constructor. What a listener
-receives does change, and **Changed** and [UPGRADE.md](UPGRADE.md#from-30-to-31) say how.
+method or an optional parameter appended to an event's constructor. What a listener
+receives does change, and so, in two cases, does when access ends: a soft-deleted role, and
+`until()` given a moment in another timezone. **Changed** and
+[UPGRADE.md](UPGRADE.md#from-30-to-31) say how.
 
 **Upgrading:** before deploying, let the queued listeners of `RoleDeleted` and
 `PermissionDeleted` drain, or clear them: a job either event queued under 3.0 fails under
-3.1, even when its row still exists.
+3.1, even when its row still exists. With `SoftDeletes` on the role model, a soft-deleted
+role now keeps authorizing until `forceDelete()`; and on an existing row, an `until()`
+moment in another timezone now ends access at the wall time it names.
 
 ### Added
 
@@ -89,8 +93,10 @@ receives does change, and **Changed** and [UPGRADE.md](UPGRADE.md#from-30-to-31)
   time. It now takes it, the move is announced like any other, and access ends an hour
   later than the instant named; a Lima moment ends five hours earlier the same way. Hand
   `until()` moments in the application's timezone.
-- **A custom actor resolver is asked once per call.** `assign()->to()` over several
-  authorities resolved the actor once per authority it wrote for; it now resolves it once.
+- **A custom actor resolver is asked once for a call's write events.** `assign()->to()` over
+  several authorities resolved the actor once per authority it wrote for; it now resolves it
+  once. A catalog event still asks on its own: a role or permission the call creates by
+  name asks once more.
 - **A new row is inserted with its end date.** `allow()->until()`, `assign()->until()` and
   the re-point of a `where()` created the row and then wrote its date, so Eloquent's events
   on the grant or assignment model saw a `created` without the date and an `updated` with
@@ -100,8 +106,8 @@ receives does change, and **Changed** and [UPGRADE.md](UPGRADE.md#from-30-to-31)
 - **Removals read before they delete.** `disallow()`, `unforbid()` and `retract()` read the
   rows they are about to remove and delete them one by one, by primary key, so each event
   names exactly the rows that went even with two callers racing. Such a call pays a SELECT
-  plus a DELETE per row where it paid one DELETE, and deleting a role reads every holder's
-  row before the foreign key takes them.
+  plus a DELETE per row where it paid one DELETE, and deleting a role, with events on, first
+  reads every holder's row and what the role held.
 - **Saving a partially read role or permission reads the rest of its snapshot.** A row
   fetched with a partial `select()` and saved through its model reads the snapshot columns
   it is missing, in one query, so `RoleUpdated` and `PermissionUpdated` describe the whole
@@ -137,8 +143,8 @@ receives does change, and **Changed** and [UPGRADE.md](UPGRADE.md#from-30-to-31)
 - **A listener that threw could leave a call half-done.** `retract()` dispatched inside its
   loop, so a throw on the first authority left the rest holding the role. Every action now
   writes or deletes all its grant and assignment rows before its first write event goes
-  out; only a role or permission it creates by name is announced as it is created, before
-  them.
+  out; only a catalog row it creates — a role or permission named for the first time, or a
+  `where()` twin — is announced as it is created, before them.
 - **Catalog events came from inside the re-point's transaction.** A listener of the twin's
   `PermissionCreated` that threw rolled back a re-point whose creation had been announced,
   and the plain row's `PermissionDeleted` went out before the re-point it followed. The twin
@@ -149,15 +155,17 @@ receives does change, and **Changed** and [UPGRADE.md](UPGRADE.md#from-30-to-31)
   was the deleted role survived until `warden:clean --stranded`; `whereIs()` still walked
   them, and an engine that reuses keys would have handed them to the next role with that id.
   They are now swept with the role's grants.
-- **A queued listener of `RoleDeleted` or `PermissionDeleted` always failed.** The row is gone
-  before the job runs, and restoring it by identifier threw `ModelNotFoundException` — on the
-  `sync` queue, out of `delete()` itself. Both events now carry the deleted row by value and
-  the actor as an identifier; **Changed** says how they queue.
+- **A queued listener of `RoleDeleted` or `PermissionDeleted` never ran for a hard delete.**
+  The row is gone before the job runs, and restoring it by identifier threw
+  `ModelNotFoundException`: the job failed — on the `sync` queue, out of `delete()` itself —
+  or, with `deleteWhenMissingModels`, was dropped in silence. Both events now carry the
+  deleted row by value and the actor as an identifier; **Changed** says how they queue.
 - **Soft-deleting a role destroyed its grants.** With `SoftDeletes` on the role model,
   `delete()` swept the role's grants for real while the role stayed restorable. A soft delete
   now leaves grants, holders and nested edges in place and announces no loss;
   `forceDelete()` sweeps and announces them. `RoleDeleted` still fires, with empty held
-  lists; a soft-deleted permission announces no cascade either.
+  lists. A soft-deleted permission, whose grant rows stay too, announces no cascade either,
+  although while trashed its own scope keeps it from granting or forbidding anything.
 - **An eager-loaded role stops counting at an end date its pivot hands back as a timestamp.**
   With `warden.models.assigned_role` pointing at a pivot that returns `expires_at` as a Unix
   timestamp — a `timestamp` cast does — and `warden.roles.nested` off, the default, `isA()`,

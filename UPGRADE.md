@@ -7,8 +7,10 @@ instead? See [MIGRATING-FROM-BOUNCER.md](MIGRATING-FROM-BOUNCER.md).
 
 3.1 changes no schema, no configuration and no signature, so
 `composer update elpandape/warden` is the whole code change, and a `^3.0` constraint
-already allows it. What changes is what your event listeners receive; if any of them is
-queued, the next section comes first.
+already allows it. What changes is what your event listeners receive and, in two cases,
+when access ends: with `SoftDeletes` on your role model, and for `until()` moments in
+another timezone — see *What else changes* below. If any listener is queued, the next
+section comes first.
 
 Coming straight from 3.0.0, still run the one-time `php artisan warden:clean --stranded`
 that 3.0.1's CHANGELOG entry asks for, unless each tenant has its own users database: see
@@ -72,21 +74,26 @@ that 3.0.1's CHANGELOG entry asks for, unless each tenant has its own users data
   holders and its nested edges in place, so the trashed role stops answering `isA()` while
   `can()` still grants what it lends. Force-delete it, or retract it first, when a delete
   must end access. `RoleDeleted` goes out with empty `$heldGrants` and `$heldRoles`, and no
-  `RoleRetracted` follows. A soft-deleted permission announces no cascade. `forceDelete()`
-  sweeps and announces as usual.
+  `RoleRetracted` follows. `forceDelete()` sweeps and announces as usual.
+- A soft-deleted permission keeps its grant rows, but its own scope hides it from every
+  check: while trashed it neither grants nor forbids — a prohibition it carried lifts — and
+  only `PermissionDeleted` says so, where 3.0 announced a `PermissionRevoked` or
+  `PermissionUnforbidden` per row. `restore()` brings it back; `forceDelete()` sweeps and
+  announces as usual.
 - `until()` over a row that already has an end date stores the wall time it names, as a new
-  row always did. A moment in another zone that names a different wall time from the row's
-  is now written and announced where 3.0 kept the old date, and access ends at the wall time
-  named, read in your application's zone. Hand `until()` moments in that zone.
+  row always did. A moment in another zone that names the row's instant but a different
+  wall time is now written and announced where 3.0 kept the old date, and access ends at
+  the wall time named, read in your application's zone. Hand `until()` moments in that zone.
 - `disallow()`, `unforbid()` and `retract()` read the rows they remove before deleting them
-  one by one, and deleting a role, with events on, reads every holder's row first. A call
-  pays one SELECT and a DELETE per row where it paid a single DELETE.
+  one by one, and deleting a role, with events on, reads every holder's row and what the
+  role held first. A call pays one SELECT and a DELETE per row where it paid a single DELETE.
 - A new grant or assignment with `until()` is inserted with its date when your grant or
   assignment model accepts `expires_at` by mass assignment, as warden's own do: an observer
   of that model sees its `created` with the date, and no `updated` after it. A model that
   does not still gets the date in an `updated` right after.
-- `assign()->to()` over several authorities asks your actor resolver once, not once per
-  authority.
+- `assign()->to()` over several authorities asks your actor resolver once for its write
+  events, not once per authority; each role or permission it creates by name asks once
+  more, for its catalog event.
 - Saving a role or a permission read with a partial `select()` reads the snapshot columns it
   is missing: one more query, for partial rows only, and none with events off.
 - The README's [Events for auditing](README.md#events-for-auditing) section describes all of
