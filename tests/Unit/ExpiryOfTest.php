@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Carbon\Exceptions\InvalidFormatException;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
@@ -67,4 +68,37 @@ it('reads the zero date a lenient MySQL keeps as long gone, without throwing', f
 
     expect($expiresAt)->toBeInstanceOf(CarbonImmutable::class)
         ->and($expiresAt?->isPast())->toBeTrue();
+});
+
+it('reads the zero date as long gone with Carbon\'s strict mode off', function (): void {
+    $row = new BarePivot;
+    $row->setRawAttributes(['expires_at' => '0000-00-00 00:00:00']);
+    $strict = Carbon::isStrictModeEnabled();
+
+    Carbon::useStrictMode(false);
+
+    try {
+        $expiresAt = Expiry::of($row);
+    } finally {
+        Carbon::useStrictMode($strict);
+    }
+
+    expect($expiresAt)->toBeInstanceOf(CarbonImmutable::class)
+        ->and($expiresAt?->isPast())->toBeTrue();
+});
+
+it('throws on an end date it cannot read, whatever Carbon\'s strict mode', function (): void {
+    $row = new BarePivot;
+    $row->setRawAttributes(['expires_at' => 'not a date']);
+    $strict = Carbon::isStrictModeEnabled();
+
+    expect(fn (): ?CarbonImmutable => Expiry::of($row))->toThrow(InvalidFormatException::class);
+
+    Carbon::useStrictMode(false);
+
+    try {
+        expect(fn (): ?CarbonImmutable => Expiry::of($row))->toThrow(InvalidFormatException::class);
+    } finally {
+        Carbon::useStrictMode($strict);
+    }
 });
