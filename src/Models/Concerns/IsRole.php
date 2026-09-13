@@ -10,6 +10,7 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
+use ElPandaPe\Warden\Events\RoleUpdated;
 use ElPandaPe\Warden\Models\Relations\ReadOnlyBelongsToMany;
 use ElPandaPe\Warden\Models\Relations\ReadOnlyPivot;
 use ElPandaPe\Warden\Support\Announcer;
@@ -19,6 +20,7 @@ use ElPandaPe\Warden\Support\Titles\RoleTitle;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use WeakMap;
 
 /**
  * @phpstan-import-type RoleShape from RoleSnapshot
@@ -81,6 +83,46 @@ trait IsRole
         // Lifecycle events fire at the model layer: every creation path counts.
         static::created(function (Model $role): void {
             Announcer::announce(new RoleCreated($role, actor: app(ActorResolver::class)->resolve()));
+        });
+
+        /** @var WeakMap<Model, array<mixed>> $stored */
+        $stored = new WeakMap;
+
+        static::updating(function (Model $role) use ($stored): void {
+            if (! Config::eventsEnabled()) {
+                return;
+            }
+
+            $row = $role->getRawOriginal();
+            $missing = array_values(array_diff(['name', 'title', 'scope'], array_keys($row)));
+
+            // A column the model never read would photograph as null: take it
+            // from the stored row, which the update has not reached yet.
+            if ($missing !== []) {
+                $row = [...$row, ...(array) $role->newQueryWithoutScopes()->whereKey($role->getKey())->toBase()->first($missing)];
+            }
+
+            $stored[$role] = $row;
+        });
+
+        static::updated(function (Model $role) use ($stored): void {
+            $row = $stored[$role] ?? null;
+            unset($stored[$role]);
+
+            if ($row === null) {
+                return;
+            }
+
+            $before = RoleSnapshot::of($role->newInstance([], true)->setRawAttributes($row, true));
+            $after = RoleSnapshot::of($role->newInstance([], true)->setRawAttributes([...$row, ...$role->getAttributes()], true));
+            $changed = array_values(array_filter(
+                array_keys($after),
+                static fn (string $key): bool => $key !== 'v' && $key !== 'key' && $before[$key] !== $after[$key],
+            ));
+
+            if ($changed !== []) {
+                Announcer::announce(new RoleUpdated($role, $before, $after, $changed, actor: app(ActorResolver::class)->resolve()));
+            }
         });
 
         static::deleted(function (Model $role): void {

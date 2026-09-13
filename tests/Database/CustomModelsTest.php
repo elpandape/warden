@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\RoleUpdated;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\CustomRole;
 use ElPandaPe\Warden\Tests\Fixtures\User;
+use Illuminate\Support\Facades\Event;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -76,4 +78,19 @@ it('uses the custom role model across relations', function (): void {
 
 it('shares the custom role table with the default one', function (): void {
     expect((new CustomRole)->getTable())->toBe('roles');
+});
+
+it('announces edits of a swapped role model', function (): void {
+    Context::resolve()->setModelClass('role', CustomRole::class);
+    $role = CustomRole::query()->create(['name' => 'editor'])->refresh();
+
+    Event::fake([RoleUpdated::class]);
+
+    $role->update(['name' => 'chief-editor']);
+
+    Event::assertDispatched(RoleUpdated::class, fn (RoleUpdated $event): bool => $event->role instanceof CustomRole
+        && $event->role->is($role)
+        && $event->before['name'] === 'editor'
+        && $event->after['name'] === 'chief-editor'
+        && $event->changed === ['name']);
 });

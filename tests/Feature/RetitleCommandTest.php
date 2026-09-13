@@ -2,8 +2,11 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Events\PermissionUpdated;
+use ElPandaPe\Warden\Events\RoleUpdated;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
+use Illuminate\Support\Facades\Event;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -76,4 +79,18 @@ it('writes nothing under dry run', function (): void {
         ->assertExitCode(0);
 
     expect($permission->fresh()?->getAttribute('title'))->toBe('ViewAny');
+});
+
+it('converges titles without announcing catalog edits', function (): void {
+    Permission::query()->create(['name' => 'viewAny', 'entity_type' => 'App\\Models\\Post', 'title' => 'ViewAny posts']);
+    Role::query()->create(['name' => 'siteAdmin', 'title' => 'SiteAdmin']);
+
+    Event::fake([PermissionUpdated::class, RoleUpdated::class]);
+
+    $this->artisan('warden:retitle')
+        ->expectsOutputToContain('Rewrote 1 permission title(s) and 1 role title(s).')
+        ->assertExitCode(0);
+
+    Event::assertNotDispatched(PermissionUpdated::class);
+    Event::assertNotDispatched(RoleUpdated::class);
 });

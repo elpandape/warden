@@ -17,6 +17,7 @@ use ElPandaPe\Warden\Events\PermissionGranted;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\PermissionsSynced;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
+use ElPandaPe\Warden\Events\PermissionUpdated;
 use ElPandaPe\Warden\Events\RetractingRole;
 use ElPandaPe\Warden\Events\RevokingPermission;
 use ElPandaPe\Warden\Events\RoleAssigned;
@@ -24,11 +25,14 @@ use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Events\RolesSynced;
+use ElPandaPe\Warden\Events\RoleUpdated;
 use ElPandaPe\Warden\Events\UnforbiddingPermission;
 use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
+use ElPandaPe\Warden\Support\Snapshots\PermissionSnapshot;
+use ElPandaPe\Warden\Support\Snapshots\RoleSnapshot;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\CountingActorResolver;
 use ElPandaPe\Warden\Tests\Fixtures\User;
@@ -51,6 +55,7 @@ const WARDEN_EVENTS = [
     RolesSynced::class, PermissionsSynced::class,
     RoleCreated::class, RoleDeleted::class,
     PermissionCreated::class, PermissionDeleted::class,
+    RoleUpdated::class, PermissionUpdated::class,
 ];
 
 beforeEach(function (): void {
@@ -979,4 +984,233 @@ it('counts and announces only the assignments its own deletes removed when anoth
     Event::assertDispatched(RoleRetracted::class, fn (RoleRetracted $event): bool => $event->roles->pluck('name')->all() === ['editor']
         && count($event->assignments) === 1);
     expect($retract->retractedCount())->toBe(1);
+});
+
+it('announces a condition edit with the rule before and after', function (): void {
+    $permission = Permission::query()->create([
+        'name' => 'view',
+        'entity_type' => Account::class,
+        'options' => ['v' => 1, 'g' => ['t' => 'group', 'i' => [['and', ['t' => 'value', 'c' => 'name', 'o' => '=', 'v' => 'Draft']]]]],
+    ])->refresh();
+
+    $updates = [];
+    Event::listen(PermissionUpdated::class, function (PermissionUpdated $event) use (&$updates): void {
+        $updates[] = $event;
+    });
+
+    $permission->update([
+        'options' => ['v' => 1, 'g' => ['t' => 'group', 'i' => [['and', ['t' => 'value', 'c' => 'name', 'o' => '=', 'v' => 'Published']]]]],
+    ]);
+
+    $snapshot = fn (string $value): array => [
+        'v' => 1,
+        'key' => $permission->getKey(),
+        'name' => 'view',
+        'title' => 'View accounts',
+        'entity_type' => Account::class,
+        'entity_id' => null,
+        'only_owned' => false,
+        'scope' => null,
+        'conditions' => ['g' => ['i' => [['and', ['c' => 'name', 'o' => '=', 't' => 'value', 'v' => $value]]], 't' => 'group'], 'v' => 1],
+    ];
+
+    expect($updates)->toHaveCount(1)
+        ->and($updates[0]->permission->is($permission))->toBeTrue()
+        ->and($updates[0]->before)->toBe($snapshot('Draft'))
+        ->and($updates[0]->after)->toBe($snapshot('Published'))
+        ->and($updates[0]->changed)->toBe(['conditions'])
+        ->and($updates[0]->actor)->toBeNull();
+});
+
+it('reports the rule an edit replaced as unreadable when it could not be read', function (): void {
+    $permission = Permission::query()->create(['name' => 'view', 'entity_type' => Account::class]);
+    DB::table('permissions')->where('id', $permission->getKey())->update(['options' => 'null']);
+    $permission->refresh();
+
+    $updates = [];
+    Event::listen(PermissionUpdated::class, function (PermissionUpdated $event) use (&$updates): void {
+        $updates[] = $event;
+    });
+
+    $permission->update([
+        'options' => ['v' => 1, 'g' => ['t' => 'group', 'i' => [['and', ['t' => 'value', 'c' => 'name', 'o' => '=', 'v' => 'Published']]]]],
+    ]);
+
+    expect($updates)->toHaveCount(1)
+        ->and($updates[0]->before['conditions'])->toBe(['unreadable' => 'null'])
+        ->and($updates[0]->after['conditions'])->toBe(['g' => ['i' => [['and', ['c' => 'name', 'o' => '=', 't' => 'value', 'v' => 'Published']]], 't' => 'group'], 'v' => 1])
+        ->and($updates[0]->changed)->toBe(['conditions']);
+});
+
+it('announces a role rename with its name before and after', function (): void {
+    $role = Role::query()->create(['name' => 'editor'])->refresh();
+
+    $updates = [];
+    Event::listen(RoleUpdated::class, function (RoleUpdated $event) use (&$updates): void {
+        $updates[] = $event;
+    });
+
+    $role->update(['name' => 'chief-editor']);
+
+    expect($updates)->toHaveCount(1)
+        ->and($updates[0]->role->is($role))->toBeTrue()
+        ->and($updates[0]->before)->toBe(['v' => 1, 'key' => $role->getKey(), 'name' => 'editor', 'title' => 'Editor', 'scope' => null])
+        ->and($updates[0]->after)->toBe(['v' => 1, 'key' => $role->getKey(), 'name' => 'chief-editor', 'title' => 'Editor', 'scope' => null])
+        ->and($updates[0]->changed)->toBe(['name']);
+});
+
+it('announces a title edit as the only change, and several changes in snapshot order', function (): void {
+    $permission = Permission::query()->create(['name' => 'delete-accounts'])->refresh();
+
+    $changes = [];
+    Event::listen(PermissionUpdated::class, function (PermissionUpdated $event) use (&$changes): void {
+        $changes[] = $event->changed;
+    });
+
+    $permission->update(['title' => 'See accounts']);
+    $permission->update(['title' => 'Remove accounts', 'name' => 'remove-accounts']);
+
+    expect($changes)->toBe([['title'], ['name', 'title']]);
+});
+
+it('stays silent when a save leaves the snapshot as it was', function (): void {
+    $permission = Permission::query()->create([
+        'name' => 'view',
+        'entity_type' => Account::class,
+        'options' => ['v' => 1, 'g' => ['t' => 'group', 'i' => [['and', ['t' => 'value', 'c' => 'name', 'o' => '=', 'v' => 'Draft']]]]],
+    ])->refresh();
+    $role = Role::query()->create(['name' => 'editor'])->refresh();
+
+    $saves = 0;
+    Event::listen(['eloquent.updated: '.Permission::class, 'eloquent.updated: '.Role::class], function () use (&$saves): void {
+        $saves++;
+    });
+    $announced = [];
+    Event::listen([PermissionUpdated::class, RoleUpdated::class], function (object $event) use (&$announced): void {
+        $announced[] = $event;
+    });
+
+    $this->travel(1)->minutes();
+
+    $permission->save();
+    $permission->touch();
+    $role->touch();
+    $permission->update([
+        'options' => ['g' => ['i' => [['or', ['v' => 'Draft', 'o' => '=', 'c' => 'name', 't' => 'value']]], 't' => 'group'], 'v' => 1],
+    ]);
+    DB::table('permissions')->where('id', $permission->getKey())->update(['identity_key' => 'stale']);
+    $permission->refresh()->save();
+
+    expect($saves)->toBe(4)
+        ->and($announced)->toBeEmpty();
+});
+
+it('photographs a partially loaded permission from its whole row', function (): void {
+    $permission = Permission::query()->create(['name' => 'delete-accounts', 'entity_type' => Account::class])->refresh();
+
+    $updates = [];
+    Event::listen(PermissionUpdated::class, function (PermissionUpdated $event) use (&$updates): void {
+        $updates[] = $event;
+    });
+
+    Permission::query()->select(['id', 'title'])->sole()->update(['title' => 'Remove accounts']);
+
+    expect($updates)->toHaveCount(1)
+        ->and($updates[0]->before)->toBe(PermissionSnapshot::of($permission))
+        ->and($updates[0]->after)->toBe([...PermissionSnapshot::of($permission), 'title' => 'Remove accounts'])
+        ->and($updates[0]->changed)->toBe(['title']);
+});
+
+it('photographs a partially loaded role from its whole row, a column it never read included', function (): void {
+    $role = Role::query()->create(['name' => 'editor'])->refresh();
+
+    $updates = [];
+    Event::listen(RoleUpdated::class, function (RoleUpdated $event) use (&$updates): void {
+        $updates[] = $event;
+    });
+
+    Role::query()->select(['id'])->sole()->update(['title' => 'Chief editor']);
+
+    expect($updates)->toHaveCount(1)
+        ->and($updates[0]->before)->toBe(RoleSnapshot::of($role))
+        ->and($updates[0]->after)->toBe([...RoleSnapshot::of($role), 'title' => 'Chief editor'])
+        ->and($updates[0]->changed)->toBe(['title']);
+});
+
+it('carries the acting user on catalog edits', function (): void {
+    $admin = User::query()->create(['name' => 'Admin']);
+    $permission = Permission::query()->create(['name' => 'edit-site'])->refresh();
+    $role = Role::query()->create(['name' => 'editor'])->refresh();
+    $this->actingAs($admin);
+
+    Event::fake(WARDEN_EVENTS);
+
+    $permission->update(['title' => 'Edit the site']);
+    $role->update(['title' => 'Site editor']);
+
+    Event::assertDispatched(PermissionUpdated::class, fn (PermissionUpdated $event): bool => $event->actor?->is($admin) === true);
+    Event::assertDispatched(RoleUpdated::class, fn (RoleUpdated $event): bool => $event->actor?->is($admin) === true);
+});
+
+it('goes quiet on catalog edits when events are disabled', function (): void {
+    $permission = Permission::query()->create(['name' => 'edit-site'])->refresh();
+    $role = Role::query()->create(['name' => 'editor'])->refresh();
+    config()->set('warden.events_enabled', false);
+
+    Event::fake(WARDEN_EVENTS);
+
+    $permission->update(['name' => 'edit-pages']);
+    $role->update(['name' => 'chief-editor']);
+
+    Event::assertNotDispatched(PermissionUpdated::class);
+    Event::assertNotDispatched(RoleUpdated::class);
+});
+
+it('keeps the snapshots of an edit intact through serialization', function (): void {
+    $admin = User::query()->create(['name' => 'Admin']);
+    $permission = Permission::query()->create(['name' => 'edit-site'])->refresh();
+    $role = Role::query()->create(['name' => 'editor'])->refresh();
+    $this->actingAs($admin);
+
+    $announced = [];
+    Event::listen([PermissionUpdated::class, RoleUpdated::class], function (object $event) use (&$announced): void {
+        $announced[] = serialize($event);
+    });
+
+    $permission->update(['title' => 'Edit the site']);
+    $role->update(['name' => 'chief-editor']);
+    DB::table('permissions')->where('id', $permission->getKey())->update(['title' => 'Edited later']);
+
+    [$edit, $rename] = array_map(unserialize(...), $announced);
+
+    expect($edit)->toBeInstanceOf(PermissionUpdated::class)
+        ->and($edit->permission->getAttribute('title'))->toBe('Edited later')
+        ->and($edit->before['title'])->toBe('Edit site')
+        ->and($edit->after['title'])->toBe('Edit the site')
+        ->and($edit->changed)->toBe(['title'])
+        ->and($edit->actor?->is($admin))->toBeTrue()
+        ->and($rename)->toBeInstanceOf(RoleUpdated::class)
+        ->and($rename->role->is($role))->toBeTrue()
+        ->and($rename->before['name'])->toBe('editor')
+        ->and($rename->after['name'])->toBe('chief-editor')
+        ->and($rename->actor?->is($admin))->toBeTrue();
+});
+
+it('lets a listener of a catalog edit read the cache the edit left', function (): void {
+    config()->set('warden.cache.enabled', true);
+    $account = Account::query()->create(['name' => 'Acme']);
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Other');
+
+    expect(Gate::forUser($this->user)->allows('view', $account))->toBeFalse();
+
+    $seen = [];
+    Event::listen(PermissionUpdated::class, function () use (&$seen, $account): void {
+        $seen[] = Gate::forUser($this->user)->allows('view', $account);
+    });
+
+    Permission::query()->where('name', 'view')->sole()->update([
+        'options' => ['v' => 1, 'g' => ['t' => 'group', 'i' => [['and', ['t' => 'value', 'c' => 'name', 'o' => '=', 'v' => 'Acme']]]]],
+    ]);
+
+    expect($seen)->toBe([true]);
 });

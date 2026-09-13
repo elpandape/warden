@@ -9,6 +9,7 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
+use ElPandaPe\Warden\Events\PermissionUpdated;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Support\Announcer;
@@ -20,6 +21,7 @@ use ElPandaPe\Warden\Tenancy\AppliesPivotTenancy;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use WeakMap;
 
 /**
  * @phpstan-import-type PermissionShape from PermissionSnapshot
@@ -100,6 +102,50 @@ trait IsPermission
         // Lifecycle events fire at the model layer: every creation path counts.
         static::created(function (Model $permission): void {
             Announcer::announce(new PermissionCreated($permission, actor: app(ActorResolver::class)->resolve()));
+        });
+
+        /** @var WeakMap<Model, array<mixed>> $stored */
+        $stored = new WeakMap;
+
+        static::updating(function (Model $permission) use ($stored): void {
+            if (! Config::eventsEnabled()) {
+                return;
+            }
+
+            $row = $permission->getRawOriginal();
+            $missing = array_values(array_diff(['name', 'title', 'entity_type', 'entity_id', 'only_owned', 'scope', 'options'], array_keys($row)));
+
+            // A column the model never read would photograph as a default: take
+            // it from the stored row, which the update has not reached yet.
+            if ($missing !== []) {
+                $row = [...$row, ...(array) $permission->newQueryWithoutScopes()->whereKey($permission->getKey())->toBase()->first($missing)];
+            }
+
+            $stored[$permission] = $row;
+        });
+
+        static::updated(function (Model $permission) use ($stored): void {
+            // Model listeners run before the wildcard one that also marks:
+            // invalidate first, so no listener reads what this edit made stale.
+            app(CacheInvalidations::class)->markFrom($permission);
+
+            $row = $stored[$permission] ?? null;
+            unset($stored[$permission]);
+
+            if ($row === null) {
+                return;
+            }
+
+            $before = PermissionSnapshot::of($permission->newInstance([], true)->setRawAttributes($row, true));
+            $after = PermissionSnapshot::of($permission->newInstance([], true)->setRawAttributes([...$row, ...$permission->getAttributes()], true));
+            $changed = array_values(array_filter(
+                array_keys($after),
+                static fn (string $key): bool => $key !== 'v' && $key !== 'key' && $before[$key] !== $after[$key],
+            ));
+
+            if ($changed !== []) {
+                Announcer::announce(new PermissionUpdated($permission, $before, $after, $changed, actor: app(ActorResolver::class)->resolve()));
+            }
         });
 
         static::deleted(function (Model $permission): void {
