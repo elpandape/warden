@@ -3,7 +3,7 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
-## v3.1.0 — Events that say what changed (unreleased)
+## v3.1.0 — Events that say what changed (2026-09-13)
 
 Built for an audit log. An event used to repeat what the call asked for; it now lists the
 rows the call wrote or deleted, with their end dates and contexts, and the writes that went
