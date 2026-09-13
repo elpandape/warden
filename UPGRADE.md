@@ -3,6 +3,95 @@
 Version-to-version upgrades of this package, newest first. Coming from silber/bouncer
 instead? See [MIGRATING-FROM-BOUNCER.md](MIGRATING-FROM-BOUNCER.md).
 
+## From 3.0 to 3.1
+
+3.1 changes no schema, no configuration and no signature, so
+`composer update elpandape/warden` is the whole code change, and a `^3.0` constraint
+already allows it. What changes is what your event listeners receive; if any of them is
+queued, the next section comes first.
+
+Coming straight from 3.0.0, still run the one-time `php artisan warden:clean --stranded`
+that 3.0.1's CHANGELOG entry asks for, unless each tenant has its own users database: see
+[Landlord vs tenant databases](README.md#landlord-vs-tenant-databases).
+
+### Before deploying: queued listeners
+
+- **Drain the queued listeners of `RoleDeleted` and `PermissionDeleted`,** or clear them.
+  3.1 queues both events in a new shape, and a job either one queued under 3.0 fails under
+  3.1 with a `TypeError`, even when the row still exists. A listener that sets
+  `deleteWhenMissingModels` no longer drops such a job quietly: it lands in `failed_jobs`.
+- **A job queued under 3.0 for any other warden event still restores,** without the
+  properties 3.1 adds: reading its `$grants`, its `$assignments` or a catalog event's
+  `$actor` throws an `Error`. Ship a listener that reads them once those queues have
+  drained, or read them with `??` until then.
+- **A model that travels by value keeps every column, `$hidden` included** — `$hidden` only
+  shapes arrays and JSON. The roles and permissions in `$roles` and `$permissions` already
+  travelled that way; 3.1 adds the deleted row of `RoleDeleted` and `PermissionDeleted` and
+  every model in a `$grants` or `$assignments` entry, the context an `AssignmentRemoval`
+  names included. If your models (`warden.models.*`, or a context model) hold a sensitive
+  column, make the queued listeners of any warden event that carries them implement
+  `ShouldBeEncrypted`.
+
+### What listeners see differently
+
+- **Fewer, narrower write events.** An authority a call changed nothing for receives no
+  `RoleAssigned`, `RoleRetracted`, `PermissionGranted`, `PermissionForbidden`,
+  `PermissionRevoked` or `PermissionUnforbidden`, and `$roles` / `$permissions` hold only
+  what changed for it. A test that counts events over recipients who already held the role
+  will count fewer.
+- **Each write event lists its rows** in `$grants` or `$assignments`. `created`,
+  `expiresAt` and `previousExpiresAt` tell a new row from a moved date, and a removal's
+  `expiresAt` tells a live revocation from the removal of an expired row. If you build warden
+  events yourself — in tests, say — pass their arguments by name from `actor` on.
+- **`retract()` without `on()`** still dispatches `RoleRetracted` with `restrictedTo: null`;
+  the contexts it removed are in `$assignments`.
+- **A narrowing chain** repeated identically dispatches four events instead of five, with no
+  `PermissionGranted` for a twin that did not change. The plain row's `PermissionDeleted`
+  now comes after the re-point's `PermissionRevoked` and `PermissionGranted` instead of
+  before them, and changing the condition now also announces the removal of the previous
+  twin's grant.
+- **Deleting a role** dispatches a `RoleRetracted` per holder and scope after `RoleDeleted`,
+  and `RoleDeleted` carries `$heldGrants` and `$heldRoles`. If a `deleting` listener of yours
+  read the role's grants in order to log them, `$heldGrants` has them.
+- **Editing a role or a permission through its model** dispatches `RoleUpdated` or
+  `PermissionUpdated`, a title edit included: `$event->changed === ['title']` singles those
+  out.
+- **Catalog events carry `$actor`.** The default resolver returns `null` in the console; one
+  that names a system account there attributes what `warden:clean` deletes too.
+- **A listener's `can()` sees the write it hears about.** A re-check you added after the call
+  to get around stale answers is no longer needed.
+- **Queued listeners of `RoleDeleted` and `PermissionDeleted` now run**, with the deleted row
+  by value, without the relations it had loaded. The actor is read again when the job runs;
+  if its row is gone by then, it arrives as an unsaved stand-in carrying only its key
+  (`exists` is `false`) instead of failing the job.
+
+### What else changes
+
+- A soft-deleted role — `SoftDeletes` on your role model — now keeps its holders' access
+  until `forceDelete()`. 3.0 swept its grants on `delete()`; 3.1 leaves its grants, its
+  holders and its nested edges in place, so the trashed role stops answering `isA()` while
+  `can()` still grants what it lends. Force-delete it, or retract it first, when a delete
+  must end access. `RoleDeleted` goes out with empty `$heldGrants` and `$heldRoles`, and no
+  `RoleRetracted` follows. A soft-deleted permission announces no cascade. `forceDelete()`
+  sweeps and announces as usual.
+- `until()` over a row that already has an end date stores the wall time it names, as a new
+  row always did. A moment in another zone that names a different wall time from the row's
+  is now written and announced where 3.0 kept the old date, and access ends at the wall time
+  named, read in your application's zone. Hand `until()` moments in that zone.
+- `disallow()`, `unforbid()` and `retract()` read the rows they remove before deleting them
+  one by one, and deleting a role, with events on, reads every holder's row first. A call
+  pays one SELECT and a DELETE per row where it paid a single DELETE.
+- A new grant or assignment with `until()` is inserted with its date when your grant or
+  assignment model accepts `expires_at` by mass assignment, as warden's own do: an observer
+  of that model sees its `created` with the date, and no `updated` after it. A model that
+  does not still gets the date in an `updated` right after.
+- `assign()->to()` over several authorities asks your actor resolver once, not once per
+  authority.
+- Saving a role or a permission read with a partial `select()` reads the snapshot columns it
+  is missing: one more query, for partial rows only, and none with events off.
+- The README's [Events for auditing](README.md#events-for-auditing) section describes all of
+  this in one place.
+
 ## From 2.x to 3.0
 
 3.0 gives grants and role assignments an end date: a nullable, indexed `expires_at` on both

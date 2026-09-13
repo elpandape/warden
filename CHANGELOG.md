@@ -3,6 +3,198 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v3.1.0 — Events that say what changed (unreleased)
+
+Built for an audit log. An event used to repeat what the call asked for; it now lists the
+rows the call wrote or deleted, with their end dates and contexts, and the writes that went
+unannounced — deleting a role, editing the catalog — have events of their own. No signature
+changes, no migration and no new configuration: every addition is a class, an event, a
+model method or an optional parameter appended to an event's constructor. What a listener
+receives does change, and **Changed** and [UPGRADE.md](UPGRADE.md#from-30-to-31) say how.
+
+**Upgrading:** before deploying, let the queued listeners of `RoleDeleted` and
+`PermissionDeleted` drain, or clear them: a job either event queued under 3.0 fails under
+3.1, even when its row still exists.
+
+### Added
+
+- **Every write event lists its rows.** `PermissionGranted`, `PermissionForbidden`,
+  `PermissionRevoked`, `PermissionUnforbidden`, `RoleAssigned` and `RoleRetracted` gain a
+  last optional parameter — `$grants` on the permission events, `$assignments` on the role
+  events — with one value per pivot row the call wrote or deleted, the events of a catalog
+  delete's cascade included. `GrantChange` and `AssignmentChange` say whether the row was
+  created or had its date moved, with the date after and before; `GrantRemoval` and
+  `AssignmentRemoval` carry the date a deleted row had, and `AssignmentRemoval` the context
+  it had. Without them an event could not tell a new grant from a renewal, nor the
+  revocation of live access from the removal of a row that had expired weeks before. They
+  are not called `$changes` because `RolesSynced::$changes` and
+  `PermissionsSynced::$changes` already are a `SyncResult`.
+- **Deleting a role says who lost it.** One `RoleRetracted` per holder and scope follows
+  `RoleDeleted`, with an `AssignmentRemoval` for every row the foreign key took, context and
+  end date included; until now the holders lost the role in silence. `RoleDeleted` itself
+  carries `$heldGrants` and `$heldRoles`, snapshots of what the role held — the only record
+  left once those rows are swept.
+- **`RoleUpdated` and `PermissionUpdated`.** A model save that changes a role's or a
+  permission's snapshot — name, title, scope, entity, ownership or conditions — dispatches
+  the snapshot before and after, and `$changed`, the keys that differ. Editing a condition
+  used to change who could do what with no event at all.
+- **Catalog events name who acted.** `RoleCreated`, `RoleDeleted`, `PermissionCreated` and
+  `PermissionDeleted` gain `?Model $actor`, resolved through `warden.actor_resolver` like
+  every write event, and the two new events carry it too.
+- **Snapshots.** `Support\Snapshots\PermissionSnapshot::of()` and `RoleSnapshot::of()` return
+  a permission or a role as a versioned array whose shape is frozen; a rule nobody can read
+  comes back as `['unreadable' => …]`, never as no conditions. `snapshot()` on both model
+  traits delegates to them.
+
+  *If a base class of your own role or permission model already defines `snapshot()`, the
+  trait's method now hides it. Warden itself only ever calls the `Support` classes. If that
+  inherited method's signature is incompatible, PHP refuses to load the model class.*
+
+### Changed
+
+- **A write event carries only what changed, once per authority.**
+  `assign('editor')->to([$ana, $luis])` with Ana already an editor dispatched a
+  `RoleAssigned` for each of them, both naming every role requested; it now dispatches one,
+  for Luis. `$roles` and `$permissions` narrow to the rows that changed, in the order you
+  named them, and an authority the call changed nothing for receives nothing. No event ever
+  promised to repeat the request: 1.0.1 stopped announcing writes that changed nothing, and
+  this finishes the job.
+- **Listeners that count events will count differently:**
+  - fewer `RoleAssigned`, `RoleRetracted`, `PermissionGranted`, `PermissionForbidden`,
+    `PermissionRevoked` and `PermissionUnforbidden`: one per authority with changes;
+  - a narrowing chain repeated identically dispatches four events, not five — nothing about
+    a twin that did not change — and the `PermissionDeleted` of the plain row the chain
+    leaves unused now comes last, after the re-point's revocation and grant;
+  - deleting a role adds a `RoleRetracted` per holder and scope;
+  - editing a role or a permission through its model dispatches `RoleUpdated` or
+    `PermissionUpdated`, a title edit included.
+- **`RoleDeleted` and `PermissionDeleted` queue in a shape of their own.** The deleted row
+  travels by value, without the relations it had loaded, so a queued listener gets it as it
+  was when it went, every column included — `$hidden` ones too. The actor travels as an
+  identifier and is read again when the job runs; if its row is gone by then, it arrives as
+  an unsaved stand-in carrying only its key (`exists` is `false`) instead of failing the
+  job. A job either event queued under 3.0 cannot be restored in this shape.
+- **A soft-deleted role keeps lending its grants until it is force-deleted.** With
+  `SoftDeletes` on the role model, 3.0 swept the role's grants on `delete()` — see
+  **Fixed** — so its holders lost what it granted. Nothing is swept now: the trashed role
+  stops answering `isA()`, but `can()` reads the assignment rows, so its holders keep what
+  it grants until `forceDelete()`. Force-delete it, or retract it first, when a delete must
+  end access. Its `RoleDeleted` carries empty `$heldGrants` and `$heldRoles`: nothing was
+  swept, which is not to say the role held nothing.
+- **`until()` on an existing row stores the wall time it names, as a new row always did.**
+  An end date is stored as wall time and read back in the application's timezone, and on a
+  row that already had one, 3.0 compared instants instead. With the application on UTC, a
+  row ending at `2026-12-31 23:59:59`, given that same instant as Madrid's
+  `2027-01-01 00:59:59`, kept its date, although a new row would have stored the Madrid wall
+  time. It now takes it, the move is announced like any other, and access ends an hour
+  later than the instant named; a Lima moment ends five hours earlier the same way. Hand
+  `until()` moments in the application's timezone.
+- **A custom actor resolver is asked once per call.** `assign()->to()` over several
+  authorities resolved the actor once per authority it wrote for; it now resolves it once.
+- **A new row is inserted with its end date.** `allow()->until()`, `assign()->until()` and
+  the re-point of a `where()` created the row and then wrote its date, so Eloquent's events
+  on the grant or assignment model saw a `created` without the date and an `updated` with
+  it. When that model accepts `expires_at` by mass assignment — warden's own do — the row
+  is now inserted with its date, in one statement, and no `updated` follows. One that does
+  not still gets the date in an update right after the insert.
+- **Removals read before they delete.** `disallow()`, `unforbid()` and `retract()` read the
+  rows they are about to remove and delete them one by one, by primary key, so each event
+  names exactly the rows that went even with two callers racing. Such a call pays a SELECT
+  plus a DELETE per row where it paid one DELETE, and deleting a role reads every holder's
+  row before the foreign key takes them.
+- **Saving a partially read role or permission reads the rest of its snapshot.** A row
+  fetched with a partial `select()` and saved through its model reads the snapshot columns
+  it is missing, in one query, so `RoleUpdated` and `PermissionUpdated` describe the whole
+  row. With events off it reads nothing more.
+
+### Fixed
+
+- **A listener's `can()` answered from before the write.** Invalidation waited for the end of
+  the call, after its events, so a `RoleAssigned`, `PermissionGranted` or `RoleRetracted`
+  listener that checked access could read the payload cached before the change it was
+  hearing about. Pending invalidations are now applied before every dispatch, catalog and
+  cascade events included.
+- **A rolled-back write kept answering from the cache.** A check made inside a database
+  transaction after a warden write — by your code or by a listener — cached an answer that
+  counted the write. If the transaction, or a savepoint around the write, then rolled back,
+  that answer outlived the rollback until the next cache bump or the TTL: a rolled-back
+  grant kept authorizing, a rolled-back revocation kept denying. The cache is now
+  invalidated again when a transaction rolls back, as it already was when one commits.
+- **`retract()` without `on()` did not say which contexts it took.** It deletes the role in
+  every context and dispatched one `RoleRetracted` with `restrictedTo: null`, so a log could
+  not tell losing the global assignment from losing three organizations' as well. Each
+  `AssignmentRemoval` now carries its own row's context, while the event's `$restrictedTo`
+  keeps meaning the context the call named.
+- **Changing a narrowing chain's condition removed the old rule without naming it.** The
+  re-point deleted the grant of the twin an earlier condition had left, but its
+  `PermissionRevoked` — or `PermissionUnforbidden`, on a forbid — named only the plain row.
+  On a forbid, that lifted the old prohibition in silence. Every grant the re-point deletes
+  is now announced.
+- **Repeating an identical chain re-created the twin's grant** and announced it as a new
+  `PermissionGranted`. The row is now left alone, and nothing is announced about it. Handing
+  `to()` the twin itself and restating its condition in `where()` announced a
+  `PermissionRevoked` and a `PermissionGranted` naming nothing; that now announces nothing.
+- **A listener that threw could leave a call half-done.** `retract()` dispatched inside its
+  loop, so a throw on the first authority left the rest holding the role. Every action now
+  writes or deletes all its grant and assignment rows before its first write event goes
+  out; only a role or permission it creates by name is announced as it is created, before
+  them.
+- **Catalog events came from inside the re-point's transaction.** A listener of the twin's
+  `PermissionCreated` that threw rolled back a re-point whose creation had been announced,
+  and the plain row's `PermissionDeleted` went out before the re-point it followed. The twin
+  is now created before the transaction and the unused plain row deleted after it; a
+  re-point that fails leaves the twin in the catalog with no grants, for `warden:clean` to
+  reclaim.
+- **Deleting a role left the nested edges it held.** `assigned_roles` rows whose authority
+  was the deleted role survived until `warden:clean --stranded`; `whereIs()` still walked
+  them, and an engine that reuses keys would have handed them to the next role with that id.
+  They are now swept with the role's grants.
+- **A queued listener of `RoleDeleted` or `PermissionDeleted` always failed.** The row is gone
+  before the job runs, and restoring it by identifier threw `ModelNotFoundException` — on the
+  `sync` queue, out of `delete()` itself. Both events now carry the deleted row by value and
+  the actor as an identifier; **Changed** says how they queue.
+- **Soft-deleting a role destroyed its grants.** With `SoftDeletes` on the role model,
+  `delete()` swept the role's grants for real while the role stayed restorable. A soft delete
+  now leaves grants, holders and nested edges in place and announces no loss;
+  `forceDelete()` sweeps and announces them. `RoleDeleted` still fires, with empty held
+  lists; a soft-deleted permission announces no cascade either.
+- **An eager-loaded role stops counting at an end date its pivot hands back as a timestamp.**
+  With `warden.models.assigned_role` pointing at a pivot that returns `expires_at` as a Unix
+  timestamp — a `timestamp` cast does — and `warden.roles.nested` off, the default, `isA()`,
+  `isAn()`, `isAll()`, `Warden::is()` and the `warden.role` middleware read that date as no
+  end on a model whose `roles` were already loaded: an expired role kept counting while the
+  relation stayed loaded. 3.0.1 parsed the date only when it came back as text. Any value but
+  `null` is now read as a date, as the cached engine already reads it.
+- **`until()` compares a date the way the column stores it.** An end date is stored as wall
+  time, and `until()` compared instants. A date in another timezone that stores the same
+  wall time counted as a write — a cache bump and an event — although the row did not
+  change. On a pivot model swapped in without an `expires_at` cast, the stored date read as
+  `null`: `until(null)` could never lift it, and giving the row the date it already held
+  counted as a write.
+
+### Documentation
+
+- **The README no longer says that every write dispatches an event.** It never did: relation
+  writes, query-builder writes, a deleted role's holders and catalog edits went unannounced.
+  A new *Events for auditing* section says what is announced and what is not, in what order,
+  how a queued listener receives each value, and when events are dispatched.
+- **Waiting for the commit is a per-listener choice.** Warden keeps dispatching
+  synchronously, inside the caller's transaction, because a listener that throws must still
+  be able to roll the write back. The README shows Laravel's `ShouldHandleEventsAfterCommit`
+  and `ShouldQueueAfterCommit`, with their limits, instead of a global switch.
+- **`Event::fake()` without a list stops warden's model hooks** — identity keys, titles, the
+  tenant stamp, invalidation, a delete's sweep and cascade — and `saveQuietly()`,
+  `deleteQuietly()` and `Model::withoutEvents()` skip them the same way. The README lists
+  the events to fake instead.
+- **Relation writes stay silent, by decision.** `attach()`, `detach()`,
+  `updateExistingPivot()` and the rest on `roles()` and `permissions()` invalidate the cache
+  and announce nothing; write through the verbs when a log must see it.
+- **Re-assigning an expired row without `until()` announces nothing**, because it writes
+  nothing — the Temporary Access note 3.0.1 added says why — and `sync()` counts that row
+  as `kept`. A `sync()` also dispatches its diffed event when nothing moved.
+- **`warden:clean --duplicates` does dispatch events**: one `PermissionDeleted` per duplicate
+  it collapses. Only the re-pointing of their grants is silent.
+
 ## v3.0.1 — Access that ends when it says it does (2026-09-12)
 
 Found while checking 3.0.0 against what an audit log needs from its events. Most of these
