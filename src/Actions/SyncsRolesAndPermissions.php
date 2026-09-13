@@ -80,7 +80,7 @@ class SyncsRolesAndPermissions
             ->get()
             ->toBase();
 
-        $this->dispatchWardenEvent(new RolesSynced($authority, $this->diff($models, $before), $scope, $this->actor()));
+        $this->dispatchWardenEvent(new RolesSynced($authority, $this->diff($models, $before), $scope, actor: $this->actor()));
 
         return $this;
     }
@@ -178,7 +178,7 @@ class SyncsRolesAndPermissions
             ->toBase();
 
         $this->dispatchWardenEvent(
-            new PermissionsSynced($authority, $this->diff($permissionModels, $before), $scope, $forbidden, $this->actor()),
+            new PermissionsSynced($authority, $this->diff($permissionModels, $before), $scope, $forbidden, actor: $this->actor()),
         );
 
         return $this;
