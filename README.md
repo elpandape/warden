@@ -65,7 +65,7 @@
 | 🪆 **Nested roles** | A role inside a role lends its grants, off by default and switchable live. |
 | 🏢 **Multi-tenancy** | Tenant-scoped rows with global fallback, injectable resolver, exception-safe `onceTo()`. |
 | 💾 **Smart caching** | O(1) invalidation, versioned payloads, anti-stampede locking, Octane-safe. |
-| 📡 **Typed events** | Every write dispatches a typed event with hydrated models — never raw IDs. |
+| 📡 **Typed events** | Warden's verbs and catalog models announce exactly the rows they changed — hydrated models, end dates and contexts, never raw IDs. |
 | 🔢 **Enum support** | `BackedEnum` accepted everywhere a name string is. |
 | 🧪 **Testing helpers** | `Warden::fake()`, `WithPermissions` trait, artisan commands. |
 | 🔄 **Migration path** | `warden:upgrade` + Rector set for silber/bouncer users. |
@@ -251,7 +251,7 @@ Warden::allow($user)->until(null)->to('publish', Post::class);
 
 > 📌 **An expired assignment stops counting as held**, not only for `can()`. `isA()`, `isAll()`, `Warden::is()`, `whereIs()`, `whereIsAll()` and `whereIsNot()` read the date too, with nesting on or off, and so does the `warden.role` middleware, which answers an expired role with a 403. The relation is left alone: `$user->roles` still lists the row until something deletes it, with its date on the pivot's `expires_at`.
 
-> 📌 **`until()` goes before `to()`**, like `on()`: writes execute immediately, so calling it afterwards throws rather than quietly doing nothing. Moving a date counts as a write — it invalidates the cache and fires the same event as any other.
+> 📌 **`until()` goes before `to()`**, like `on()`: writes execute immediately, so calling it afterwards throws rather than quietly doing nothing. Moving a date counts as a write — it invalidates the cache and fires the same event as any other, whose entry carries the date before and after.
 
 > 📌 **A condition keeps the date.** `where()` re-points a grant at its constrained twin (see [Conditional Permissions](#-conditional-permissions-abac)), and the twin takes the date the same chain declared — `until(null)` included, which lifts it. Without `until()` it keeps the date the grant already had; if the authority held that permission both plain and under a condition, with different dates, the later one wins and no end date beats any.
 
@@ -376,7 +376,7 @@ $removed = Warden::retract('editor')->from($user)->retractedCount();  // rows de
 >
 > **Under `null_behavior => 'strict'` it narrows instead.** With no active tenant, strict reads only global rows, so `removeOnce()` turns `(scope is null or scope = $tenant)` into `scope is null` — strictly fewer rows than the read it was meant to widen. Under the default `'all'` it widens as described.
 
-> 📌 **Relation writes obey the rule too.** `detach()`, `sync()`, `toggle()`, `syncWithoutDetaching()` and `updateExistingPivot()` on `roles()` and `permissions()` touch only rows at the active write scope, and `attach()` stamps it. A global row the tenant inherits stays out of reach in both directions: under tenant 5, `sync([$role])` adds the tenant-5 row beside the global one instead of adopting it, and `sync([])` leaves the global one standing.
+> 📌 **Relation writes obey the rule too.** `detach()`, `sync()`, `toggle()`, `syncWithoutDetaching()` and `updateExistingPivot()` on `roles()` and `permissions()` touch only rows at the active write scope, and `attach()` stamps it. A global row the tenant inherits stays out of reach in both directions: under tenant 5, `sync([$role])` adds the tenant-5 row beside the global one instead of adopting it, and `sync([])` leaves the global one standing. Relation writes invalidate the cache but announce nothing: see [Events for auditing](#events-for-auditing).
 
 > ⚠️ **Scope, yes; restriction, no.** A relation write narrows to one scope and stops there: it does not filter `restricted_to_*`, so `$user->roles()->detach($editor)` removes the scoped-role assignments along with the plain one. That mirrors `Warden::retract('editor')->from($user)` without `->on()`, which deletes them all the same way — the relation is not narrower than the verb it reflects. To remove one context and leave the others, name it: `Warden::retract('editor')->on($org)->from($user)`.
 
@@ -517,28 +517,62 @@ Which of `permission` and `role` are populated depends on the cause:
 
 ## 📡 Events
 
-Every write dispatches a typed, `readonly` event with **hydrated models** (never raw IDs). Disable globally with `warden.events_enabled`.
+Warden announces its own writes. Every verb — `allow()`, `forbid()`, `disallow()`, `unforbid()`, `assign()`, `retract()`, `sync()`, and the `where()` that narrows a grant — dispatches a typed, `readonly` event, and so does creating, editing or deleting a role or permission through its model. Each event names what it touched with **hydrated models** (never raw IDs) and lists exactly the rows that changed. Writes made around warden are not announced: [Events for auditing](#events-for-auditing) says which, and when each event is dispatched. Disable globally with `warden.events_enabled`.
 
 | Event | Fired By | Payload |
 |---|---|---|
-| `PermissionGranted` / `PermissionForbidden` | `allow()`, `forbid()` | `?Model $authority`, `Collection $permissions`, `$scope`, `?Model $actor` |
-| `PermissionRevoked` / `PermissionUnforbidden` | `disallow()`, `unforbid()` | Same shape |
-| `RoleAssigned` / `RoleRetracted` | `assign()`, `retract()` | `Model $authority`, `Collection $roles`, `$scope`, `?Model $restrictedTo`, `?Model $actor` |
-| `RolesSynced` / `PermissionsSynced` | `sync()` | `SyncResult` diff: `attached` / `detached` / `kept` |
-| `RoleCreated/Deleted`, `PermissionCreated/Deleted` | Model layer | The model |
+| `PermissionGranted` / `PermissionForbidden` | `allow()`, `forbid()`, and the `where()` that narrows them | `?Model $authority`, `Collection $permissions`, `$scope`, `?Model $actor`, `list<GrantChange> $grants` |
+| `PermissionRevoked` / `PermissionUnforbidden` | `disallow()`, `unforbid()`, a narrowing `where()`, deleting a permission | `?Model $authority`, `Collection $permissions`, `$scope`, `?Model $actor`, `list<GrantRemoval> $grants` |
+| `RoleAssigned` | `assign()` | `Model $authority`, `Collection $roles`, `$scope`, `?Model $restrictedTo`, `?Model $actor`, `list<AssignmentChange> $assignments` |
+| `RoleRetracted` | `retract()`, deleting a role | `Model $authority`, `Collection $roles`, `$scope`, `?Model $restrictedTo`, `?Model $actor`, `list<AssignmentRemoval> $assignments` |
+| `RolesSynced` / `PermissionsSynced` | `sync()` | `Model $authority`, `SyncResult $changes` (`attached` / `detached` / `kept`), `$scope`, `?Model $actor`; `PermissionsSynced` adds `bool $forbidden` |
+| `RoleCreated` / `PermissionCreated` | Creating the row — also when a verb names one that does not exist yet | The model, `?Model $actor` |
+| `RoleUpdated` / `PermissionUpdated` | A model save that changes the row's [snapshot](#snapshots) | The model, `array $before`, `array $after`, `list<string> $changed`, `?Model $actor` |
+| `RoleDeleted` | Deleting the role through its model | `Model $role`, `?Model $actor`, `array $heldGrants`, `array $heldRoles` |
+| `PermissionDeleted` | Deleting the permission through its model | `Model $permission`, `?Model $actor` |
 
-> 📌 **A sync's diff covers what the sync can reach.** A permissions sync names plain rules only — a name resolves to the row with no entity, no condition and no ownership — so it never deletes a class, instance, `toOwn()` or conditioned grant, and `PermissionsSynced` never reports one as `detached`: `detached` names exactly the rows the sync deleted.
+The six write events carry one value per pivot row they wrote or deleted — `$grants` on the permission events, `$assignments` on the role events:
+
+| Value | On | Properties |
+|---|---|---|
+| `GrantChange` | `PermissionGranted`, `PermissionForbidden` | `Model $permission`, `bool $created`, `?CarbonImmutable $expiresAt`, `?CarbonImmutable $previousExpiresAt` |
+| `AssignmentChange` | `RoleAssigned` | `Model $role`, `bool $created`, `?CarbonImmutable $expiresAt`, `?CarbonImmutable $previousExpiresAt` |
+| `GrantRemoval` | `PermissionRevoked`, `PermissionUnforbidden` | `Model $permission`, `?CarbonImmutable $expiresAt` — the date the row had when it went |
+| `AssignmentRemoval` | `RoleRetracted` | `Model $role`, `?Model $restrictedTo` — the row's own context — and `?CarbonImmutable $expiresAt` |
+
+A write reads like this:
+
+| The row | `created` | `expiresAt` | `previousExpiresAt` |
+|---|---|---|---|
+| Was just created | `true` | the date it was created with, or `null` | `null` |
+| Had its date moved | `false` | the new date | the old date |
+| Got its first date | `false` | the new date | `null` |
+| Had its date lifted with `until(null)` | `false` | `null` | the old date |
+
+> 📌 **With `created: false` the two dates always differ** — a write that moves nothing is not announced. `expiresAt` is read back from the row, so it is the wall time the column stores, in your application's timezone, rather than the object you passed to `until()`.
+
+> 📌 **`PermissionForbidden` carries `$grants` too.** A forbid cannot take `until()`, so in practice its entries are new rows with no end date.
 
 ```php
 use ElPandaPe\Warden\Events\PermissionGranted;
 
 Event::listen(PermissionGranted::class, function (PermissionGranted $event) {
-    // $authority receives the permission; $actor is who granted it.
-    audit('granted', $event->actor, $event->authority, $event->permissions->pluck('name'));
+    foreach ($event->grants as $grant) {
+        // $authority received it; $actor granted it.
+        audit(
+            $grant->created ? 'granted' : 'date changed',
+            $event->actor,
+            $event->authority,
+            $grant->permission->getAttribute('name'),
+            $grant->expiresAt,
+        );
+    }
 });
 ```
 
-`$actor` defaults to the authenticated user. Queues, console commands and impersonation are cases only your application can answer, so point `warden.actor_resolver` at a class implementing `Contracts\ActorResolver`:
+> 📌 **Building an event yourself** — in a test, say? Pass its arguments by name from `actor` on. Warden only ever appends optional parameters, so a name stays valid where a position would not.
+
+`$actor` defaults to the authenticated user, on every post-write event — the catalog's included. Queues, console commands and impersonation are cases only your application can answer, so point `warden.actor_resolver` at a class implementing `Contracts\ActorResolver`:
 
 ```php
 final class CurrentActor implements ActorResolver
@@ -563,11 +597,188 @@ Enable with `warden.cancellable_events`. A listener returning `false` aborts the
 
 > 📌 `sync()` never fires nor honors pre-action events — its declarative diff events tell the whole story.
 
-> 📌 **Deleting a catalog row settles before anyone hears of it.** The cache is invalidated and a role's own grants are swept first; then `RoleDeleted` or `PermissionDeleted` goes out; then, for a permission, the cascade below. A listener that throws can no longer leave checks answering for a row that is gone — it only stops the announcements after it. The flip side: a `RoleDeleted` listener no longer finds the role's grants. Read them in a `deleting` listener on the role model if you need them.
+> 📌 **`where()` fires none.** It refines the grant `to()` has just made, and `to()` fired its own.
 
-> 📌 **Deleting a catalog row announces what the cascade was predicted to reach.** A foreign key removes a permission's grants inside the engine, where no model event fires, so warden reads the doomed rows *before* the delete and dispatches one `PermissionRevoked` — or `PermissionUnforbidden` — per row afterwards. The read is the announcement: if the foreign key is not enforced, the events describe a deletion that did not happen.
+> 📌 **A cascade fires none either.** Deleting a role never fires `RetractingRole`, nor deleting a permission `RevokingPermission`: the foreign key deletes inside the engine, and the only veto over the delete is Eloquent's own — return `false` from a `deleting` listener on the model.
 
-> 📌 **That cascade is blind to the active tenant.** The doomed rows are read with `withoutGlobalScopes()`, on purpose — the delete destroys every tenant's grants regardless of which one is active, so counting only the current tenant would promise a smaller loss than the real one. Each holder is loaded the same way, so one under another tenant arrives named rather than as a `null` authority, which would read as *everyone*. A holder whose row is already gone is not announced — it authorized nobody — and neither is a row with a type and no key; one whose morph alias maps to no class in this process is skipped with a warning in the log.
+### Events for auditing
+
+What an audit log built on these events can rely on, and what it cannot.
+
+#### What an event describes
+
+An event describes **rows** warden wrote or deleted at `$scope` — not the access that results. Ask [`Warden::explain()`](#-debugging-with-explain) about access. So:
+
+- a `PermissionGranted` under a tenant can leave access unchanged, when a global grant already gave it;
+- deleting a row whose end date had passed is announced, with that date: the entry tells a revocation from the sweep of something already dead;
+- `RoleCreated` and `PermissionCreated` never change access — a catalog row nobody holds authorizes nothing — so an access log can ignore them.
+
+#### What a write announces
+
+- **Only what changed, once per authority.** `assign('editor')->to([$ana, $luis])` with Ana already an editor dispatches one `RoleAssigned`, for Luis. An authority the call changed nothing for receives nothing, and a call that changes nothing dispatches nothing — `sync()` excepted, below.
+- **`$roles` and `$permissions` are the models of those rows**, each once, in the order you named them. The entries say the rest: which row was created, which had its date moved, which context a removal took.
+- **Moving an end date is a write.** `until()` over an existing row dispatches the same event as a new row, told apart by its entry: `created: false`, with the dates after and before. Reaching the date dispatches nothing — expiry by clock is silent by design, and the date was announced when it was written.
+- **Re-assigning an expired row without `until()` announces nothing**, because it writes nothing: [Temporary Access](#-temporary-access) explains why the row stays as it was. `sync()` lists that row under `kept`. Give it a new date, or `until(null)`, and the write is announced as a moved date.
+- **`retract()` without `on()` removes every context of the role.** `RoleRetracted::$restrictedTo` is the context the call named — `null` when it named none — and each `AssignmentRemoval` carries the context its own row had. Losing `editor` with no context and in two organizations is one event with three entries, and `editor` once in `$roles`.
+- **A call writes everything before it announces anything.** Every row, for every authority it names, is written first. A listener that throws cannot interrupt the write, only the announcements still to come — and the exception leaves the call. The one write left for after the announcements is the unused plain row a `where()` deletes, below.
+
+#### Implicit creation and the narrowing chain
+
+- **Naming something that does not exist creates it.** The first `allow()` or `forbid()` that names a permission dispatches `PermissionCreated` before its `PermissionGranted`, and a role that `assign()`, `allow()`, `forbid()` or `sync()` names for the first time dispatches `RoleCreated`. A catalog log gets one entry per first use.
+- **`to()->where()` is two writes, and it announces both.** `to()` lands the unconstrained grant and announces it; `where()` re-points it at the constrained twin. It announces every grant row it replaced — the plain one, and any twin an earlier condition left — as `PermissionRevoked` (`PermissionUnforbidden` for a forbid), then the twin's `PermissionGranted` (`PermissionForbidden`) when its row was created or its date moved, and last `PermissionDeleted` for a plain row the chain itself created and left unused. Over several permissions — `to(['view', 'edit'], Document::class)->where(...)` — each event's `$grants` follows the order you named them, and the rows replaced for one of them follow their keys.
+- **The first chain on a permission nobody holds yet dispatches six events**, in this order: `PermissionCreated` and `PermissionGranted` for the plain row, `PermissionCreated` for the twin, `PermissionRevoked` for the plain grant, `PermissionGranted` for the twin, `PermissionDeleted` for the plain row. Running the identical chain again leaves the twin's grant row as it was — same row, no event about it — and dispatches the four about the plain row that `to()` creates and `where()` retires.
+- **The twin is created before the re-point's transaction, and the unused plain row deleted after it** — after the re-point's announcements, too — so no event is dispatched from inside that transaction. A re-point that fails leaves the twin in the catalog with no grants; a listener that throws on the re-point's `PermissionRevoked` or `PermissionGranted` (`PermissionUnforbidden` or `PermissionForbidden` for a forbid) leaves the plain row there instead, with no grants either. Neither authorizes anything, and `warden:clean` reclaims both — unless your own transaction rolled them back first.
+- **A listener that throws on the `PermissionGranted` of `to()` stops the chain before `where()` runs**: the unconstrained grant stays, as a throw inside `where()` would leave it (see [Conditional Permissions](#-conditional-permissions-abac)). Wrap the chain in your own transaction when that matters.
+
+#### Sync
+
+- **`sync()` dispatches one diffed event**, `RolesSynced` or `PermissionsSynced`, and silences the per-row events of the writes it delegates. Catalog events are not silenced: a role or permission `sync()` creates by name still dispatches `RoleCreated` or `PermissionCreated`.
+- **It dispatches even when nothing moved**, with everything under `kept` — the one write event that does.
+- **`detached` names the rows the sync read and then deleted.** A permissions sync names plain rules only — a name resolves to the row with no entity, no condition and no ownership — so it never deletes a class, instance, `toOwn()` or conditioned grant, nor reports one as `detached`. The read and the delete are two statements: a grant or an assignment another connection writes between them is deleted without appearing in `detached`.
+- **`kept` names what the sync left in place**, a row whose end date has passed included: the sync neither revives nor removes it.
+
+#### Deleting a role or a permission
+
+- **It settles before anyone hears of it.** The cache is invalidated and whatever no foreign key reaches is swept first — a role's own grants, and the nested edges it held as an authority. Then `RoleDeleted` or `PermissionDeleted` goes out, then the cascade's events. A listener that throws stops the announcements after it, and nothing else.
+- **Deleting a permission** dispatches `PermissionDeleted`, then one `PermissionRevoked` — or `PermissionUnforbidden`, for a forbid — per grant its foreign key took, with that row's `GrantRemoval`, expired rows included with their date. A grant `allowEveryone()` wrote arrives with a `null` authority: it was everyone's.
+- **Deleting a role** dispatches `RoleDeleted`, carrying `$heldGrants` and `$heldRoles`: what the role itself held, as [snapshots](#snapshots) with their polarity, scope, context and end date, expired rows included — the record of rows swept rather than announced one by one. Then one `RoleRetracted` per holder and scope: `$roles` is the deleted role, `$restrictedTo` is `null` because no call named a context, and `$assignments` has an `AssignmentRemoval` per row, with its context and date. A role that held the deleted one through nesting arrives as the authority, nesting on or off.
+- **What the cascade announces is read before the delete.** A foreign key removes the rows inside the engine, where no model event fires, so warden reads them first, and the read is the announcement: if the foreign key is not enforced, the events describe a deletion that did not happen. The read and the delete are two statements, too: a row another connection writes between them goes with no event, and one it deletes meanwhile can still be announced.
+- **The cascade is blind to the active tenant.** Rows and holders are read with `withoutGlobalScopes()`, on purpose: the delete destroys every tenant's rows whichever one is active, so counting only the current tenant would promise a smaller loss than the real one. A holder under another tenant, or soft-deleted, arrives named — never as a `null` authority, which would read as *everyone*. A holder whose row is already gone is not announced — it authorized nobody — and neither is a row with a type and no key; one whose morph alias maps to no class in this process is skipped with a warning in the log. A restriction context whose row is gone arrives as an unsaved model carrying only its key (`exists` is `false`), never as `null`, which would read as *no restriction*. A row whose restriction context maps to no class, or names only half of one, gets no entry — `retract()` still counts it in `retractedCount()` — and a holder left with no nameable row gets no `RoleRetracted`.
+- **A soft delete loses nothing.** With `SoftDeletes` on your role model, `delete()` leaves the role's grants, holders and nested edges in place: `RoleDeleted` still goes out, with empty `$heldGrants` and `$heldRoles` — nothing was swept, which is not to say the role held nothing — and no `RoleRetracted` follows. The trashed role stops answering `isA()`, but `can()` reads the assignment rows, so its holders keep what it grants until `forceDelete()`, which sweeps and announces as usual. A soft-deleted permission keeps its grants and announces no cascade.
+- **With events off, a delete still settles.** Turning `warden.events_enabled` off stops the announcements, not the cache invalidation or the sweep. A role's delete then skips the reads that only feed its events; a permission's still reads its grants before the delete, and discards them.
+- **A bulk delete announces nothing.** `Role::query()->where(...)->delete()`, `DB::table()` and raw statements fire no model event: no `RoleDeleted`, no cascade events, no sweep and no cache invalidation. Delete model by model to keep all four — `Role::query()->where(...)->lazyById()->each->delete()` — or follow a bulk delete with `Warden::refresh()` and `warden:clean --stranded` — not with one users database per tenant: see [Landlord vs tenant databases](#landlord-vs-tenant-databases).
+
+#### Maintenance commands
+
+- **`warden:clean` deletes unused permissions one by one through the model**: each dispatches `PermissionDeleted`, with the actor your resolver returns — `null` in the console with the default one.
+- **`--duplicates` re-points each duplicate's grants to the surviving row by query**, without events — when one collides with a grant the survivor already holds, the survivor keeps the later end date and the duplicate's grant is dropped — then deletes the duplicate through the model: one `PermissionDeleted` each, and no cascade events, because by then it points at nothing.
+- **`--expired` and `--stranded` delete by query and dispatch nothing**: those rows authorize no saved model.
+- **`warden:retitle` rewrites titles with the query builder**, on purpose, so it dispatches no `RoleUpdated` or `PermissionUpdated`; `warden:upgrade` dispatches nothing either.
+
+#### Editing the catalog
+
+- **A model save that changes a role's or a permission's [snapshot](#snapshots)** dispatches `RoleUpdated` or `PermissionUpdated`, with the snapshot before and after, and `$changed`: the keys that differ, in snapshot order — never `v` or `key`. The title counts — relabelling `delete-accounts` as "View accounts" changes what an administrator believes they are granting — and `$changed === ['title']` is how to filter those out.
+- **A save that leaves the snapshot as it was dispatches nothing**: `touch()`, the same conditions stored with their keys in another order, a recomputed identity key.
+- **A partially read row is completed first.** Saving a role or a permission fetched with a partial `select()` reads the snapshot columns it is missing from its row — one query, for partial rows only, and none with events off — so `$before` describes the whole row, not half of it.
+- **Columns your own model adds are not in the snapshot.** Listen to Eloquent's `updated` for those.
+- **The cache is up to date when the event goes out**, as for every other event.
+
+#### Writes that announce nothing
+
+- **Relation writes.** `attach()`, `detach()`, `sync()`, `toggle()`, `syncWithoutDetaching()` and `updateExistingPivot()` on `roles()`, `permissions()` and a permission's `roles()` go through Eloquent's pivot models: they invalidate the cache, and no warden event reports them — flipping `forbidden` or a `restricted_to_*` column included. Write through the verbs when a log has to see it. `nestedRoles()` refuses writes altogether.
+- **The query builder, `DB::table()` and raw statements**, on any warden table.
+- **Anything run with model events off**: `saveQuietly()`, `deleteQuietly()`, `Model::withoutEvents()`. On warden's own models that skips more than the event: a quiet delete leaves cached checks answering for the row and a role's grants unswept, and a quiet save of a permission skips the hook that computes its identity key. Follow one with `Warden::refresh()` — and `warden:clean --stranded` after a quiet role delete, not with one users database per tenant (see [Landlord vs tenant databases](#landlord-vs-tenant-databases)) — or, better, don't.
+- **The clock.** A row stops counting at its end date without an event.
+
+#### Testing with `Event::fake()`
+
+`Event::fake()` with no list replaces the dispatcher Eloquent's model events go through, so warden's model hooks stop running with it: identity keys, generated titles, the tenant stamp, the catalog events, cache invalidation, and a delete's sweep and cascade. In a test suite it shows up as a unique-constraint violation on the second permission of a name, as a permission created global under a tenant, or as an `Event::assertDispatched(PermissionCreated::class)` that fails because the hook that dispatches it never ran. Fake warden's events by name instead:
+
+```php
+use ElPandaPe\Warden\Events;
+use Illuminate\Support\Facades\Event;
+
+Event::fake([
+    Events\PermissionGranted::class, Events\PermissionForbidden::class,
+    Events\PermissionRevoked::class, Events\PermissionUnforbidden::class,
+    Events\RoleAssigned::class, Events\RoleRetracted::class,
+    Events\RolesSynced::class, Events\PermissionsSynced::class,
+    Events\RoleCreated::class, Events\RoleUpdated::class, Events\RoleDeleted::class,
+    Events\PermissionCreated::class, Events\PermissionUpdated::class, Events\PermissionDeleted::class,
+]);
+```
+
+Add the pre-action events you assert on — `AssigningRole`, `RetractingRole`, `GrantingPermission`, `ForbiddingPermission`, `RevokingPermission`, `UnforbiddingPermission` — the same way. A faked pre-action event never vetoes.
+
+#### Queued listeners
+
+A queued listener receives the event serialized, and its values come back in two ways:
+
+- **Read again when the job runs**: top-level models — `$authority`, `$actor`, `$restrictedTo`, and the `$role` or `$permission` of `RoleCreated`, `RoleUpdated`, `PermissionCreated` and `PermissionUpdated`. One deleted in the meantime fails the job with `ModelNotFoundException`.
+- **By value, as they were at dispatch**: `$roles`, `$permissions`, a sync's `$changes`, every `$grants` and `$assignments` entry, and every snapshot. They outlive the rows they describe.
+
+`RoleDeleted` and `PermissionDeleted` differ on both counts. The deleted row travels by value, without the relations it had loaded, so the listener gets it as it was when it went. The actor travels as an identifier and is read again when the job runs; if its row is gone by then, it arrives as an unsaved stand-in carrying only its key (`exists` is `false`) instead of failing the job.
+
+> ⚠️ **A model that travels by value keeps every column, `$hidden` included** — `$hidden` only shapes arrays and JSON. The deleted row of `RoleDeleted` and `PermissionDeleted` is one, as are the roles and permissions in the lists and entries, and the context an `AssignmentRemoval` names. If your own models (`warden.models.*`, or a context model) hold a sensitive column, make the queued listeners of these events implement `ShouldBeEncrypted`.
+
+#### When an event is dispatched
+
+- **Synchronously, as the call that wrote it finishes, inside whatever transaction you have open.** Warden opens none around your call; the only one it opens is the re-point inside `where()`, and nothing is dispatched from inside it.
+- **Your transaction is the audit's transaction.** A listener writing on the same connection commits or rolls back with the change, and one that throws inside your `DB::transaction()` rolls the write back with everything else in it. Outside a transaction the rows are already written when a listener runs: if it throws, the exception leaves the call with the change made.
+- **A catalog row a verb names for the first time is created one level deeper.** Warden creates it with `firstOrCreate()`, which opens a savepoint when a transaction is already open, so its `RoleCreated` or `PermissionCreated` is dispatched inside that savepoint: a listener that throws there rolls back its savepoint, and the exception keeps rising. The twin a `where()` creates is inserted directly, at your transaction's level.
+- **A retried transaction announces every attempt.** `DB::transaction($callback, attempts: 3)` dispatches the events of the attempts it rolls back, too.
+- **Another connection is another transaction.** With `warden.connection` pointing elsewhere, your transaction on the default connection does not cover warden's writes: they commit on their own, and rolling yours back leaves them — and their announcements — standing. Likewise a listener writing to another connection, a queue or an HTTP endpoint can record a change your transaction later rolls back.
+- **A listener's `can()` sees the write it hears about.** Pending cache invalidations are applied before every event is dispatched, catalog and cascade events included, so no listener answers from a payload cached before the write.
+
+#### Waiting for the commit
+
+Warden dispatches synchronously on purpose: a listener that writes its audit row in the same transaction, or that vetoes a write by throwing, depends on it. When a listener should only hear about committed changes, Laravel lets that listener class wait:
+
+```php
+use ElPandaPe\Warden\Events\PermissionGranted;
+use Illuminate\Contracts\Events\ShouldHandleEventsAfterCommit;
+
+final class RecordGrant implements ShouldHandleEventsAfterCommit
+{
+    public function handle(PermissionGranted $event): void
+    {
+        // Runs once the open transaction commits; never if it rolls back.
+    }
+}
+```
+
+A queued listener implements `ShouldQueueAfterCommit` instead. Know the limits:
+
+- **Only listener classes can wait.** A closure passed to `Event::listen()` runs at once.
+- **Laravel waits for the most recent transaction still open, on any connection.** With `warden.connection` pointing elsewhere, a transaction on your default connection holds the listener although warden's rows are already committed, and discards it if that transaction rolls back.
+- **Outside any transaction it runs at once.** Inside one it runs after the outermost commit, and for a retried transaction only once, for the attempt that committed.
+- **It no longer shares your transaction.** An audit write that fails cannot undo the change, and a listener that throws raises after the data is committed.
+- **The event was built at the write.** Its actor, scope and entries are those of that moment, not of the commit.
+
+### Snapshots
+
+A snapshot names a role or a permission as it was, as a plain array whose shape is frozen. `RoleUpdated` and `PermissionUpdated` carry one from before the edit and one from after, `RoleDeleted` one for each row the role held, and you can take your own:
+
+```php
+use ElPandaPe\Warden\Support\Snapshots\PermissionSnapshot;
+use ElPandaPe\Warden\Support\Snapshots\RoleSnapshot;
+
+PermissionSnapshot::of($permission);   // or $permission->snapshot()
+RoleSnapshot::of($role);               // or $role->snapshot()
+```
+
+The twin that `Warden::allow($user)->to('view', Document::class)->where('status', 'published')` writes reads:
+
+```php
+[
+    'v' => 1,
+    'key' => 12,
+    'name' => 'view',
+    'title' => 'View documents',
+    'entity_type' => 'App\Models\Document',
+    'entity_id' => null,
+    'only_owned' => false,
+    'scope' => null,
+    'conditions' => [
+        'g' => ['i' => [['and', ['c' => 'status', 'o' => '=', 't' => 'value', 'v' => 'published']]], 't' => 'group'],
+        'v' => 1,
+    ],
+]
+```
+
+and a role reads `['v' => 1, 'key' => 3, 'name' => 'editor', 'title' => 'Editor', 'scope' => null]`.
+
+- **`v` is the shape's version**: `PermissionSnapshot::VERSION` and `RoleSnapshot::VERSION`. Keys, order and types are frozen; a new shape will be a new version, never an edit of this one.
+- **`key`, `entity_id` and `scope` compare by value.** An integer, or a string holding one (`'7'`), reads as an integer; anything else — a UUID, `'007'` — stays a string.
+- **`entity_type` is what the row stores**: a morph alias, a class name, or `'*'`.
+- **`conditions` has three states**, each matching what the engine does with the row:
+  - `null` — the column is SQL `NULL`: no conditions;
+  - the rule, in canonical form — keys sorted, types kept (`'1'` is not `1`), an empty group still a rule;
+  - `['unreadable' => '<the stored text>']` — something is stored and does not decode: text that is not JSON, an empty string, the JSON literal `null`, or JSON of a shape warden does not know. Never `null`: a rule nobody can read is not the absence of one, and the engine fails closed on it.
+- **A snapshot survives JSON.** `json_decode(json_encode($snapshot), true)` gives it back unchanged, so it can be stored as it is.
+- **`RoleDeleted` wraps them.** `$heldGrants` lists `['permission' => <snapshot>, 'forbidden' => bool, 'scope' => …, 'expires_at' => ?CarbonImmutable]`, and `$heldRoles` lists `['role' => <snapshot>, 'scope' => …, 'restricted_to_type' => ?string, 'restricted_to_id' => …, 'expires_at' => ?CarbonImmutable]`.
+
+> ⚠️ **`snapshot()` on a model comes from warden's trait**, and in PHP a trait method wins over one inherited from a parent class. If your role or permission model extends a base class that already defines `snapshot()`, the trait's hides it — and if the two signatures are incompatible, PHP refuses to load the model class. Warden itself always calls the `Support\Snapshots` classes.
 
 ---
 
@@ -646,7 +857,7 @@ Warden::disallow($user)->to('publish');   // next check is already correct
 
 ❌ **Don't** — raw database edits (seeders, manual SQL) bypass invalidation. After hand-editing rows, call `Warden::refresh()` — or better, make the edit through the API.
 
-> 📌 **"Through the API" includes the models.** Editing a `Grant`, an `AssignedRole` or a **catalog row** through Eloquent invalidates too — renaming a permission or rewriting its `options` reaches every cached check, because a permission's own columns are baked into the payload. Moving a row's `scope` that way invalidates the tenant it left as well as the one it joined. What still needs `Warden::refresh()` is a write that fires no model event: the query builder, `DB::table()`, and a raw statement.
+> 📌 **"Through the API" includes the models.** Editing a `Grant`, an `AssignedRole` or a **catalog row** through Eloquent invalidates too — renaming a permission or rewriting its `options` reaches every cached check, because a permission's own columns are baked into the payload. Moving a row's `scope` that way invalidates the tenant it left as well as the one it joined. What still needs `Warden::refresh()` is a write that fires no model event: the query builder, `DB::table()`, a raw statement, and a model write with its events off — `saveQuietly()`, `deleteQuietly()`, `Model::withoutEvents()`, or a bare `Event::fake()` in a test.
 
 > ⚠️ The in-memory matcher compares permission names **byte-exactly**, while a case-insensitive database collation may match `Edit` to `edit`. Use exact, consistent names.
 
@@ -680,6 +891,8 @@ $fake->allow('*', '*');                                 // everything, everywher
 Ownership, conditions and tenancy are decided by the same pieces the database engine uses, and a test suite asserts the fake and the engine answer alike across the shapes a rule can take. Narrowing before scripting a rule throws.
 
 > 📌 **The fake is not looser than the engine.** A rule with no entity answers entity-less checks only, a condition abstains where it has no instance to read, and an unscripted check abstains so your app's policies still decide. Where the fake cannot express something, it denies rather than granting.
+
+> ⚠️ **`Warden::fake()` is not `Event::fake()`.** A bare `Event::fake()` also stops the model hooks warden depends on — identity keys, titles, cache invalidation. Fake warden's events by name instead: [the list](#testing-with-eventfake) is under Events.
 
 ### WithPermissions trait
 
