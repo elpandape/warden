@@ -14,6 +14,10 @@ use Illuminate\Queue\SerializesModels;
 /**
  * Catalog lifecycle: a role row was deleted.
  *
+ * The row is gone before any queued listener runs, so the event travels by
+ * value instead of as an identifier to read back. SerializesModels stays:
+ * dropping it would take its public methods with it.
+ *
  * @phpstan-import-type PermissionShape from PermissionSnapshot
  * @phpstan-import-type RoleShape from RoleSnapshot
  *
@@ -35,4 +39,28 @@ final readonly class RoleDeleted
         public array $heldGrants = [],
         public array $heldRoles = [],
     ) {}
+
+    /**
+     * @return array{role: Model, actor: Model|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>}
+     */
+    public function __serialize(): array
+    {
+        return [
+            'role' => $this->role,
+            'actor' => $this->actor,
+            'heldGrants' => $this->heldGrants,
+            'heldRoles' => $this->heldRoles,
+        ];
+    }
+
+    /**
+     * @param  array{role: Model, actor: Model|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>}  $values
+     */
+    public function __unserialize(array $values): void
+    {
+        $this->role = $values['role'];
+        $this->actor = $values['actor'];
+        $this->heldGrants = $values['heldGrants'];
+        $this->heldRoles = $values['heldRoles'];
+    }
 }
