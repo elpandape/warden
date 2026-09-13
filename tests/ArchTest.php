@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Event;
+
 use function ElPandaPe\Warden\Tests\phpFilesOffending;
 
 arch('source uses strict types')
@@ -15,6 +17,12 @@ arch('no debugging functions left behind')
 arch('enums live in the Enums namespace')
     ->expect('ElPandaPe\Warden\Enums')
     ->toBeEnums();
+
+arch('post-write events leave through one door')
+    ->expect('ElPandaPe\Warden\Actions')->not->toUse(Event::class)
+    ->and('ElPandaPe\Warden\Checks')->not->toUse(Event::class)
+    ->and('ElPandaPe\Warden\Models')->not->toUse(Event::class)
+    ->and('ElPandaPe\Warden\Console')->not->toUse(Event::class);
 
 it('leaves no doc block stranded above another', function (): void {
     expect(phpFilesOffending('#\*/\s*\n\s*/\*\*#'))->toBeEmpty();

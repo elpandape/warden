@@ -10,6 +10,7 @@ use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Models\Grant;
+use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Config;
 use ElPandaPe\Warden\Support\PermissionIdentity;
 use ElPandaPe\Warden\Support\Snapshots\PermissionSnapshot;
@@ -18,7 +19,6 @@ use ElPandaPe\Warden\Tenancy\AppliesPivotTenancy;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
-use Illuminate\Support\Facades\Event;
 
 /**
  * @phpstan-import-type PermissionShape from PermissionSnapshot
@@ -98,19 +98,14 @@ trait IsPermission
 
         // Lifecycle events fire at the model layer: every creation path counts.
         static::created(function (Model $permission): void {
-            if (Config::eventsEnabled()) {
-                Event::dispatch(new PermissionCreated($permission));
-            }
+            Announcer::announce(new PermissionCreated($permission));
         });
 
         static::deleted(function (Model $permission): void {
             $invalidations = app(CacheInvalidations::class);
+
             $invalidations->settleCascade($permission);
-
-            if (Config::eventsEnabled()) {
-                Event::dispatch(new PermissionDeleted($permission));
-            }
-
+            Announcer::announce(new PermissionDeleted($permission));
             $invalidations->announceCascade($permission);
         });
     }

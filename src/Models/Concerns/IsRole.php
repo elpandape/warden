@@ -11,13 +11,13 @@ use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Models\Relations\ReadOnlyBelongsToMany;
 use ElPandaPe\Warden\Models\Relations\ReadOnlyPivot;
+use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Config;
 use ElPandaPe\Warden\Support\Snapshots\RoleSnapshot;
 use ElPandaPe\Warden\Support\Titles\RoleTitle;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Support\Facades\Event;
 
 /**
  * @phpstan-import-type RoleShape from RoleSnapshot
@@ -79,19 +79,14 @@ trait IsRole
 
         // Lifecycle events fire at the model layer: every creation path counts.
         static::created(function (Model $role): void {
-            if (Config::eventsEnabled()) {
-                Event::dispatch(new RoleCreated($role));
-            }
+            Announcer::announce(new RoleCreated($role));
         });
 
         static::deleted(function (Model $role): void {
             $invalidations = app(CacheInvalidations::class);
+
             $invalidations->settleCascade($role);
-
-            if (Config::eventsEnabled()) {
-                Event::dispatch(new RoleDeleted($role));
-            }
-
+            Announcer::announce(new RoleDeleted($role));
             $invalidations->announceCascade($role);
         });
     }

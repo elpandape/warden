@@ -8,11 +8,11 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
+use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Config;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -185,6 +185,7 @@ final class CacheInvalidations
         $grants = $this->doomed[$object] ?? [];
         unset($this->doomed[$object]);
 
+        // Events off: the hydration reads below would name nobody.
         if ($model::class !== Context::resolve()->permissionClass() || $grants === [] || ! Config::eventsEnabled()) {
             return;
         }
@@ -203,9 +204,9 @@ final class CacheInvalidations
                 continue;
             }
 
-            Event::dispatch($forbidden
-                ? new PermissionUnforbidden($authority, $permissions, $scope, $actor)
-                : new PermissionRevoked($authority, $permissions, $scope, $actor));
+            Announcer::announce($forbidden
+                ? new PermissionUnforbidden($authority, $permissions, $scope, actor: $actor)
+                : new PermissionRevoked($authority, $permissions, $scope, actor: $actor));
         }
     }
 

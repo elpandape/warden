@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace ElPandaPe\Warden\Events\Concerns;
 
 use ElPandaPe\Warden\Contracts\ActorResolver;
+use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Config;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Event;
 
 trait DispatchesEvents
 {
@@ -20,8 +20,8 @@ trait DispatchesEvents
 
     private function dispatchWardenEvent(object $event): void
     {
-        if (Config::eventsEnabled() && ! $this->silentEvents) {
-            Event::dispatch($event);
+        if (! $this->silentEvents) {
+            Announcer::announce($event);
         }
     }
 
