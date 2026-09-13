@@ -285,14 +285,13 @@ trait HasRolesAndPermissions
 
         $loaded = $loaded->filter(function (Model $role) use ($now): bool {
             $pivot = $role->getRelationValue('pivot');
+
+            /** @var DateTimeInterface|string|int|null $ends */
             $ends = $pivot instanceof Model ? $pivot->getAttribute('expires_at') : null;
 
-            // A pivot swapped in without warden's datetime cast reads back the stored text.
-            if (is_string($ends)) {
-                $ends = Carbon::parse($ends);
-            }
-
-            return ! $ends instanceof DateTimeInterface || $ends->getTimestamp() > $now;
+            // A pivot swapped in without warden's datetime cast reads back text or a timestamp.
+            return $ends === null
+                || ($ends instanceof DateTimeInterface ? $ends : Carbon::parse($ends))->getTimestamp() > $now;
         });
 
         $filter = app(Tenancy::class)->readFilter();

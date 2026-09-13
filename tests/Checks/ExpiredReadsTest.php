@@ -203,6 +203,23 @@ it('reads the end date off a swapped-in pivot that has no datetime cast', functi
     expect($this->user->isAn('auditor'))->toBeFalse();
 });
 
+it('reads an end date a swapped-in pivot hands back as a timestamp', function (): void {
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    config()->set('warden.models.assigned_role', BareAssignedRole::class);
+    app()->forgetInstance(Context::class);
+    $this->user->load('roles');
+    $this->user->roles->sole()->pivot->setAttribute('expires_at', $this->moment->getTimestamp());
+
+    Carbon::setTestNow($this->moment->copy()->subSecond());
+
+    expect($this->user->isAn('auditor'))->toBeTrue();
+
+    Carbon::setTestNow($this->moment);
+
+    expect($this->user->isAn('auditor'))->toBeFalse();
+});
+
 it('leaves an expired assignment out of whereIs(), whereIsAll() and whereIsNot()', function (): void {
     $grace = User::query()->create(['name' => 'Grace']);
     $this->warden->assign('auditor')->until($this->moment)->to($this->user);
