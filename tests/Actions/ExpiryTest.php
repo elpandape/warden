@@ -14,6 +14,7 @@ use ElPandaPe\Warden\Tests\Fixtures\BarePivot;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
@@ -214,4 +215,63 @@ it('lifts an end date when the write says so', function (): void {
     $this->warden->allow($this->user)->until(null)->to('publish', Account::class);
 
     expect(Grant::query()->sole()->getAttribute('expires_at'))->toBeNull();
+});
+
+it('stays quiet when a grant is given the same moment in another zone again', function (): void {
+    $moment = Carbon::parse('2026-12-31 23:59:59', 'Europe/Madrid');
+
+    $this->warden->allow($this->user)->until($moment)->to('publish', Account::class);
+
+    Event::fake([PermissionGranted::class, RoleAssigned::class]);
+
+    $this->warden->allow($this->user)->until($moment)->to('publish', Account::class);
+
+    Event::assertNotDispatched(PermissionGranted::class);
+});
+
+it('stays quiet when an assignment is given the same moment in another zone again', function (): void {
+    $moment = Carbon::parse('2026-12-31 23:59:59', 'Europe/Madrid');
+
+    $this->warden->assign('auditor')->until($moment)->to($this->user);
+
+    Event::fake([PermissionGranted::class, RoleAssigned::class]);
+
+    $this->warden->assign('auditor')->until($moment)->to($this->user);
+
+    Event::assertNotDispatched(RoleAssigned::class);
+});
+
+it('counts a moment in another zone as the wall time it names, as a new row would store it', function (): void {
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+
+    Event::fake([PermissionGranted::class, RoleAssigned::class]);
+
+    $this->warden->allow($this->user)->until($this->moment->copy()->setTimezone('Europe/Madrid'))->to('publish', Account::class);
+
+    Event::assertDispatched(PermissionGranted::class);
+    expect(Grant::query()->sole()->getAttribute('expires_at')?->toDateTimeString())
+        ->toBe('2027-01-01 00:59:59');
+});
+
+it('lifts an end date through a grant pivot that casts nothing', function (): void {
+    config()->set('warden.models.grant', BarePivot::class);
+    app()->forgetInstance(Context::class);
+
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+    $this->warden->allow($this->user)->until(null)->to('publish', Account::class);
+
+    expect(DB::table('grants')->value('expires_at'))->toBeNull();
+});
+
+it('stays quiet when a grant pivot that casts nothing already holds the date', function (): void {
+    config()->set('warden.models.grant', BarePivot::class);
+    app()->forgetInstance(Context::class);
+
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+
+    Event::fake([PermissionGranted::class, RoleAssigned::class]);
+
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+
+    Event::assertNotDispatched(PermissionGranted::class);
 });

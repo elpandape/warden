@@ -37,10 +37,10 @@ final class Expiry
 
     public static function apply(Model $row, ?DateTimeInterface $expiresAt): bool
     {
-        $current = $row->getAttribute('expires_at');
-        $current = $current instanceof DateTimeInterface ? $current->getTimestamp() : null;
-
-        if ($current === $expiresAt?->getTimestamp()) {
+        // Compared as the column stores it, wall time in the connection's
+        // format: a moment in another zone that stores the same value writes
+        // nothing, and a pivot that casts no date still reads what it holds.
+        if (self::stored($row) === $row->fromDateTime($expiresAt)) {
             return false;
         }
 
