@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use ElPandaPe\Warden\Checks\Resolvers\CacheInvalidations;
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\AssignmentRemoval;
+use ElPandaPe\Warden\Events\RetractingRole;
 use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Models\AssignedRole;
@@ -21,6 +23,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToRoles;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
@@ -141,4 +145,308 @@ it('keeps no photo of a role the deprecated markCascade settled', function (): v
     $invalidations->markCascade($editor);
 
     expect($invalidations->pullHeld($editor))->toBe(['grants' => [], 'roles' => []]);
+});
+
+it('announces a retraction per holder, with the actor, besides the role deletion', function (): void {
+    $acme = Account::query()->create(['name' => 'Acme']);
+    $admin = User::query()->create(['name' => 'Admin']);
+    $this->warden->assign('editor')->to([$this->ana, $acme]);
+    $this->actingAs($admin);
+
+    Event::fake([RoleDeleted::class, RoleRetracted::class]);
+
+    Role::query()->where('name', 'editor')->sole()->delete();
+
+    [$first, $second] = ($this->retractions)()->all();
+
+    Event::assertDispatched(RoleDeleted::class, fn (RoleDeleted $event): bool => $event->actor?->is($admin) === true);
+    expect(($this->retractions)())->toHaveCount(2)
+        ->and($first->authority->is($this->ana))->toBeTrue()
+        ->and($second->authority->is($acme))->toBeTrue()
+        ->and($first->roles->sole()->getAttribute('name'))->toBe('editor')
+        ->and($first->roles->sole()->exists)->toBeFalse()
+        ->and($first->scope)->toBeNull()
+        ->and($first->restrictedTo)->toBeNull()
+        ->and($first->actor?->is($admin))->toBeTrue()
+        ->and($second->actor?->is($admin))->toBeTrue()
+        ->and($first->assignments)->toHaveCount(1)
+        ->and($first->assignments[0]->role->getAttribute('name'))->toBe('editor')
+        ->and($first->assignments[0]->restrictedTo)->toBeNull()
+        ->and($first->assignments[0]->expiresAt)->toBeNull();
+});
+
+it('dispatches the role deletion before the retractions it caused', function (): void {
+    $this->warden->assign('editor')->to($this->ana);
+    $order = [];
+
+    Event::listen(RoleDeleted::class, function () use (&$order): void {
+        $order[] = 'deleted';
+    });
+    Event::listen(RoleRetracted::class, function () use (&$order): void {
+        $order[] = 'retracted';
+    });
+
+    Role::query()->where('name', 'editor')->sole()->delete();
+
+    expect($order)->toBe(['deleted', 'retracted']);
+});
+
+it('lists every context a holder loses, row by row, in one retraction', function (): void {
+    $orgOne = Account::query()->create(['name' => 'Org One']);
+    $orgTwo = Account::query()->create(['name' => 'Org Two']);
+    $this->warden->assign('editor')->on($orgOne)->to($this->ana);
+    $this->warden->assign('editor')->on($orgTwo)->to($this->ana);
+    $this->warden->assign('editor')->to($this->ana);
+
+    Event::fake([RoleRetracted::class]);
+
+    Role::query()->where('name', 'editor')->sole()->delete();
+
+    $retraction = ($this->retractions)()->sole();
+    $contexts = array_map(
+        fn (AssignmentRemoval $removal): mixed => $removal->restrictedTo?->getKey(),
+        $retraction->assignments,
+    );
+
+    expect($retraction->restrictedTo)->toBeNull()
+        ->and($retraction->roles)->toHaveCount(1)
+        ->and($contexts)->toBe([$orgOne->getKey(), $orgTwo->getKey(), null]);
+});
+
+it('stands a key-only model in for a context whose row is gone', function (): void {
+    $org = Account::query()->create(['name' => 'Org']);
+    $this->warden->assign('editor')->on($org)->to($this->ana);
+    Account::query()->whereKey($org->getKey())->delete();
+
+    Event::fake([RoleRetracted::class]);
+
+    Role::query()->where('name', 'editor')->sole()->delete();
+
+    $context = ($this->retractions)()->sole()->assignments[0]->restrictedTo;
+
+    expect($context)->toBeInstanceOf(Account::class)
+        ->and($context?->exists)->toBeFalse()
+        ->and($context?->getKey())->toBe($org->getKey());
+});
+
+it('announces a nested holder as a role authority', function (): void {
+    nestRole('auditor', 'editor');
+
+    Event::fake([RoleRetracted::class]);
+
+    Role::query()->where('name', 'auditor')->sole()->delete();
+
+    $retraction = ($this->retractions)()->sole();
+
+    expect($retraction->authority)->toBeInstanceOf(Role::class)
+        ->and($retraction->authority->getAttribute('name'))->toBe('editor')
+        ->and($retraction->roles->sole()->getAttribute('name'))->toBe('auditor');
+});
+
+it('names a nested holder from another tenant instead of losing it', function (): void {
+    Role::query()->create(['name' => 'auditor']);
+    $this->warden->tenant()->to(7);
+    nestRole('auditor', 'editor');
+    $this->warden->tenant()->to(5);
+
+    Event::fake([RoleRetracted::class]);
+
+    Role::query()->where('name', 'auditor')->sole()->delete();
+
+    $retraction = ($this->retractions)()->sole();
+
+    expect($retraction->authority->getAttribute('name'))->toBe('editor')
+        ->and($retraction->authority->getAttribute('scope'))->toBe(7)
+        ->and($retraction->scope)->toBe(7);
+});
+
+it('announces a holder once per scope it held the role in', function (): void {
+    Role::query()->create(['name' => 'editor']);
+    $this->warden->tenant()->to(5);
+    $this->warden->assign('editor')->to($this->ana);
+    $this->warden->tenant()->to(7);
+    $this->warden->assign('editor')->to($this->ana);
+    $this->warden->tenant()->remove();
+
+    Event::fake([RoleRetracted::class]);
+
+    Role::query()->where('name', 'editor')->sole()->delete();
+
+    $retractions = ($this->retractions)();
+
+    expect($retractions->map(fn (RoleRetracted $event): int|string|null => $event->scope)->all())->toBe([5, 7])
+        ->and($retractions->every(fn (RoleRetracted $event): bool => $event->authority->is($this->ana)))->toBeTrue();
+});
+
+it('announces an assignment that had already expired, with the date it carried', function (): void {
+    $luis = User::query()->create(['name' => 'Luis']);
+    $this->warden->assign('editor')->until(Carbon::parse('2020-01-01 00:00:00'))->to($this->ana);
+    $this->warden->assign('editor')->to($luis);
+
+    Event::fake([RoleRetracted::class]);
+
+    Role::query()->where('name', 'editor')->sole()->delete();
+
+    [$expired, $live] = ($this->retractions)()->all();
+
+    expect(($this->retractions)())->toHaveCount(2)
+        ->and($expired->authority->is($this->ana))->toBeTrue()
+        ->and($expired->assignments[0]->expiresAt?->toDateTimeString())->toBe('2020-01-01 00:00:00')
+        ->and($live->authority->is($luis))->toBeTrue()
+        ->and($live->assignments[0]->expiresAt)->toBeNull();
+});
+
+it('skips a holder whose row is gone and warns about a type no class maps', function (): void {
+    $luis = User::query()->create(['name' => 'Luis']);
+    $this->warden->assign('editor')->to($luis);
+    $editor = Role::query()->where('name', 'editor')->sole();
+
+    DB::table('assigned_roles')->insert([
+        ['role_id' => $editor->getKey(), 'entity_type' => 'nothing.maps.here', 'entity_id' => 1],
+        ['role_id' => $editor->getKey(), 'entity_type' => $this->ana->getMorphClass(), 'entity_id' => 999],
+    ]);
+
+    Log::spy();
+    Event::fake([RoleRetracted::class]);
+
+    $editor->delete();
+
+    expect(($this->retractions)()->sole()->authority->is($luis))->toBeTrue();
+    Log::shouldHaveReceived('warning')->once();
+});
+
+it('drops a context no class maps instead of reading it as unrestricted', function (): void {
+    $luis = User::query()->create(['name' => 'Luis']);
+    $this->warden->assign('editor')->to($this->ana);
+    $editor = Role::query()->where('name', 'editor')->sole();
+
+    DB::table('assigned_roles')->insert([
+        [
+            'role_id' => $editor->getKey(),
+            'entity_type' => $this->ana->getMorphClass(),
+            'entity_id' => $this->ana->getKey(),
+            'restricted_to_type' => 'nothing.maps.here',
+            'restricted_to_id' => 1,
+        ],
+        [
+            'role_id' => $editor->getKey(),
+            'entity_type' => $luis->getMorphClass(),
+            'entity_id' => $luis->getKey(),
+            'restricted_to_type' => 'nothing.maps.here',
+            'restricted_to_id' => 2,
+        ],
+    ]);
+
+    Log::spy();
+    Event::fake([RoleRetracted::class]);
+
+    $editor->delete();
+
+    $retraction = ($this->retractions)()->sole();
+
+    expect($retraction->authority->is($this->ana))->toBeTrue()
+        ->and($retraction->assignments)->toHaveCount(1)
+        ->and($retraction->assignments[0]->restrictedTo)->toBeNull();
+    Log::shouldHaveReceived('warning')->once();
+});
+
+it('never reads a half-written restriction as unrestricted', function (): void {
+    $editor = Role::query()->create(['name' => 'editor']);
+
+    DB::table('assigned_roles')->insert([
+        'role_id' => $editor->getKey(),
+        'entity_type' => $this->ana->getMorphClass(),
+        'entity_id' => $this->ana->getKey(),
+        'restricted_to_type' => (new Account)->getMorphClass(),
+        'restricted_to_id' => null,
+    ]);
+
+    Event::fake([RoleRetracted::class]);
+
+    $editor->delete();
+
+    Event::assertNotDispatched(RoleRetracted::class);
+});
+
+it('announces nothing for a role deleted through the query builder', function (): void {
+    $this->warden->assign('editor')->to($this->ana);
+
+    Event::fake([RoleDeleted::class, RoleRetracted::class]);
+
+    Role::query()->where('name', 'editor')->delete();
+
+    Event::assertNotDispatched(RoleDeleted::class);
+    Event::assertNotDispatched(RoleRetracted::class);
+    expect(AssignedRole::query()->withoutGlobalScopes()->exists())->toBeFalse();
+});
+
+it('never asks cancellable listeners before a cascade', function (): void {
+    config()->set('warden.cancellable_events', true);
+    $this->warden->assign('editor')->to($this->ana);
+    $asked = false;
+
+    Event::listen(RetractingRole::class, function () use (&$asked): bool {
+        $asked = true;
+
+        return false;
+    });
+
+    Role::query()->where('name', 'editor')->sole()->delete();
+
+    expect($asked)->toBeFalse()
+        ->and(AssignedRole::query()->withoutGlobalScopes()->exists())->toBeFalse();
+});
+
+it('cascades once a soft-deleting role is force-deleted', function (): void {
+    addSoftDeletesToRoles();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+
+    $editor = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->assign('editor')->to($this->ana);
+
+    Event::fake([RoleRetracted::class]);
+
+    $editor->forceDelete();
+
+    expect(($this->retractions)()->sole()->authority->is($this->ana))->toBeTrue()
+        ->and(Grant::query()->withoutGlobalScopes()->exists())->toBeFalse();
+});
+
+it('lets a cascaded retraction travel through a queue and come back', function (): void {
+    $admin = User::query()->create(['name' => 'Admin']);
+    $this->warden->assign('editor')->to($this->ana);
+    $this->actingAs($admin);
+    $captured = null;
+
+    Event::listen(RoleRetracted::class, function (RoleRetracted $event) use (&$captured): void {
+        $captured = $event;
+    });
+
+    Role::query()->where('name', 'editor')->sole()->delete();
+
+    $copy = unserialize(serialize($captured));
+
+    expect($copy)->toBeInstanceOf(RoleRetracted::class)
+        ->and($copy->authority->is($this->ana))->toBeTrue()
+        ->and($copy->actor?->is($admin))->toBeTrue()
+        ->and($copy->roles->sole()->getAttribute('name'))->toBe('editor')
+        ->and($copy->assignments[0]->role->getAttribute('name'))->toBe('editor');
+});
+
+it('lets a retraction listener already see the holder without the role', function (): void {
+    config()->set('warden.cache.enabled', true);
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->assign('editor')->to($this->ana);
+    $seen = null;
+
+    expect(Gate::forUser($this->ana)->allows('publish'))->toBeTrue();
+
+    Event::listen(RoleRetracted::class, function (RoleRetracted $event) use (&$seen): void {
+        $seen = Gate::forUser($event->authority)->allows('publish');
+    });
+
+    Role::query()->where('name', 'editor')->sole()->delete();
+
+    expect($seen)->toBeFalse();
 });

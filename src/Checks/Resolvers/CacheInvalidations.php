@@ -7,10 +7,12 @@ namespace ElPandaPe\Warden\Checks\Resolvers;
 use Carbon\CarbonImmutable;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\ActorResolver;
+use ElPandaPe\Warden\Events\AssignmentRemoval;
 use ElPandaPe\Warden\Events\GrantRemoval;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
 use ElPandaPe\Warden\Events\RoleDeleted;
+use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Config;
 use ElPandaPe\Warden\Support\Expiry;
@@ -28,6 +30,8 @@ use Illuminate\Support\Collection;
  *
  * @phpstan-import-type HeldGrant from RoleDeleted
  * @phpstan-import-type HeldRole from RoleDeleted
+ *
+ * @phpstan-type Holder array{string, int|string, int|string|null, string|null, int|string|null, CarbonImmutable|null}
  */
 final class CacheInvalidations
 {
@@ -41,6 +45,9 @@ final class CacheInvalidations
 
     /** @var array<int, list<array{string|null, int|string|null, bool, int|string|null, CarbonImmutable|null}>> */
     private array $doomed = [];
+
+    /** @var array<int, list<Holder>> */
+    private array $holders = [];
 
     /** @var array<int, array{grants: list<HeldGrant>, roles: list<HeldRole>}> */
     private array $held = [];
@@ -148,7 +155,7 @@ final class CacheInvalidations
         $id = spl_object_id($model);
 
         // PHP reuses object ids: what a vetoed delete read must not reach this one.
-        unset($this->cascading[$id], $this->doomed[$id], $this->held[$id]);
+        unset($this->cascading[$id], $this->doomed[$id], $this->holders[$id], $this->held[$id]);
 
         if (! is_int($key) && ! is_string($key)) {
             return; // @codeCoverageIgnore
@@ -182,6 +189,7 @@ final class CacheInvalidations
             return;
         }
 
+        $this->holders[$id] = $this->roleHoldersOf($key);
         $this->held[$id] = [
             'grants' => $this->grantsHeldBy($morph, $key),
             'roles' => $this->rolesHeldBy($morph, $key),
@@ -239,6 +247,13 @@ final class CacheInvalidations
     public function announceCascade(Model $model): void
     {
         $object = spl_object_id($model);
+        $roleHolders = $this->holders[$object] ?? [];
+        unset($this->holders[$object]);
+
+        if ($roleHolders !== [] && $model::class === Context::resolve()->roleClass()) {
+            $this->announceRetractions($model, $roleHolders);
+        }
+
         $grants = $this->doomed[$object] ?? [];
         unset($this->doomed[$object]);
 
@@ -328,6 +343,43 @@ final class CacheInvalidations
         }
 
         return MorphHydrator::many($pairs);
+    }
+
+    /**
+     * Every assignment of the role, expired ones included: the foreign key
+     * takes them all, and each is announced with the date it carried.
+     *
+     * @return list<Holder>
+     */
+    private function roleHoldersOf(int|string $roleKey): array
+    {
+        $rows = $this->pivotRows(Context::resolve()->assignedRoleClass(), 'role_id', $roleKey, null, [
+            'entity_type', 'entity_id', 'scope', 'restricted_to_type', 'restricted_to_id', 'expires_at',
+        ]);
+
+        $holders = [];
+
+        foreach ($rows as $row) {
+            $type = $row->getAttribute('entity_type');
+            $holder = $row->getAttribute('entity_id');
+
+            if (! is_string($type) || (! is_int($holder) && ! is_string($holder))) {
+                continue; // @codeCoverageIgnore
+            }
+
+            $contextType = $row->getAttribute('restricted_to_type');
+
+            $holders[] = [
+                $type,
+                $holder,
+                $this->scalar($row->getAttribute('scope')),
+                is_string($contextType) ? $contextType : null,
+                $this->scalar($row->getAttribute('restricted_to_id')),
+                Expiry::of($row),
+            ];
+        }
+
+        return $holders;
     }
 
     /**
@@ -429,6 +481,71 @@ final class CacheInvalidations
         $keyName = $query->getModel()->getKeyName();
 
         return $query->orderBy($keyName)->get([$keyName, ...$columns]);
+    }
+
+    /**
+     * The foreign key took every assignment of the role, in every tenant and
+     * context: one retraction per holder and scope, each row with its own
+     * context and date. RetractingRole never fires — nothing could veto a
+     * cascade the engine already ran.
+     *
+     * @param  list<Holder>  $holders
+     */
+    private function announceRetractions(Model $role, array $holders): void
+    {
+        $pairs = [];
+
+        foreach ($holders as [$type, $holder, , $contextType, $contextId]) {
+            $pairs[] = [$type, $holder];
+
+            if ($contextType !== null && $contextId !== null) {
+                $pairs[] = [$contextType, $contextId];
+            }
+        }
+
+        $models = MorphHydrator::many($pairs);
+        $authorities = [];
+        $scopes = [];
+        $removals = [];
+
+        foreach ($holders as [$type, $holder, $scope, $contextType, $contextId, $expiresAt]) {
+            $authority = $models[MorphHydrator::key($type, $holder)] ?? null;
+
+            if ($authority === null) {
+                continue;
+            }
+
+            $restrictedTo = null;
+
+            if ($contextType !== null && $contextId !== null) {
+                $restrictedTo = $models[MorphHydrator::key($contextType, $contextId)]
+                    ?? MorphHydrator::standIn($contextType, $contextId);
+
+                if ($restrictedTo === null) {
+                    continue;
+                }
+            } elseif ($contextType !== null || $contextId !== null) {
+                // Half a restriction is not "unrestricted": fail closed, as RoleClosure does.
+                continue;
+            }
+
+            $group = serialize([$type, $holder, $scope]);
+            $authorities[$group] = $authority;
+            $scopes[$group] = $scope;
+            $removals[$group][] = new AssignmentRemoval($role, $restrictedTo, $expiresAt);
+        }
+
+        $actor = app(ActorResolver::class)->resolve();
+
+        foreach ($removals as $group => $assignments) {
+            Announcer::announce(new RoleRetracted(
+                $authorities[$group],
+                new Collection([$role]),
+                $scopes[$group],
+                actor: $actor,
+                assignments: $assignments,
+            ));
+        }
     }
 
     /**
