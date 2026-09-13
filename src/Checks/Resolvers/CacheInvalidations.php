@@ -493,6 +493,8 @@ final class CacheInvalidations
      */
     private function announceRetractions(Model $role, array $holders): void
     {
+        // It travels by value in every entry: the relations the caller loaded stay behind.
+        $role = $role->withoutRelations();
         $pairs = [];
 
         foreach ($holders as [$type, $holder, , $contextType, $contextId]) {

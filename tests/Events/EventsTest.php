@@ -890,6 +890,25 @@ it('names what a removal took in the order the call asked for it', function (): 
         && array_map(fn (AssignmentRemoval $assignment): mixed => $assignment->role->getAttribute('name'), $event->assignments) === ['viewer', 'editor', 'auditor']);
 });
 
+it('names the context a retract was given without the relations the caller loaded on it', function (): void {
+    $org = Account::query()->create(['name' => 'Org']);
+    $this->warden->assign('editor')->on($org)->to($this->user);
+    $this->warden->assign('viewer')->to($org);
+    $org->load('roles');
+
+    Event::fake(WARDEN_EVENTS);
+
+    $this->warden->retract('editor')->on($org)->from($this->user);
+
+    $retraction = Event::dispatched(RoleRetracted::class)->sole()[0];
+    $restored = unserialize(serialize($retraction));
+
+    expect($retraction->assignments[0]->restrictedTo?->is($org))->toBeTrue()
+        ->and($retraction->assignments[0]->restrictedTo?->getRelations())->toBe([])
+        ->and($restored->assignments[0]->restrictedTo?->getRelations())->toBe([])
+        ->and($org->relationLoaded('roles'))->toBeTrue();
+});
+
 it('retracts from every authority before a listener that throws can stop it', function (): void {
     $ana = User::query()->create(['name' => 'Ana']);
     $this->warden->assign('editor')->to([$this->user, $ana]);

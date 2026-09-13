@@ -185,11 +185,13 @@ class RetractsRoles
      */
     private function announceRemovals(array $lost, array $roles, int|string|null $scope): void
     {
-        $contexts = $this->restrictedTo instanceof Model ? [] : MorphHydrator::many($this->restrictionsOf($lost));
+        // An entry travels by value: the relations the caller loaded stay behind.
+        $named = $this->restrictedTo?->withoutRelations();
+        $contexts = $named instanceof Model ? [] : MorphHydrator::many($this->restrictionsOf($lost));
         $actor = $this->actor();
 
         foreach ($lost as [$authority, $rows]) {
-            $assignments = $this->removals($rows, $roles, $contexts);
+            $assignments = $this->removals($rows, $roles, $named, $contexts);
 
             if ($assignments === []) {
                 continue;
@@ -231,7 +233,7 @@ class RetractsRoles
      * @param  array<string, Model>  $contexts
      * @return list<AssignmentRemoval>
      */
-    private function removals(array $rows, array $roles, array $contexts): array
+    private function removals(array $rows, array $roles, ?Model $named, array $contexts): array
     {
         $byRole = [];
 
@@ -244,7 +246,7 @@ class RetractsRoles
         foreach ($roles as $key => $role) {
             foreach ($byRole[$key] ?? [] as $row) {
                 $restricted = $row->restricted_to_type !== null || $row->restricted_to_id !== null;
-                $context = $this->restrictedTo ?? $this->contextOf($row, $contexts);
+                $context = $named ?? $this->contextOf($row, $contexts);
 
                 // Null would read as unrestricted: a restriction nobody can name gets no entry.
                 if ($restricted && ! $context instanceof Model) {

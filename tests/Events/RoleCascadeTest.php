@@ -413,6 +413,24 @@ it('cascades once a soft-deleting role is force-deleted', function (): void {
         ->and(Grant::query()->withoutGlobalScopes()->exists())->toBeFalse();
 });
 
+it('carries the deleted role in each retraction without the relations the caller loaded on it', function (): void {
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->assign('editor')->to($this->ana);
+    $editor = Role::query()->where('name', 'editor')->sole()->load('permissions');
+
+    Event::fake([RoleRetracted::class]);
+
+    $editor->delete();
+
+    $retraction = ($this->retractions)()->sole();
+    $restored = unserialize(serialize($retraction));
+
+    expect($retraction->roles->sole()->getRelations())->toBe([])
+        ->and($retraction->assignments[0]->role->getRelations())->toBe([])
+        ->and($restored->assignments[0]->role->getRelations())->toBe([])
+        ->and($editor->relationLoaded('permissions'))->toBeTrue();
+});
+
 it('lets a cascaded retraction travel through a queue and come back', function (): void {
     $admin = User::query()->create(['name' => 'Admin']);
     $this->warden->assign('editor')->to($this->ana);
