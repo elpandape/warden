@@ -71,15 +71,24 @@ that 3.0.1's CHANGELOG entry asks for, unless each tenant has its own users data
 
 - A soft-deleted role — `SoftDeletes` on your role model — now keeps its holders' access
   until `forceDelete()`. 3.0 swept its grants on `delete()`; 3.1 leaves its grants, its
-  holders and its nested edges in place, so the trashed role stops answering `isA()` while
-  `can()` still grants what it lends. Force-delete it, or retract it first, when a delete
-  must end access. `RoleDeleted` goes out with empty `$heldGrants` and `$heldRoles`, and no
-  `RoleRetracted` follows. `forceDelete()` sweeps and announces as usual.
+  holders and its nested edges in place, so the trashed role stops answering `isA()`,
+  `isAll()` and `whereIs()` while `can()` still grants what it lends and blocks what it
+  forbids, and `restore()` brings it back whole. To end the access, force-delete it, or
+  `retract()` it or `disallow()` what it grants **before** the soft delete: by name, the
+  verbs no longer reach a trashed role — `retract('editor')` takes nothing,
+  `disallow('editor')` throws `RoleDoesNotExist` and `assign('editor')` tries to create a
+  second `editor` — so pass the trashed model (`Role::withTrashed()`) once it is there.
+  `RoleDeleted` goes out with empty `$heldGrants` and `$heldRoles`, and no `RoleRetracted`
+  follows; a later `forceDelete()` from the trash dispatches a second `RoleDeleted`, with
+  the lists, then the `RoleRetracted`s, and sweeps as usual.
 - A soft-deleted permission keeps its grant rows, but its own scope hides it from every
-  check: while trashed it neither grants nor forbids — a prohibition it carried lifts — and
-  only `PermissionDeleted` says so, where 3.0 announced a `PermissionRevoked` or
-  `PermissionUnforbidden` per row. `restore()` brings it back; `forceDelete()` sweeps and
-  announces as usual.
+  check at once, before its `PermissionDeleted` goes out: while trashed it neither grants
+  nor forbids — a prohibition it carried lifts — and only `PermissionDeleted` says so,
+  where 3.0 announced a `PermissionRevoked` or `PermissionUnforbidden` per row. `restore()`
+  brings it back, invalidating the permission's own scope only: a tenant's permission
+  granted under another tenant can answer from that tenant's cache until its next write or
+  the TTL. A later `forceDelete()` from the trash dispatches a second `PermissionDeleted`,
+  then the cascade.
 - `until()` over a row that already has an end date stores the wall time it names, as a new
   row always did. A moment in another zone that names the row's instant but a different
   wall time is now written and announced where 3.0 kept the old date, and access ends at

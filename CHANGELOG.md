@@ -81,10 +81,13 @@ moment in another timezone now ends access at the wall time it names.
 - **A soft-deleted role keeps lending its grants until it is force-deleted.** With
   `SoftDeletes` on the role model, 3.0 swept the role's grants on `delete()` — see
   **Fixed** — so its holders lost what it granted. Nothing is swept now: the trashed role
-  stops answering `isA()`, but `can()` reads the assignment rows, so its holders keep what
-  it grants until `forceDelete()`. Force-delete it, or retract it first, when a delete must
-  end access. Its `RoleDeleted` carries empty `$heldGrants` and `$heldRoles`: nothing was
-  swept, which is not to say the role held nothing.
+  stops answering `isA()`, `isAll()` and `whereIs()`, but `can()` reads the assignment
+  rows, so its holders keep what it grants, and stay bound by what it forbids, until
+  `forceDelete()`; `restore()` brings it back whole. To end the access, force-delete it, or
+  `retract()` or `disallow()` **before** the soft delete: by name, the verbs no longer
+  reach a trashed role. Its `RoleDeleted` carries empty `$heldGrants` and `$heldRoles` —
+  nothing was swept, which is not to say the role held nothing — and a later
+  `forceDelete()` from the trash dispatches a second one, with the lists.
 - **`until()` on an existing row stores the wall time it names, as a new row always did.**
   An end date is stored as wall time and read back in the application's timezone, and on a
   row that already had one, 3.0 compared instants instead. With the application on UTC, a
