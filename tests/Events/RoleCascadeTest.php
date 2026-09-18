@@ -21,6 +21,7 @@ use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -501,4 +502,20 @@ it('lets a retraction listener already see the holder without the role', functio
     Role::query()->where('name', 'editor')->sole()->delete();
 
     expect($seen)->toBeFalse();
+});
+
+it('bumps each scope a deleted role reached once', function (): void {
+    $luis = User::query()->create(['name' => 'Luis']);
+    $this->warden->allow('editor')->to('publish');
+    nestRole('auditor', 'editor');
+    $this->warden->assign('editor')->to($this->ana);
+    $editor = Role::query()->where('name', 'editor')->sole();
+    $this->warden->tenant()->onceTo(7, fn () => $this->warden->assign($editor)->to($luis));
+    Cache::store('array')->put('warden:v:a', 40, 60);
+    Cache::store('array')->put('warden:v:g', 70, 60);
+
+    $editor->delete();
+
+    expect(Cache::store('array')->get('warden:v:a'))->toBe(42)
+        ->and(Cache::store('array')->get('warden:v:g'))->toBe(71);
 });

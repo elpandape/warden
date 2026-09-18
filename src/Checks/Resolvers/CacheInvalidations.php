@@ -103,7 +103,7 @@ final class CacheInvalidations
     public function mark(int|string|null $scope): void
     {
         if ($this->depth > 0) {
-            $this->pending[$scope === null ? 'null' : get_debug_type($scope).':'.$scope] = $scope;
+            $this->pending[$this->scopeKey($scope)] = $scope;
 
             return;
         }
@@ -140,6 +140,31 @@ final class CacheInvalidations
     }
 
     /**
+     * A catalog row was edited by the model. The cached payload bakes a
+     * permission's columns in wherever one of its grants lives, and in a
+     * global catalog that can be a tenant other than the row's own scope.
+     */
+    public function markCatalogEdit(Model $model): void
+    {
+        $trash = method_exists($model, 'getDeletedAtColumn') ? $model->getDeletedAtColumn() : null;
+        $baked = ['name', 'entity_type', 'entity_id', 'only_owned', 'options', ...(is_string($trash) ? [$trash] : [])];
+
+        if ($model::class !== Context::resolve()->permissionClass() || ! $model->wasChanged($baked)) {
+            return;
+        }
+
+        // markFrom() marked the global scope for this row, and that bump
+        // already reaches every cached key.
+        if ($this->scalar($model->getAttributes()['scope'] ?? null) === null || $this->scalar($model->getRawOriginal('scope')) === null) {
+            return;
+        }
+
+        foreach ($this->catalogScopes($model) as $scope) {
+            $this->mark($scope);
+        }
+    }
+
+    /**
      * A catalog row is about to go, and a foreign key will take its grants with
      * it — inside the engine, where no model event fires. The cascade cannot be
      * hooked, but it is declarative, so the scopes it will reach can be read
@@ -164,7 +189,7 @@ final class CacheInvalidations
         if ($model::class === $context->permissionClass()) {
             // A soft delete cascades nothing, yet the trashed permission stops
             // granting at once: the scopes its grants live in move all the same.
-            $this->cascading[$id] = $this->scopesOf($context->grantClass(), 'permission_id', $key);
+            $this->cascading[$id] = $this->catalogScopes($model);
 
             // Only a hard delete cascades, and its grants are read only to be announced.
             if (! $this->softDeleting($model) && Config::eventsEnabled()) {
@@ -178,18 +203,14 @@ final class CacheInvalidations
             return;
         }
 
-        $morph = $model->getMorphClass();
-
-        $this->cascading[$id] = [
-            ...$this->scopesOf($context->assignedRoleClass(), 'role_id', $key),
-            ...$this->scopesOf($context->grantClass(), 'entity_id', $key, $morph),
-            ...$this->scopesOf($context->assignedRoleClass(), 'entity_id', $key, $morph),
-        ];
+        $this->cascading[$id] = $this->catalogScopes($model);
 
         // The rest is read only to be announced.
         if (! Config::eventsEnabled()) {
             return;
         }
+
+        $morph = $model->getMorphClass();
 
         $this->holders[$id] = $this->roleHoldersOf($key);
         $this->held[$id] = [
@@ -624,6 +645,48 @@ final class CacheInvalidations
             $connection->afterCommit($again);
             $connection->afterRollBack($again);
         }
+    }
+
+    /**
+     * Every scope a write to the catalog row reaches: a permission's own and
+     * its grants', or a role's holders, grants and the roles nested in it.
+     * Keyed as mark() keys them, so each scope bumps once.
+     *
+     * @return list<int|string|null>
+     */
+    private function catalogScopes(Model $model): array
+    {
+        $context = Context::resolve();
+        $key = $model->getKey();
+
+        if (! is_int($key) && ! is_string($key)) {
+            return []; // @codeCoverageIgnore
+        }
+
+        $morph = $model->getMorphClass();
+
+        // A permission's own scope too: inside Event::defer() a hard delete
+        // lands before this read, and the foreign key has taken its grants.
+        $lists = $model::class === $context->permissionClass()
+            ? [$this->scalar($model->getAttributes()['scope'] ?? null), ...$this->scopesOf($context->grantClass(), 'permission_id', $key)]
+            : [
+                ...$this->scopesOf($context->assignedRoleClass(), 'role_id', $key),
+                ...$this->scopesOf($context->grantClass(), 'entity_id', $key, $morph),
+                ...$this->scopesOf($context->assignedRoleClass(), 'entity_id', $key, $morph),
+            ];
+
+        $scopes = [];
+
+        foreach ($lists as $scope) {
+            $scopes[$this->scopeKey($scope)] = $scope;
+        }
+
+        return array_values($scopes);
+    }
+
+    private function scopeKey(int|string|null $scope): string
+    {
+        return $scope === null ? 'null' : get_debug_type($scope).':'.$scope;
     }
 
     /**

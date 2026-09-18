@@ -128,9 +128,13 @@ trait IsPermission
         });
 
         static::updated(function (Model $permission) use ($stored): void {
-            // Model listeners run before the wildcard one that also marks:
-            // invalidate first, so no listener reads what this edit made stale.
-            app(CacheInvalidations::class)->markFrom($permission);
+            // First, events on or off, so no listener reads what this edit
+            // made stale. One boundary: a scope both marks reach bumps once.
+            $invalidations = app(CacheInvalidations::class);
+            $invalidations->during(static function () use ($invalidations, $permission): void {
+                $invalidations->markFrom($permission);
+                $invalidations->markCatalogEdit($permission);
+            });
 
             app(Operations::class)->during(function () use ($permission, $stored): void {
                 $row = $stored[$permission] ?? null;

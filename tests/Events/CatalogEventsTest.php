@@ -34,6 +34,7 @@ use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingPermission;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -43,6 +44,7 @@ use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToPermissions;
 use function ElPandaPe\Warden\Tests\Database\migrateRemoteUsers;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
+use function ElPandaPe\Warden\Tests\reportScopedApartFromItsGrant;
 
 beforeEach(function (): void {
     migrateWardenTables();
@@ -596,4 +598,154 @@ it('invalidates the tenant a soft-deleted permission was granted under, not only
     $report->delete();
 
     expect(Gate::forUser($this->user)->allows('report'))->toBeFalse();
+});
+
+it('invalidates the tenant a restored permission was granted under, not only its own', function (): void {
+    $report = reportScopedApartFromItsGrant($this->user);
+    $report->delete();
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeFalse();
+
+    $report->restore();
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeTrue();
+});
+
+it('invalidates the tenant a restored permission was granted under with events disabled', function (): void {
+    $report = reportScopedApartFromItsGrant($this->user);
+    config()->set('warden.events_enabled', false);
+    $report->delete();
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeFalse();
+
+    $report->restore();
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeTrue();
+});
+
+it('forbids again under another tenant once a trashed prohibition is restored', function (): void {
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    config()->set('warden.cache.enabled', true);
+
+    $global = SoftDeletingPermission::query()->create(['name' => 'report']);
+    $scoped = $this->warden->tenant()->onceTo(5, fn (): SoftDeletingPermission => SoftDeletingPermission::query()->create(['name' => 'report']));
+    $this->warden->tenant()->onlyRelations()->to(7);
+    $this->warden->allow($this->user)->to($global);
+    $this->warden->forbid($this->user)->to($scoped);
+
+    expect($scoped->getAttribute('scope'))->toBe(5)
+        ->and(Gate::forUser($this->user)->allows('report'))->toBeFalse();
+
+    $scoped->delete();
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeTrue();
+
+    $scoped->restore();
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeFalse();
+});
+
+it('stops granting under another tenant once a permission is trashed through a save', function (): void {
+    $report = reportScopedApartFromItsGrant($this->user);
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeTrue();
+
+    $report->forceFill(['deleted_at' => now()])->save();
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeFalse();
+});
+
+it('moves a renamed permission under the tenant its grant lives in', function (): void {
+    $report = reportScopedApartFromItsGrant($this->user);
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeTrue();
+
+    $report->update(['name' => 'audit']);
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeFalse()
+        ->and(Gate::forUser($this->user)->allows('audit'))->toBeTrue();
+});
+
+it('stops granting under another tenant once an edit narrows the permission', function (array $edit): void {
+    $report = reportScopedApartFromItsGrant($this->user);
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeTrue();
+
+    $report->update($edit);
+
+    expect(Gate::forUser($this->user)->allows('report'))->toBeFalse();
+})->with([
+    'to a model class' => [['entity_type' => User::class]],
+    'to owned models' => [['only_owned' => true]],
+    'to a condition' => [['options' => ['v' => 1, 'g' => ['t' => 'group', 'i' => [['and', ['t' => 'value', 'c' => 'name', 'o' => '=', 'v' => 'Acme']]]]]]],
+]);
+
+it('moves a permission repointed at another record under the tenant its grant lives in', function (): void {
+    $report = reportScopedApartFromItsGrant($this->user);
+    $other = User::query()->create(['name' => 'Other']);
+    $report->update(['entity_type' => User::class, 'entity_id' => $this->user->getKey()]);
+
+    expect(Gate::forUser($this->user)->allows('report', $this->user))->toBeTrue();
+
+    $report->update(['entity_id' => $other->getKey()]);
+
+    expect(Gate::forUser($this->user)->allows('report', $this->user))->toBeFalse()
+        ->and(Gate::forUser($this->user)->allows('report', $other))->toBeTrue();
+});
+
+it('reads no grant scopes to edit a permission of the global scope', function (): void {
+    $this->warden->allow($this->user)->to('report');
+    $report = Permission::query()->where('name', 'report')->sole();
+
+    DB::enableQueryLog();
+
+    $report->update(['name' => 'audit']);
+
+    expect(DB::getQueryLog())->toHaveCount(1);
+});
+
+it('bumps the cache once for a permission edited by the model', function (): void {
+    $report = Permission::query()->create(['name' => 'report']);
+    Cache::store('array')->put('warden:v:a', 40, 60);
+
+    $report->update(['title' => 'Quarterly report']);
+
+    expect(Cache::store('array')->get('warden:v:a'))->toBe(41);
+});
+
+it('bumps each scope once for an edited permission whose own scope also holds a grant', function (): void {
+    $report = reportScopedApartFromItsGrant($this->user);
+    $this->warden->tenant()->onceTo(5, fn () => $this->warden->allow($this->user)->to($report));
+    Cache::store('array')->put('warden:v:a', 40, 60);
+    Cache::store('array')->put('warden:v:t.5', 70, 60);
+
+    $report->update(['name' => 'audit']);
+
+    expect(Cache::store('array')->get('warden:v:a'))->toBe(42)
+        ->and(Cache::store('array')->get('warden:v:t.5'))->toBe(71);
+});
+
+it('bumps the cache once for a deleted permission', function (): void {
+    withForeignKeys();
+    $this->warden->allow($this->user)->to('report');
+    $report = Permission::query()->where('name', 'report')->sole();
+    Cache::store('array')->put('warden:v:a', 40, 60);
+
+    $report->delete();
+
+    expect(Cache::store('array')->get('warden:v:a'))->toBe(41);
+});
+
+it('invalidates a permission hard-deleted inside a deferred event batch', function (): void {
+    withForeignKeys();
+    config()->set('warden.cache.enabled', true);
+    $this->warden->allow($this->user)->to('publish');
+    $permission = Permission::query()->where('name', 'publish')->sole();
+
+    expect(Gate::forUser($this->user)->allows('publish'))->toBeTrue();
+
+    Event::defer(fn () => $permission->delete());
+
+    expect(Gate::forUser($this->user)->allows('publish'))->toBeFalse();
 });

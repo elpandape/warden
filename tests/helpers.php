@@ -7,11 +7,13 @@ namespace ElPandaPe\Warden\Tests;
 use ArrayObject;
 use DateTimeInterface;
 use ElPandaPe\Warden\Checks\Resolvers\CacheKeyVersioner;
+use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingPermission;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use ElPandaPe\Warden\WardenServiceProvider;
@@ -24,6 +26,8 @@ use LogicException;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
+
+use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToPermissions;
 
 /**
  * A rule the write path refuses since 3.0, planted the way a 2.x database left
@@ -221,4 +225,27 @@ function heardWardenEvents(): ArrayObject
     });
 
     return $heard;
+}
+
+/**
+ * A trashable permission whose row kept scope 5 in a global catalog, granted
+ * under tenant 7 with the cache on: its grant does not live in the scope its
+ * row names.
+ */
+function reportScopedApartFromItsGrant(User $holder): SoftDeletingPermission
+{
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    config()->set('warden.cache.enabled', true);
+    $warden = app(Warden::class);
+    $warden->tenant()->onlyRelations();
+
+    $created = SoftDeletingPermission::query()->create(['name' => 'report']);
+    DB::table('permissions')->where('id', $created->getKey())->update(['scope' => 5]);
+    $report = SoftDeletingPermission::query()->whereKey($created->getKey())->sole();
+
+    $warden->tenant()->to(7);
+    $warden->allow($holder)->to($report);
+
+    return $report;
 }
