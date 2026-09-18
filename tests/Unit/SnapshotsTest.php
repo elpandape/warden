@@ -246,7 +246,7 @@ it('answers the same through the model and the support class, custom models incl
         ->and($keylessPermission->snapshot())->toBe(['v' => 1, 'key' => null, 'name' => 'audit', 'title' => 'Audit', 'entity_type' => null, 'entity_id' => null, 'only_owned' => false, 'scope' => null, 'conditions' => null]);
 });
 
-it('photographs a column a partial select left out as its default, and throws on it in strict mode', function (): void {
+it('photographs a column a partial select left out as its default, and throws in strict mode on one it reads through the model', function (): void {
     Permission::query()->forceCreate([
         'id' => 41,
         'name' => 'edit',
@@ -270,6 +270,30 @@ it('photographs a column a partial select left out as its default, and throws on
     try {
         expect(fn (): array => PermissionSnapshot::of($permission))->toThrow(MissingAttributeException::class)
             ->and(fn (): array => RoleSnapshot::of($role))->toThrow(MissingAttributeException::class);
+    } finally {
+        Model::preventAccessingMissingAttributes(false);
+    }
+});
+
+it('photographs the conditions of a row selected without them as none, even in strict mode', function (): void {
+    Permission::query()->forceCreate([
+        'id' => 41,
+        'name' => 'edit',
+        'title' => 'Edit live accounts',
+        'entity_type' => Account::class,
+        'entity_id' => 7,
+        'only_owned' => true,
+        'scope' => 3,
+        'options' => ConstraintSerializer::serialize(new Builder()->where('status', 'live')->group()),
+    ]);
+
+    $permission = Permission::query()->select(['id', 'name', 'title', 'entity_type', 'entity_id', 'only_owned', 'scope'])->sole();
+
+    Model::preventAccessingMissingAttributes();
+
+    try {
+        expect(fn (): mixed => $permission->getAttribute('options'))->toThrow(MissingAttributeException::class)
+            ->and(PermissionSnapshot::of($permission))->toBe(['v' => 1, 'key' => 41, 'name' => 'edit', 'title' => 'Edit live accounts', 'entity_type' => Account::class, 'entity_id' => 7, 'only_owned' => true, 'scope' => 3, 'conditions' => null]);
     } finally {
         Model::preventAccessingMissingAttributes(false);
     }
