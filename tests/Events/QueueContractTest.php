@@ -4,31 +4,39 @@ declare(strict_types=1);
 
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\PermissionDeleted;
+use ElPandaPe\Warden\Events\PermissionForbidden;
 use ElPandaPe\Warden\Events\PermissionGranted;
 use ElPandaPe\Warden\Events\PermissionRevoked;
+use ElPandaPe\Warden\Events\PermissionsSynced;
+use ElPandaPe\Warden\Events\PermissionUnforbidden;
 use ElPandaPe\Warden\Events\PermissionUpdated;
 use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
+use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Events\RolesSynced;
 use ElPandaPe\Warden\Events\RoleUpdated;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
+use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingPermission;
 use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingRole;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Contracts\Database\ModelIdentifier;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToPermissions;
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToRoles;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
+use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
 use function ElPandaPe\Warden\Tests\deleteWardenRows;
 use function ElPandaPe\Warden\Tests\payloadOf;
 use function ElPandaPe\Warden\Tests\payloadWithout;
@@ -266,4 +274,262 @@ it('restores a payload that carries a key this version does not know', function 
         ->and($permissionDeleted->operation)->toBe($operation)
         ->and($roleCreated->role->is($role))->toBeTrue()
         ->and($roleCreated->operation)->toBe($operation);
+});
+
+it('queues the roles of an assignment without the relations loaded on them', function (): void {
+    $this->warden->allow('editor')->to('publish-sealed-minutes');
+    $editor = Role::query()->where('name', 'editor')->sole()->load('permissions');
+    $heard = null;
+
+    Event::listen(RoleAssigned::class, function (RoleAssigned $event) use (&$heard): void {
+        $heard = $event;
+    });
+
+    $this->warden->assign($editor)->to($this->user);
+
+    $payload = serialize($heard);
+    $queued = unserialize($payload);
+
+    expect($heard->roles->sole())->toBe($editor)
+        ->and($heard->assignments[0]->role)->toBe($editor)
+        ->and($editor->relationLoaded('permissions'))->toBeTrue()
+        ->and(array_keys($heard->__serialize()))->toBe(['authority', 'roles', 'scope', 'restrictedTo', 'actor', 'assignments', 'operation'])
+        ->and($payload)->not->toContain('publish-sealed-minutes')
+        ->and($queued->roles->sole()->getRelations())->toBe([])
+        ->and($queued->roles->sole()->getAttribute('name'))->toBe('editor')
+        ->and($queued->assignments[0]->role)->toBe($queued->roles->sole());
+});
+
+it('queues the roles of a retraction without the relations loaded on them', function (): void {
+    $acme = Account::query()->create(['name' => 'Acme']);
+    $this->warden->allow('editor')->to('publish-sealed-minutes');
+    $this->warden->assign('editor')->on($acme)->to($this->user);
+    $this->warden->assign('sealed-minutes-desk')->to($acme);
+    $editor = Role::query()->where('name', 'editor')->sole()->load('permissions');
+    $heard = null;
+
+    Event::listen('eloquent.retrieved: '.Account::class, fn (Account $account): Account => $account->load('roles'));
+    Event::listen(RoleRetracted::class, function (RoleRetracted $event) use (&$heard): void {
+        $heard = $event;
+    });
+
+    $this->warden->retract($editor)->from($this->user);
+
+    $payload = serialize($heard);
+    $queued = unserialize($payload);
+
+    expect($heard->roles->sole())->toBe($editor)
+        ->and($heard->assignments[0]->role)->toBe($editor)
+        ->and($editor->relationLoaded('permissions'))->toBeTrue()
+        ->and($heard->assignments[0]->restrictedTo?->relationLoaded('roles'))->toBeTrue()
+        ->and($payload)->not->toContain('publish-sealed-minutes')
+        ->and($payload)->not->toContain('sealed-minutes-desk')
+        ->and($queued->roles->sole()->getRelations())->toBe([])
+        ->and($queued->assignments[0]->role)->toBe($queued->roles->sole())
+        ->and($queued->assignments[0]->restrictedTo?->getRelations())->toBe([])
+        ->and($queued->assignments[0]->restrictedTo?->getAttribute('name'))->toBe('Acme');
+});
+
+it('queues the permissions of a grant without the relations loaded on them', function (string $verb, string $announced): void {
+    $this->warden->allow('sealed-minutes-clerk')->to('publish');
+    $publish = Permission::query()->where('name', 'publish')->sole()->load('roles');
+    $heard = null;
+
+    Event::listen($announced, function (PermissionGranted|PermissionForbidden $event) use (&$heard): void {
+        $heard = $event;
+    });
+
+    $this->warden->{$verb}($this->user)->to($publish);
+
+    $payload = serialize($heard);
+    $queued = unserialize($payload);
+
+    expect($heard)->toBeInstanceOf($announced)
+        ->and($heard->permissions->sole())->toBe($publish)
+        ->and($heard->grants[0]->permission)->toBe($publish)
+        ->and($publish->relationLoaded('roles'))->toBeTrue()
+        ->and($payload)->not->toContain('sealed-minutes-clerk')
+        ->and($queued->permissions->sole()->getRelations())->toBe([])
+        ->and($queued->grants[0]->permission)->toBe($queued->permissions->sole());
+})->with([
+    'allow' => ['allow', PermissionGranted::class],
+    'forbid' => ['forbid', PermissionForbidden::class],
+]);
+
+it('queues the permissions of a removal without the relations loaded on them', function (string $write, string $verb, string $announced): void {
+    $this->warden->allow('sealed-minutes-clerk')->to('publish');
+    $this->warden->{$write}($this->user)->to('publish');
+    $publish = Permission::query()->where('name', 'publish')->sole()->load('roles');
+    $heard = null;
+
+    Event::listen($announced, function (PermissionRevoked|PermissionUnforbidden $event) use (&$heard): void {
+        $heard = $event;
+    });
+
+    $this->warden->{$verb}($this->user)->to($publish);
+
+    $payload = serialize($heard);
+    $queued = unserialize($payload);
+
+    expect($heard)->toBeInstanceOf($announced)
+        ->and($heard->permissions->sole())->toBe($publish)
+        ->and($heard->grants[0]->permission)->toBe($publish)
+        ->and($publish->relationLoaded('roles'))->toBeTrue()
+        ->and($payload)->not->toContain('sealed-minutes-clerk')
+        ->and($queued->permissions->sole()->getRelations())->toBe([])
+        ->and($queued->grants[0]->permission)->toBe($queued->permissions->sole());
+})->with([
+    'disallow' => ['allow', 'disallow', PermissionRevoked::class],
+    'unforbid' => ['forbid', 'unforbid', PermissionUnforbidden::class],
+]);
+
+it('queues the permission a delete cascades from without the relations loaded on it', function (): void {
+    withForeignKeys();
+    $this->warden->allow('sealed-minutes-clerk')->to('publish');
+    $publish = Permission::query()->where('name', 'publish')->sole()->load('roles');
+    $heard = null;
+    $deleted = null;
+
+    Event::listen(PermissionRevoked::class, function (PermissionRevoked $event) use (&$heard): void {
+        $heard = $event;
+    });
+    Event::listen(PermissionDeleted::class, function (PermissionDeleted $event) use (&$deleted): void {
+        $deleted = $event;
+    });
+
+    $publish->delete();
+
+    $payload = serialize($heard);
+    $queued = unserialize($payload);
+
+    expect($heard->permissions->sole())->toBe($publish)
+        ->and($heard->grants[0]->permission)->toBe($publish)
+        ->and($deleted?->permission)->toBe($publish)
+        ->and($publish->relationLoaded('roles'))->toBeTrue()
+        ->and($payload)->not->toContain('sealed-minutes-clerk')
+        ->and($queued->authority?->getAttribute('name'))->toBe('sealed-minutes-clerk')
+        ->and($queued->permissions->sole()->getRelations())->toBe([])
+        ->and($queued->grants[0]->permission)->toBe($queued->permissions->sole());
+});
+
+it('queues the diff of a role sync without the relations loaded on its rows', function (): void {
+    $this->warden->allow('auditor')->to('publish-sealed-minutes');
+    $this->warden->allow('editor')->to('publish-sealed-minutes');
+    $this->warden->allow('reviewer')->to('publish-sealed-minutes');
+    $this->warden->assign(['auditor', 'reviewer'])->to($this->user);
+    $editor = Role::query()->where('name', 'editor')->sole()->load('permissions');
+    $heard = null;
+
+    Event::listen('eloquent.retrieved: '.Role::class, fn (Role $role): Role => $role->load('permissions'));
+    Event::listen(RolesSynced::class, function (RolesSynced $event) use (&$heard): void {
+        $heard = $event;
+    });
+
+    $this->warden->sync($this->user)->roles([$editor, 'reviewer']);
+
+    $payload = serialize($heard);
+    $queued = unserialize($payload);
+
+    expect($heard->changes->attached->sole())->toBe($editor)
+        ->and($editor->relationLoaded('permissions'))->toBeTrue()
+        ->and($heard->changes->kept->sole()->relationLoaded('permissions'))->toBeTrue()
+        ->and($heard->changes->detached->sole()->relationLoaded('permissions'))->toBeTrue()
+        ->and(array_keys($heard->__serialize()))->toBe(['authority', 'changes', 'scope', 'actor', 'operation'])
+        ->and($payload)->not->toContain('publish-sealed-minutes')
+        ->and($queued->changes->attached->sole()->getRelations())->toBe([])
+        ->and($queued->changes->attached->sole()->getAttribute('name'))->toBe('editor')
+        ->and($queued->changes->kept->sole()->getRelations())->toBe([])
+        ->and($queued->changes->kept->sole()->getAttribute('name'))->toBe('reviewer')
+        ->and($queued->changes->detached->sole()->getRelations())->toBe([])
+        ->and($queued->changes->detached->sole()->getAttribute('name'))->toBe('auditor');
+});
+
+it('queues the diff of a permission sync without the relations loaded on its rows', function (string $method, bool $forbidden): void {
+    $this->warden->allow('sealed-minutes-clerk')->to('publish');
+    $publish = Permission::query()->where('name', 'publish')->sole()->load('roles');
+    $heard = null;
+
+    Event::listen(PermissionsSynced::class, function (PermissionsSynced $event) use (&$heard): void {
+        $heard = $event;
+    });
+
+    $this->warden->sync($this->user)->{$method}([$publish]);
+
+    $payload = serialize($heard);
+    $queued = unserialize($payload);
+
+    expect($heard->changes->attached->sole())->toBe($publish)
+        ->and($publish->relationLoaded('roles'))->toBeTrue()
+        ->and($payload)->not->toContain('sealed-minutes-clerk')
+        ->and($queued->forbidden)->toBe($forbidden)
+        ->and($queued->changes->attached->sole()->getRelations())->toBe([])
+        ->and($queued->changes->attached->sole()->getAttribute('name'))->toBe('publish');
+})->with([
+    'permissions' => ['permissions', false],
+    'forbidden permissions' => ['forbiddenPermissions', true],
+]);
+
+it('queues each side of a permission sync diff as a plain collection without the relations loaded on its rows', function (): void {
+    $this->warden->allow('sealed-minutes-clerk')->to(['archive', 'publish', 'review']);
+    $this->warden->allow($this->user)->to(['archive', 'review']);
+    $publish = Permission::query()->where('name', 'publish')->sole()->load('roles');
+    $heard = null;
+
+    Event::listen('eloquent.retrieved: '.Permission::class, fn (Permission $permission): Permission => $permission->load('roles'));
+    Event::listen(PermissionsSynced::class, function (PermissionsSynced $event) use (&$heard): void {
+        $heard = $event;
+    });
+
+    $this->warden->sync($this->user)->permissions([$publish, 'review']);
+
+    $payload = serialize($heard);
+    $changes = unserialize($payload)->changes;
+
+    expect($heard->changes->attached->sole())->toBe($publish)
+        ->and($publish->relationLoaded('roles'))->toBeTrue()
+        ->and($heard->changes->kept->sole()->relationLoaded('roles'))->toBeTrue()
+        ->and($heard->changes->detached->sole()->relationLoaded('roles'))->toBeTrue()
+        ->and($payload)->not->toContain('sealed-minutes-clerk')
+        ->and([$changes->attached::class, $changes->detached::class, $changes->kept::class])->each->toBe(Collection::class)
+        ->and($changes->attached->sole()->getRelations())->toBe([])
+        ->and($changes->attached->sole()->getAttribute('name'))->toBe('publish')
+        ->and($changes->kept->sole()->getRelations())->toBe([])
+        ->and($changes->kept->sole()->getAttribute('name'))->toBe('review')
+        ->and($changes->detached->sole()->getRelations())->toBe([])
+        ->and($changes->detached->sole()->getAttribute('name'))->toBe('archive');
+});
+
+it('queues again a write event restored from a payload that had no operation', function (): void {
+    $heard = null;
+
+    Event::listen(RoleAssigned::class, function (RoleAssigned $event) use (&$heard): void {
+        $heard = $event;
+    });
+
+    $this->warden->assign('editor')->to($this->user);
+
+    $restored = unserialize(payloadWithout($heard, 'operation'));
+    $requeued = unserialize(serialize($restored));
+
+    expect(array_keys($restored->__serialize()))->toBe(['authority', 'roles', 'scope', 'restrictedTo', 'actor', 'assignments'])
+        ->and($restored->__serialize()['roles']->sole())->toBe($restored->roles->sole())
+        ->and($requeued->operation ?? 'none')->toBe('none')
+        ->and($requeued->roles->sole()->getAttribute('name'))->toBe('editor')
+        ->and($requeued->assignments[0]->role)->toBe($requeued->roles->sole());
+});
+
+it('reads the top-level models and an eloquent collection of a queued write again when the job runs', function (): void {
+    Role::query()->create(['name' => 'editor']);
+    $this->user->load('roles');
+
+    $payload = serialize(new RoleAssigned($this->user, Role::query()->get(), null));
+
+    DB::table('users')->update(['name' => 'Joseph Maria']);
+    DB::table('roles')->update(['name' => 'publisher']);
+    $queued = unserialize($payload);
+
+    expect($queued->authority->getAttribute('name'))->toBe('Joseph Maria')
+        ->and($queued->authority->relationLoaded('roles'))->toBeTrue()
+        ->and($queued->roles)->toBeInstanceOf(EloquentCollection::class)
+        ->and($queued->roles->sole()->getAttribute('name'))->toBe('publisher');
 });

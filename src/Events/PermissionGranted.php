@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Events;
 
+use ElPandaPe\Warden\Events\Concerns\QueuesWithoutRelations;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -15,7 +16,9 @@ use Illuminate\Support\Collection;
 final readonly class PermissionGranted
 {
     use Dispatchable;
-    use SerializesModels;
+    use QueuesWithoutRelations, SerializesModels {
+        QueuesWithoutRelations::__serialize insteadof SerializesModels;
+    }
 
     /**
      * @param  Collection<int, Model>  $permissions
