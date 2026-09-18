@@ -165,3 +165,34 @@ function plantDuplicateViewGrant(User $holder, ?DateTimeInterface $expiresAt = n
         'entity_id' => $holder->getKey(), 'forbidden' => false, 'scope' => null, 'expires_at' => $expiresAt,
     ]);
 }
+
+/**
+ * By query, so no model event fires, and pivots before the catalog, as the
+ * foreign keys demand.
+ */
+function deleteWardenRows(): void
+{
+    Grant::query()->withoutGlobalScopes()->delete();
+    AssignedRole::query()->withoutGlobalScopes()->delete();
+    Permission::query()->withoutGlobalScopes()->delete();
+    Role::query()->withoutGlobalScopes()->delete();
+}
+
+/**
+ * The queue payload of an object whose __serialize() returned these values:
+ * unserialize() hands them to the class's own __unserialize(), as a worker does.
+ *
+ * @param  array<string, mixed>  $values
+ */
+function payloadOf(string $class, array $values): string
+{
+    return 'O:'.strlen($class).':"'.$class.'"'.substr(serialize($values), 1);
+}
+
+/**
+ * The event as a release whose class lacked these properties queued it.
+ */
+function payloadWithout(object $event, string ...$keys): string
+{
+    return payloadOf($event::class, array_diff_key($event->__serialize(), array_flip($keys)));
+}
