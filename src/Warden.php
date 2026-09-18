@@ -16,6 +16,7 @@ use ElPandaPe\Warden\Exceptions\PermissionDoesNotExist;
 use ElPandaPe\Warden\Exceptions\RoleDoesNotExist;
 use ElPandaPe\Warden\Exceptions\UnauthorizedException;
 use ElPandaPe\Warden\Support\Name;
+use ElPandaPe\Warden\Support\Operations;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Contracts\Auth\Access\Gate;
@@ -82,6 +83,20 @@ final class Warden
     public function sync(Model|string|\BackedEnum $authority): SyncsRolesAndPermissions
     {
         return new SyncsRolesAndPermissions($authority instanceof \BackedEnum ? Name::of($authority) : $authority);
+    }
+
+    /**
+     * Runs the callback as one operation, under the id it receives. Nested
+     * inside another operation, it joins that one.
+     *
+     * @template T
+     *
+     * @param  callable(string): T  $work
+     * @return T
+     */
+    public function operation(callable $work): mixed
+    {
+        return app(Operations::class)->during($work);
     }
 
     public function is(Model $authority): ChecksRoles

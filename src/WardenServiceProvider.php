@@ -73,6 +73,14 @@ final class WardenServiceProvider extends ServiceProvider
             $this->app->singleton(Checks\Resolvers\CacheInvalidations::class);
         }
 
+        // Scoped like the invalidations: each Octane request and queue job
+        // starts outside any operation.
+        if ((bool) $this->app->make(Repository::class)->get('warden.octane.register_reset_listener', true)) {
+            $this->app->scoped(Support\Operations::class);
+        } else {
+            $this->app->singleton(Support\Operations::class);
+        }
+
         // The cached resolver decorates the database engine; the enabled flag
         // is honored live inside resolve(), so toggling needs no rebinding.
         $resolver = fn (Application $app): Contracts\Resolver => new Checks\Resolvers\CachedResolver(

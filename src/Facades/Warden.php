@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static AssignsRoles assign(string|array<int, mixed>|Model $roles)
  * @method static RetractsRoles retract(string|array<int, mixed>|Model $roles)
  * @method static SyncsRolesAndPermissions sync(Model|string|\BackedEnum $authority)
+ * @method static mixed operation(callable $work)
  * @method static ChecksRoles is(Model $authority)
  * @method static bool can(string|\BackedEnum $permission, Model|string|null $entity = null)
  * @method static bool cannot(string|\BackedEnum $permission, Model|string|null $entity = null)
