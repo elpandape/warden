@@ -203,3 +203,32 @@ it('leaves a trashed permission granted when a sync declares the live set', func
 
     expect(Gate::forUser($this->user)->allows('publish'))->toBeTrue();
 });
+
+it('leaves no trashed base behind a narrowing chain, so a later plain grant goes through', function (): void {
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    $bob = User::query()->create(['name' => 'Bob']);
+    $other = Account::query()->create(['name' => 'Other']);
+
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+    $this->warden->allow($bob)->to('view', Account::class);
+
+    expect(SoftDeletingPermission::onlyTrashed()->exists())->toBeFalse()
+        ->and(Gate::forUser($bob)->allows('view', $other))->toBeTrue()
+        ->and(Gate::forUser($this->user)->allows('view', $other))->toBeFalse();
+});
+
+it('leaves no trashed twin behind a second where(), so its condition can be granted again', function (): void {
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    $bob = User::query()->create(['name' => 'Bob']);
+    $acme = Account::query()->create(['name' => 'Acme']);
+    $other = Account::query()->create(['name' => 'Other']);
+
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme')->where('id', '>', 0);
+    $this->warden->allow($bob)->to('view', Account::class)->where('name', 'Acme');
+
+    expect(SoftDeletingPermission::onlyTrashed()->exists())->toBeFalse()
+        ->and(Gate::forUser($bob)->allows('view', $acme))->toBeTrue()
+        ->and(Gate::forUser($bob)->allows('view', $other))->toBeFalse();
+});

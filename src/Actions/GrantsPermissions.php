@@ -396,7 +396,8 @@ class GrantsPermissions
 
             $this->announceRepoint($removals, $changes);
 
-            // A base row this chain just created, now orphaned, goes away.
+            // A base row this chain just created, now orphaned, goes away for
+            // good: in the trash it would block the next write of this rule.
             foreach ($targets as [$base]) {
                 $orphaned = $base->wasRecentlyCreated
                     && ! $grantClass::query()->withoutGlobalScope(TenantScope::class)
@@ -404,7 +405,7 @@ class GrantsPermissions
                         ->exists();
 
                 if ($orphaned) {
-                    $base->delete();
+                    $base->forceDelete();
                 }
             }
         });
