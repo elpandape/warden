@@ -214,19 +214,17 @@ class GrantsPermissions
             $fresh = [];
             $entries = [];
 
-            // A grant model that will not mass assign the date would drop it
-            // silently, or throw: grantChange() then writes it on its own.
-            $insertsExpiry = $this->expiryDeclared && (new $grantClass)->isFillable('expires_at');
-
             foreach ($permissions as $permission) {
                 // firstOrCreate self-heals concurrent races via createOrFirst on Laravel 12+.
-                $grant = $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
+                // Unguarded, as forceCreate() is: a model that will not mass
+                // assign the date still inserts it with the row.
+                $grant = Model::unguarded(fn (): Model => $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
                     'permission_id' => $this->modelKey($permission),
                     'entity_type' => $authority?->getMorphClass(),
                     'entity_id' => $authority?->getKey(),
                     'forbidden' => $this->forbidding,
                     'scope' => $scope,
-                ], $insertsExpiry ? ['expires_at' => $this->expiresAt] : []);
+                ], $this->expiryDeclared ? ['expires_at' => $this->expiresAt] : []));
 
                 if ($grant->wasRecentlyCreated) {
                     $fresh[] = $this->modelKey($grant);
@@ -268,10 +266,6 @@ class GrantsPermissions
     private function grantChange(Model $grant, Model $permission, bool $dated, ?DateTimeInterface $expiresAt): ?GrantChange
     {
         if ($grant->wasRecentlyCreated) {
-            if ($dated) {
-                Expiry::apply($grant, $expiresAt);
-            }
-
             return new GrantChange(permission: $permission, created: true, expiresAt: Expiry::of($grant), previousExpiresAt: null);
         }
 
@@ -431,10 +425,7 @@ class GrantsPermissions
         $grantClass = Context::resolve()->grantClass();
         $keyName = (new $grantClass)->getKeyName();
 
-        // As in grant(): a model that will not mass assign the date gets it from grantChange().
-        $insertsExpiry = (new $grantClass)->isFillable('expires_at');
-
-        return (new $grantClass)->getConnection()->transaction(function () use ($targets, $grantClass, $keyName, $insertsExpiry): array {
+        return (new $grantClass)->getConnection()->transaction(function () use ($targets, $grantClass, $keyName): array {
             $removals = [];
             $changes = [];
 
@@ -463,13 +454,13 @@ class GrantsPermissions
                 }
 
                 // The twin's row is kept, never deleted and recreated: it only takes the carried date.
-                $grant = $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
+                $grant = Model::unguarded(fn (): Model => $grantClass::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
                     'permission_id' => $twinKey,
                     'entity_type' => $this->lastAuthority?->getMorphClass(),
                     'entity_id' => $this->lastAuthority?->getKey(),
                     'forbidden' => $this->forbidding,
                     'scope' => $this->lastScope,
-                ], $insertsExpiry ? ['expires_at' => $expiresAt] : []);
+                ], ['expires_at' => $expiresAt]));
 
                 $change = $this->grantChange($grant, $twin, dated: true, expiresAt: $expiresAt);
 
@@ -535,13 +526,14 @@ class GrantsPermissions
                 continue;
             }
 
-            /** @var DateTimeInterface|string|null $end */
+            /** @var DateTimeInterface|string|int|null $end */
             $end = $row->getAttribute('expires_at');
 
             if ($end === null) {
                 return null;
             }
 
+            // A grant model swapped in without warden's datetime cast reads back text or a timestamp.
             $ends[] = $end instanceof DateTimeInterface ? $end : Carbon::parse($end);
         }
 

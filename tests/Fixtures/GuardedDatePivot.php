@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\MorphPivot;
 
 /**
  * A grant pivot that mass assigns only the columns naming a grant, which
- * warden's override contract allows: its end date has to be written apart.
+ * warden's override contract allows: warden writes its end date unguarded.
  */
 final class GuardedDatePivot extends MorphPivot
 {

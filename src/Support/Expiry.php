@@ -46,7 +46,14 @@ final class Expiry
         }
 
         $row->setAttribute('expires_at', $expiresAt);
-        $row->save();
+
+        // A listener that vetoes the save leaves the row as it stood, and so
+        // must the model: a write that wrote nothing announces nothing.
+        if (! $row->save()) {
+            $row->discardChanges();
+
+            return false;
+        }
 
         return true;
     }

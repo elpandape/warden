@@ -11,6 +11,7 @@ use ElPandaPe\Warden\Tests\Fixtures\BarePivot;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Event;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -44,6 +45,19 @@ it('reads a date a pivot without a cast holds unsaved, by the wall time it will 
 
     expect(Expiry::of($row)?->toDateTimeString())->toBe('2026-12-31 23:59:59')
         ->and(Expiry::of($row)?->getTimezone()->getName())->toBe('UTC');
+});
+
+it('leaves a row as it stood when a listener vetoes moving its end date', function (): void {
+    app(Warden::class)
+        ->allow(User::query()->create(['name' => 'Ada']))
+        ->until(Carbon::parse('2026-12-31 23:59:59'))
+        ->to('publish', Account::class);
+    $grant = Grant::query()->sole();
+    Event::listen('eloquent.updating: '.Grant::class, fn (): bool => false);
+
+    expect(Expiry::apply($grant, Carbon::parse('2027-06-30 12:00:00')))->toBeFalse()
+        ->and($grant->isDirty())->toBeFalse()
+        ->and(Expiry::of($grant)?->toDateTimeString())->toBe('2026-12-31 23:59:59');
 });
 
 it('reads a row with no end date as null', function (): void {

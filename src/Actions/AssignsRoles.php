@@ -115,22 +115,20 @@ class AssignsRoles
             $models = $this->resolveRoleModels($this->roles);
             $entries = [];
 
-            // An assignment model that will not mass assign the date would drop
-            // it silently, or throw: assignmentChange() then writes it on its own.
-            $insertsExpiry = $this->expiryDeclared && (new $assignedRole)->isFillable('expires_at');
-
             foreach ($models as $role) {
                 $roleKey = $this->modelKey($role);
 
                 foreach ($targets as $index => $authority) {
-                    $assignment = $assignedRole::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
+                    // Unguarded, as forceCreate() is: a model that will not mass
+                    // assign the date still inserts it with the row.
+                    $assignment = Model::unguarded(fn (): Model => $assignedRole::query()->withoutGlobalScope(TenantScope::class)->firstOrCreate([
                         'role_id' => $roleKey,
                         'entity_type' => $authority->getMorphClass(),
                         'entity_id' => $authority->getKey(),
                         'restricted_to_type' => $this->restrictedTo?->getMorphClass(),
                         'restricted_to_id' => $this->restrictedTo?->getKey(),
                         'scope' => $scope,
-                    ], $insertsExpiry ? ['expires_at' => $this->expiresAt] : []);
+                    ], $this->expiryDeclared ? ['expires_at' => $this->expiresAt] : []));
 
                     $entry = $this->assignmentChange($assignment, $role);
 
@@ -173,10 +171,6 @@ class AssignsRoles
     private function assignmentChange(Model $assignment, Model $role): ?AssignmentChange
     {
         if ($assignment->wasRecentlyCreated) {
-            if ($this->expiryDeclared) {
-                Expiry::apply($assignment, $this->expiresAt);
-            }
-
             return new AssignmentChange(role: $role, created: true, expiresAt: Expiry::of($assignment), previousExpiresAt: null);
         }
 

@@ -21,8 +21,10 @@ use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
@@ -443,6 +445,103 @@ it('keeps the end date of a new assignment when models may not silently discard 
     $this->warden->assign('auditor')->until($this->moment)->to($this->user);
 
     expect(AssignedRole::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59');
+});
+
+it('writes a new grant with its end date in one insert when the grant model will not mass assign it', function (): void {
+    config()->set('warden.models.grant', GuardedDatePivot::class);
+    app()->forgetInstance(Context::class);
+    $updates = 0;
+    Event::listen('eloquent.updated: '.GuardedDatePivot::class, function () use (&$updates): void {
+        $updates++;
+    });
+
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+
+    expect(Grant::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and($updates)->toBe(0);
+});
+
+it('writes a new assignment with its end date in one insert when the assignment model will not mass assign it', function (): void {
+    config()->set('warden.models.assigned_role', GuardedDateAssignedRole::class);
+    app()->forgetInstance(Context::class);
+    $updates = 0;
+    Event::listen('eloquent.updated: '.GuardedDateAssignedRole::class, function () use (&$updates): void {
+        $updates++;
+    });
+
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    expect(AssignedRole::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and($updates)->toBe(0);
+});
+
+it('ends a new grant on time when the grant model will not mass assign the date and every update fails', function (): void {
+    config()->set('warden.models.grant', GuardedDatePivot::class);
+    app()->forgetInstance(Context::class);
+    Event::listen('eloquent.updating: '.GuardedDatePivot::class, fn (): never => throw new RuntimeException('connection lost'));
+    $account = Account::query()->create(['name' => 'Acme']);
+    Carbon::setTestNow('2026-06-01 00:00:00');
+
+    $this->warden->allow($this->user)->until($this->moment)->to('archive', Account::class);
+    $before = Gate::forUser($this->user)->allows('archive', $account);
+    Carbon::setTestNow($this->moment);
+
+    expect(Grant::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and($before)->toBeTrue()
+        ->and(Gate::forUser($this->user)->allows('archive', $account))->toBeFalse();
+});
+
+it('ends a new assignment on time when the assignment model will not mass assign the date and every update fails', function (): void {
+    config()->set('warden.models.assigned_role', GuardedDateAssignedRole::class);
+    app()->forgetInstance(Context::class);
+    Event::listen('eloquent.updating: '.GuardedDateAssignedRole::class, fn (): never => throw new RuntimeException('connection lost'));
+    $account = Account::query()->create(['name' => 'Acme']);
+    $this->warden->allow('editor')->to('publish', Account::class);
+    Carbon::setTestNow('2026-06-01 00:00:00');
+
+    $this->warden->assign('editor')->until($this->moment)->to($this->user);
+    $before = Gate::forUser($this->user)->allows('publish', $account);
+    Carbon::setTestNow($this->moment);
+
+    expect(AssignedRole::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and($before)->toBeTrue()
+        ->and(Gate::forUser($this->user)->allows('publish', $account))->toBeFalse();
+});
+
+it('announces nothing and keeps the old end date when a listener vetoes moving a grant date', function (): void {
+    $this->warden->allow($this->user)->until($this->moment)->to('publish', Account::class);
+    $version = Cache::store('array')->get('warden:v:a');
+    Event::listen('eloquent.updating: '.Grant::class, fn (): bool => false);
+    Event::fake([PermissionGranted::class]);
+
+    $this->warden->allow($this->user)->until(Carbon::parse('2027-06-30 12:00:00'))->to('publish', Account::class);
+
+    Event::assertNotDispatched(PermissionGranted::class);
+    expect(Grant::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and(Cache::store('array')->get('warden:v:a'))->toBe($version);
+});
+
+it('announces nothing and keeps the old end date when a listener vetoes moving an assignment date', function (): void {
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+    $version = Cache::store('array')->get('warden:v:a');
+    Event::listen('eloquent.updating: '.AssignedRole::class, fn (): bool => false);
+    Event::fake([RoleAssigned::class]);
+
+    $this->warden->assign('auditor')->until(Carbon::parse('2027-06-30 12:00:00'))->to($this->user);
+
+    Event::assertNotDispatched(RoleAssigned::class);
+    expect(AssignedRole::query()->sole()->getAttribute('expires_at')?->toDateTimeString())->toBe('2026-12-31 23:59:59')
+        ->and(Cache::store('array')->get('warden:v:a'))->toBe($version);
+});
+
+it('announces nothing and throws nothing when a listener vetoes creating an assignment', function (): void {
+    Event::listen('eloquent.creating: '.AssignedRole::class, fn (): bool => false);
+    Event::fake([RoleAssigned::class]);
+
+    $this->warden->assign('auditor')->until($this->moment)->to($this->user);
+
+    Event::assertNotDispatched(RoleAssigned::class);
+    expect(AssignedRole::query()->count())->toBe(0);
 });
 
 it('describes a new assignment as created, born with its end date in one insert', function (): void {
