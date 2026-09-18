@@ -83,7 +83,9 @@ trait IsRole
 
         // Lifecycle events fire at the model layer: every creation path counts.
         static::created(function (Model $role): void {
-            Announcer::announce(fn (): RoleCreated => new RoleCreated($role, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
+            app(Operations::class)->during(function () use ($role): void {
+                Announcer::announce(fn (): RoleCreated => new RoleCreated($role, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
+            });
         });
 
         /** @var WeakMap<Model, array<mixed>> $stored */
@@ -107,39 +109,43 @@ trait IsRole
         });
 
         static::updated(function (Model $role) use ($stored): void {
-            $row = $stored[$role] ?? null;
-            unset($stored[$role]);
+            app(Operations::class)->during(function () use ($role, $stored): void {
+                $row = $stored[$role] ?? null;
+                unset($stored[$role]);
 
-            if ($row === null) {
-                return;
-            }
+                if ($row === null) {
+                    return;
+                }
 
-            $before = RoleSnapshot::of($role->newInstance([], true)->setRawAttributes($row, true));
-            $after = RoleSnapshot::of($role->newInstance([], true)->setRawAttributes([...$row, ...$role->getAttributes()], true));
-            $changed = array_values(array_filter(
-                array_keys($after),
-                static fn (string $key): bool => $key !== 'v' && $key !== 'key' && $before[$key] !== $after[$key],
-            ));
+                $before = RoleSnapshot::of($role->newInstance([], true)->setRawAttributes($row, true));
+                $after = RoleSnapshot::of($role->newInstance([], true)->setRawAttributes([...$row, ...$role->getAttributes()], true));
+                $changed = array_values(array_filter(
+                    array_keys($after),
+                    static fn (string $key): bool => $key !== 'v' && $key !== 'key' && $before[$key] !== $after[$key],
+                ));
 
-            if ($changed !== []) {
-                Announcer::announce(fn (): RoleUpdated => new RoleUpdated($role, $before, $after, $changed, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
-            }
+                if ($changed !== []) {
+                    Announcer::announce(fn (): RoleUpdated => new RoleUpdated($role, $before, $after, $changed, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
+                }
+            });
         });
 
         static::deleted(function (Model $role): void {
-            $invalidations = app(CacheInvalidations::class);
+            app(Operations::class)->during(function () use ($role): void {
+                $invalidations = app(CacheInvalidations::class);
 
-            $invalidations->settleCascade($role);
-            $held = $invalidations->pullHeld($role);
+                $invalidations->settleCascade($role);
+                $held = $invalidations->pullHeld($role);
 
-            Announcer::announce(fn (): RoleDeleted => new RoleDeleted(
-                $role,
-                actor: app(ActorResolver::class)->resolve(),
-                heldGrants: $held['grants'],
-                heldRoles: $held['roles'],
-                operation: app(Operations::class)->current(),
-            ));
-            $invalidations->announceCascade($role);
+                Announcer::announce(fn (): RoleDeleted => new RoleDeleted(
+                    $role,
+                    actor: app(ActorResolver::class)->resolve(),
+                    heldGrants: $held['grants'],
+                    heldRoles: $held['roles'],
+                    operation: app(Operations::class)->current(),
+                ));
+                $invalidations->announceCascade($role);
+            });
         });
     }
 

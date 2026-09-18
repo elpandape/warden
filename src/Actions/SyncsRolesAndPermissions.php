@@ -12,6 +12,7 @@ use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\PermissionsSynced;
 use ElPandaPe\Warden\Events\RolesSynced;
 use ElPandaPe\Warden\Events\SyncResult;
+use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
@@ -32,6 +33,30 @@ class SyncsRolesAndPermissions
      * @param  array<int, mixed>  $roles
      */
     public function roles(array $roles): static
+    {
+        return app(Operations::class)->during(fn (): static => $this->syncRoles($roles));
+    }
+
+    /**
+     * @param  array<int, mixed>  $permissions
+     */
+    public function permissions(array $permissions): static
+    {
+        return app(Operations::class)->during(fn (): static => $this->syncGrants($permissions, forbidden: false));
+    }
+
+    /**
+     * @param  array<int, mixed>  $permissions
+     */
+    public function forbiddenPermissions(array $permissions): static
+    {
+        return app(Operations::class)->during(fn (): static => $this->syncGrants($permissions, forbidden: true));
+    }
+
+    /**
+     * @param  array<int, mixed>  $roles
+     */
+    private function syncRoles(array $roles): static
     {
         $context = Context::resolve();
         $authority = $this->resolveAuthority($this->authority, createRole: true);
@@ -83,22 +108,6 @@ class SyncsRolesAndPermissions
         $this->dispatchWardenEvent(fn (): RolesSynced => new RolesSynced($authority, $this->diff($models, $before), $scope, actor: $this->actor(), operation: $this->operation()));
 
         return $this;
-    }
-
-    /**
-     * @param  array<int, mixed>  $permissions
-     */
-    public function permissions(array $permissions): static
-    {
-        return $this->syncGrants($permissions, forbidden: false);
-    }
-
-    /**
-     * @param  array<int, mixed>  $permissions
-     */
-    public function forbiddenPermissions(array $permissions): static
-    {
-        return $this->syncGrants($permissions, forbidden: true);
     }
 
     /**

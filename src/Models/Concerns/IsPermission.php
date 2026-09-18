@@ -102,7 +102,9 @@ trait IsPermission
 
         // Lifecycle events fire at the model layer: every creation path counts.
         static::created(function (Model $permission): void {
-            Announcer::announce(fn (): PermissionCreated => new PermissionCreated($permission, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
+            app(Operations::class)->during(function () use ($permission): void {
+                Announcer::announce(fn (): PermissionCreated => new PermissionCreated($permission, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
+            });
         });
 
         /** @var WeakMap<Model, array<mixed>> $stored */
@@ -130,31 +132,35 @@ trait IsPermission
             // invalidate first, so no listener reads what this edit made stale.
             app(CacheInvalidations::class)->markFrom($permission);
 
-            $row = $stored[$permission] ?? null;
-            unset($stored[$permission]);
+            app(Operations::class)->during(function () use ($permission, $stored): void {
+                $row = $stored[$permission] ?? null;
+                unset($stored[$permission]);
 
-            if ($row === null) {
-                return;
-            }
+                if ($row === null) {
+                    return;
+                }
 
-            $before = PermissionSnapshot::of($permission->newInstance([], true)->setRawAttributes($row, true));
-            $after = PermissionSnapshot::of($permission->newInstance([], true)->setRawAttributes([...$row, ...$permission->getAttributes()], true));
-            $changed = array_values(array_filter(
-                array_keys($after),
-                static fn (string $key): bool => $key !== 'v' && $key !== 'key' && $before[$key] !== $after[$key],
-            ));
+                $before = PermissionSnapshot::of($permission->newInstance([], true)->setRawAttributes($row, true));
+                $after = PermissionSnapshot::of($permission->newInstance([], true)->setRawAttributes([...$row, ...$permission->getAttributes()], true));
+                $changed = array_values(array_filter(
+                    array_keys($after),
+                    static fn (string $key): bool => $key !== 'v' && $key !== 'key' && $before[$key] !== $after[$key],
+                ));
 
-            if ($changed !== []) {
-                Announcer::announce(fn (): PermissionUpdated => new PermissionUpdated($permission, $before, $after, $changed, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
-            }
+                if ($changed !== []) {
+                    Announcer::announce(fn (): PermissionUpdated => new PermissionUpdated($permission, $before, $after, $changed, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
+                }
+            });
         });
 
         static::deleted(function (Model $permission): void {
-            $invalidations = app(CacheInvalidations::class);
+            app(Operations::class)->during(function () use ($permission): void {
+                $invalidations = app(CacheInvalidations::class);
 
-            $invalidations->settleCascade($permission);
-            Announcer::announce(fn (): PermissionDeleted => new PermissionDeleted($permission, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
-            $invalidations->announceCascade($permission);
+                $invalidations->settleCascade($permission);
+                Announcer::announce(fn (): PermissionDeleted => new PermissionDeleted($permission, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
+                $invalidations->announceCascade($permission);
+            });
         });
     }
 

@@ -16,6 +16,7 @@ use ElPandaPe\Warden\Events\PermissionUnforbidden;
 use ElPandaPe\Warden\Events\RevokingPermission;
 use ElPandaPe\Warden\Events\UnforbiddingPermission;
 use ElPandaPe\Warden\Support\Expiry;
+use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
@@ -92,7 +93,7 @@ class RevokesPermissions
      */
     private function revoke(string|array|Model|BackedEnum $permissions, Model|string|null $entity, bool $onlyOwned): static
     {
-        return $this->asOneWrite(function () use ($permissions, $entity, $onlyOwned): static {
+        return app(Operations::class)->during(fn (): static => $this->asOneWrite(function () use ($permissions, $entity, $onlyOwned): static {
             $context = Context::resolve();
 
             if (! $this->permitsRemoval($permissions, $entity, $onlyOwned)) {
@@ -157,6 +158,6 @@ class RevokesPermissions
                 : new PermissionRevoked($authority, $lost, $scope, actor: $this->actor(), grants: $grants, operation: $this->operation()));
 
             return $this;
-        });
+        }));
     }
 }

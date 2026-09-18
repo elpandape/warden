@@ -15,6 +15,7 @@ use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Expiry;
+use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
@@ -98,7 +99,7 @@ class AssignsRoles
      */
     public function to(Model|array $authorities): static
     {
-        return $this->asOneWrite(function () use ($authorities): static {
+        return app(Operations::class)->during(fn (): static => $this->asOneWrite(function () use ($authorities): static {
             $this->assigned = true;
 
             $assignedRole = Context::resolve()->assignedRoleClass();
@@ -166,7 +167,7 @@ class AssignsRoles
             }
 
             return $this;
-        });
+        }));
     }
 
     private function assignmentChange(Model $assignment, Model $role): ?AssignmentChange

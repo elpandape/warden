@@ -7,6 +7,7 @@ namespace ElPandaPe\Warden\Console;
 use ElPandaPe\Warden\Constraints\ConstraintSerializer;
 use ElPandaPe\Warden\Constraints\Group;
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
@@ -26,6 +27,11 @@ final class CleanCommand extends Command
     protected $description = 'Delete unused permissions: catalog rows no grant points at';
 
     public function handle(Warden $warden): int
+    {
+        return app(Operations::class)->during(fn (): int => $this->clean($warden));
+    }
+
+    private function clean(Warden $warden): int
     {
         $context = Context::resolve();
         $grantModel = new ($context->grantClass());

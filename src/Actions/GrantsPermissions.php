@@ -26,6 +26,7 @@ use ElPandaPe\Warden\Events\PermissionUnforbidden;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Expiry;
+use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
@@ -63,6 +64,8 @@ class GrantsPermissions
 
     private int|string|null $lastScope = null;
 
+    private ?string $lastOperation = null;
+
     private ?Builder $constraints = null;
 
     public function __construct(private readonly Model|string|null $authority) {}
@@ -72,17 +75,19 @@ class GrantsPermissions
      */
     public function to(string|array|Model|BackedEnum $permissions, Model|string|null $entity = null): static
     {
-        if (! $this->permitsGrant($permissions, $entity, onlyOwned: false)) {
-            return $this->forgetChain();
-        }
+        return app(Operations::class)->during(function () use ($permissions, $entity): static {
+            if (! $this->permitsGrant($permissions, $entity, onlyOwned: false)) {
+                return $this->forgetChain();
+            }
 
-        // The catalog row and the grant are one logical write: open the
-        // boundary before the lookup so both coalesce into a single bump.
-        $this->asOneWrite(function () use ($permissions, $entity): void {
-            $this->grant($this->findOrCreatePermissions($permissions, $entity));
+            // The catalog row and the grant are one logical write: open the
+            // boundary before the lookup so both coalesce into a single bump.
+            $this->asOneWrite(function () use ($permissions, $entity): void {
+                $this->grant($this->findOrCreatePermissions($permissions, $entity));
+            });
+
+            return $this;
         });
-
-        return $this;
     }
 
     /**
@@ -119,23 +124,25 @@ class GrantsPermissions
      */
     public function toOwn(Model|string $entity, string|array|BackedEnum $permissions = '*'): static
     {
-        if (! $this->permitsGrant($permissions, $entity, onlyOwned: true)) {
-            return $this->forgetChain();
-        }
+        return app(Operations::class)->during(function () use ($entity, $permissions): static {
+            if (! $this->permitsGrant($permissions, $entity, onlyOwned: true)) {
+                return $this->forgetChain();
+            }
 
-        // An owned-only grant against a class with no ownership resolver can
-        // never grant anything, and the row it writes looks like a healthy one.
-        if (! Context::resolve()->resolvesOwnershipFor($entity)) {
-            $class = $entity instanceof Model ? $entity::class : $entity;
+            // An owned-only grant against a class with no ownership resolver can
+            // never grant anything, and the row it writes looks like a healthy one.
+            if (! Context::resolve()->resolvesOwnershipFor($entity)) {
+                $class = $entity instanceof Model ? $entity::class : $entity;
 
-            Log::warning("Warden: toOwn() wrote a grant for [{$class}], which resolves no ownership. It can never grant.");
-        }
+                Log::warning("Warden: toOwn() wrote a grant for [{$class}], which resolves no ownership. It can never grant.");
+            }
 
-        $this->asOneWrite(function () use ($permissions, $entity): void {
-            $this->grant($this->findOrCreatePermissions($permissions, $entity, onlyOwned: true));
+            $this->asOneWrite(function () use ($permissions, $entity): void {
+                $this->grant($this->findOrCreatePermissions($permissions, $entity, onlyOwned: true));
+            });
+
+            return $this;
         });
-
-        return $this;
     }
 
     /**
@@ -239,6 +246,7 @@ class GrantsPermissions
             $this->freshGrantKeys = $fresh;
             $this->lastAuthority = $authority;
             $this->lastScope = $scope;
+            $this->lastOperation = $this->operation();
             $this->constraints = null;
 
             // A write that wrote nothing announces nothing, as removals already
@@ -318,9 +326,18 @@ class GrantsPermissions
         $this->freshGrantKeys = [];
         $this->lastAuthority = null;
         $this->lastScope = null;
+        $this->lastOperation = null;
         $this->constraints = null;
 
         return $this;
+    }
+
+    /**
+     * A where() refines the call before it, so it resumes that call's operation.
+     */
+    private function reconstrain(): static
+    {
+        return app(Operations::class)->during(fn (): static => $this->narrowChain(), $this->lastOperation);
     }
 
     /**
@@ -328,7 +345,7 @@ class GrantsPermissions
      * re-pointed to a twin permission carrying the serialized group, so a
      * shared unconstrained row is never mutated under other holders.
      */
-    private function reconstrain(): static
+    private function narrowChain(): static
     {
         if ($this->lastGranted === []) {
             throw new ConfigurationException('Constraints need a grant to refine: call to() or toOwn() first.');

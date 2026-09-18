@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Tests;
 
+use ArrayObject;
 use DateTimeInterface;
 use ElPandaPe\Warden\Checks\Resolvers\CacheKeyVersioner;
 use ElPandaPe\Warden\Models\AssignedRole;
@@ -18,6 +19,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use LogicException;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -203,4 +205,20 @@ function payloadWithout(object $event, string ...$keys): string
     }
 
     return payloadOf($event::class, array_diff_key($values, $stripped));
+}
+
+/**
+ * Every warden event dispatched from here on, in the order it went out.
+ *
+ * @return ArrayObject<int, object>
+ */
+function heardWardenEvents(): ArrayObject
+{
+    $heard = new ArrayObject;
+
+    Event::listen('ElPandaPe\Warden\Events\*', function (string $name, array $payload) use ($heard): void {
+        $heard->append($payload[0]);
+    });
+
+    return $heard;
 }

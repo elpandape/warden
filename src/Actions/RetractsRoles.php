@@ -17,6 +17,7 @@ use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Support\MorphHydrator;
+use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
@@ -89,7 +90,7 @@ class RetractsRoles
      */
     public function from(Model|array $authorities): static
     {
-        return $this->asOneWrite(function () use ($authorities): static {
+        return app(Operations::class)->during(fn (): static => $this->asOneWrite(function () use ($authorities): static {
             $this->retracted = true;
             $this->retractedCount = 0;
 
@@ -129,7 +130,7 @@ class RetractsRoles
             }
 
             return $this;
-        });
+        }));
     }
 
     /**

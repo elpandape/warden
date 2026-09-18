@@ -248,6 +248,28 @@ final class CacheInvalidations
      */
     public function announceCascade(Model $model): void
     {
+        app(Operations::class)->during(function () use ($model): void {
+            $this->announceRemovedRows($model);
+        });
+    }
+
+    /**
+     * The whole cascade in one call, as 3.0.0 ran it. The catalog models no
+     * longer call it: their own event goes out between the two halves.
+     *
+     * @deprecated 3.0.1 Call settleCascade(), then announceCascade().
+     */
+    public function markCascade(Model $model): void
+    {
+        app(Operations::class)->during(function () use ($model): void {
+            $this->settleCascade($model);
+            $this->announceCascade($model);
+            unset($this->held[spl_object_id($model)]);
+        });
+    }
+
+    private function announceRemovedRows(Model $model): void
+    {
         $object = spl_object_id($model);
         $roleHolders = $this->holders[$object] ?? [];
         unset($this->holders[$object]);
@@ -284,19 +306,6 @@ final class CacheInvalidations
                 ? new PermissionUnforbidden($authority, $permissions, $scope, actor: $actor(), grants: $removed, operation: app(Operations::class)->current())
                 : new PermissionRevoked($authority, $permissions, $scope, actor: $actor(), grants: $removed, operation: app(Operations::class)->current()));
         }
-    }
-
-    /**
-     * The whole cascade in one call, as 3.0.0 ran it. The catalog models no
-     * longer call it: their own event goes out between the two halves.
-     *
-     * @deprecated 3.0.1 Call settleCascade(), then announceCascade().
-     */
-    public function markCascade(Model $model): void
-    {
-        $this->settleCascade($model);
-        $this->announceCascade($model);
-        unset($this->held[spl_object_id($model)]);
     }
 
     /**
