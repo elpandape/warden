@@ -18,8 +18,8 @@ use Illuminate\Database\Eloquent\Model;
 
 final class DatabaseResolver implements Resolver
 {
-    /** @var array<int|string, list<array{string|null, int|string|null, int|null}>>|null */
-    private ?array $closure = null;
+    /** @var list<int|string>|null */
+    private ?array $roleKeys = null;
 
     /**
      * @param  Collection<int, Model>|null  $assignments  Pre-read assignments for
@@ -77,16 +77,17 @@ final class DatabaseResolver implements Resolver
     }
 
     /**
-     * The closure of the last check that walked one, or null before any, so
-     * explain() can blame the role that holds a grant without walking it again.
+     * The usable role keys of the last check that computed them, nearest
+     * first, or null before any: explain() blames the role that holds a
+     * grant from them without filtering the closure again.
      *
      * @internal
      *
-     * @return array<int|string, list<array{string|null, int|string|null, int|null}>>|null
+     * @return list<int|string>|null
      */
-    public function closure(): ?array
+    public function roleKeys(): ?array
     {
-        return $this->closure;
+        return $this->roleKeys;
     }
 
     /**
@@ -187,9 +188,7 @@ final class DatabaseResolver implements Resolver
     {
         $keys = [];
 
-        $this->closure = RoleClosure::for($authority, $this->assignments);
-
-        foreach ($this->closure as $roleKey => $restrictions) {
+        foreach (RoleClosure::for($authority, $this->assignments) as $roleKey => $restrictions) {
             foreach ($restrictions as [$contextType, $contextId]) {
                 if ($contextType === null && $contextId === null) {
                     $keys[] = $roleKey;
@@ -212,7 +211,9 @@ final class DatabaseResolver implements Resolver
             }
         }
 
-        return array_values(array_unique($keys));
+        $this->roleKeys = array_values(array_unique($keys));
+
+        return $this->roleKeys;
     }
 
     /**

@@ -13,6 +13,7 @@ use Illuminate\Support\Carbon;
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToRoles;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 use function ElPandaPe\Warden\Tests\nestRole;
+use function ElPandaPe\Warden\Tests\projectIn;
 
 beforeEach(function (): void {
     migrateWardenTables();
@@ -311,4 +312,32 @@ it('passes over a trashed nested role to the next cause', function (): void {
 
     expect($why->cause)->toBe(Cause::GrantedToEveryone)
         ->and($why->role)->toBeNull();
+});
+
+it('blames a role restricted through a closure without looking up its context again', function (): void {
+    config()->set('warden.roles.nested', true);
+    $this->warden->restrictedVia(
+        fn (Account $entity, Account $context): bool => (string) $entity->getAttribute('account_id') === (string) $context->getKey(),
+    );
+    $org = Account::query()->create(['name' => 'Org'])->refresh();
+    $project = projectIn($org);
+
+    $this->warden->allow('reviewer')->to('edit', Account::class);
+    $this->warden->allow('auditor')->to('audit', Account::class);
+    nestRole('auditor', 'reviewer');
+    $this->warden->assign('reviewer')->on($org)->to($this->user);
+
+    $explain = function (string $permission) use ($project): array {
+        Illuminate\Support\Facades\DB::flushQueryLog();
+        Illuminate\Support\Facades\DB::enableQueryLog();
+
+        $role = $this->warden->explain($this->user, $permission, $project)->role;
+        $queries = array_column(Illuminate\Support\Facades\DB::getQueryLog(), 'query');
+        $contextReads = array_filter($queries, fn (string $query): bool => str_contains($query, 'accounts'));
+
+        return [$role?->getAttribute('name'), count($queries), count($contextReads)];
+    };
+
+    expect($explain('edit'))->toBe(['reviewer', 9, 2])
+        ->and($explain('audit'))->toBe(['auditor', 9, 2]);
 });
