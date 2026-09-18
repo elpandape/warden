@@ -19,6 +19,7 @@ use ElPandaPe\Warden\Support\MorphHydrator;
 use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Support\Snapshots\PermissionSnapshot;
 use ElPandaPe\Warden\Support\Snapshots\RoleSnapshot;
+use ElPandaPe\Warden\Support\Trash;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -205,7 +206,7 @@ final class CacheInvalidations
             $this->cascading[$id] = $this->catalogScopes($model);
 
             // Only a hard delete cascades, and its grants are read only to be announced.
-            if (! $this->softDeleting($model) && Config::eventsEnabled()) {
+            if (! Trash::receives($model) && Config::eventsEnabled()) {
                 $this->doomed[$id] = $this->grantsPointingAt($key);
             }
 
@@ -221,7 +222,7 @@ final class CacheInvalidations
         // to announce that.
         $this->cascading[$id] = $this->catalogScopes($model);
 
-        if ($this->softDeleting($model) || ! Config::eventsEnabled()) {
+        if (Trash::receives($model) || ! Config::eventsEnabled()) {
             return;
         }
 
@@ -262,7 +263,7 @@ final class CacheInvalidations
             $scopes = [$this->scalar($model->getAttributes()['scope'] ?? null)];
         }
 
-        if ($scopes === null && $model::class === $context->roleClass() && $this->softDeleting($model)) {
+        if ($scopes === null && $model::class === $context->roleClass() && Trash::receives($model)) {
             $scopes = $this->catalogScopes($model);
         }
 
@@ -621,7 +622,7 @@ final class CacheInvalidations
     {
         $context = Context::resolve();
 
-        if ($model::class !== $context->roleClass() || $this->softDeleting($model)) {
+        if ($model::class !== $context->roleClass() || Trash::receives($model)) {
             return;
         }
 
@@ -639,15 +640,6 @@ final class CacheInvalidations
                 ->where('entity_id', $key)
                 ->delete();
         }
-    }
-
-    /**
-     * Model::delete() fires the delete events for a soft delete too, yet the
-     * row stays and nothing cascades.
-     */
-    private function softDeleting(Model $model): bool
-    {
-        return method_exists($model, 'isForceDeleting') && $model->isForceDeleting() === false;
     }
 
     private function scalar(mixed $value): int|string|null

@@ -19,6 +19,7 @@ use ElPandaPe\Warden\Support\Config;
 use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Support\Snapshots\RoleSnapshot;
 use ElPandaPe\Warden\Support\Titles\RoleTitle;
+use ElPandaPe\Warden\Support\Trash;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -146,7 +147,7 @@ trait IsRole
                     actor: app(ActorResolver::class)->resolve(),
                     heldGrants: $held['grants'],
                     heldRoles: $held['roles'],
-                    softDeleted: method_exists($role, 'isForceDeleting') && $role->isForceDeleting() === false,
+                    softDeleted: Trash::receives($role),
                     operation: app(Operations::class)->current(),
                 ));
                 $invalidations->announceCascade($role);

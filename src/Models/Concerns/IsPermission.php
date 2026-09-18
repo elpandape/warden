@@ -19,6 +19,7 @@ use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Support\PermissionIdentity;
 use ElPandaPe\Warden\Support\Snapshots\PermissionSnapshot;
 use ElPandaPe\Warden\Support\Titles\PermissionTitle;
+use ElPandaPe\Warden\Support\Trash;
 use ElPandaPe\Warden\Tenancy\AppliesPivotTenancy;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
@@ -166,7 +167,7 @@ trait IsPermission
                 Announcer::announce(fn (): PermissionDeleted => new PermissionDeleted(
                     $permission,
                     actor: app(ActorResolver::class)->resolve(),
-                    softDeleted: method_exists($permission, 'isForceDeleting') && $permission->isForceDeleting() === false,
+                    softDeleted: Trash::receives($permission),
                     operation: app(Operations::class)->current(),
                 ));
                 $invalidations->announceCascade($permission);
