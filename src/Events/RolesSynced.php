@@ -21,5 +21,6 @@ final readonly class RolesSynced
         public SyncResult $changes,
         public int|string|null $scope,
         public ?Model $actor = null,
+        public ?string $operation = null,
     ) {}
 }

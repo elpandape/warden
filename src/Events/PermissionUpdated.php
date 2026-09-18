@@ -31,5 +31,6 @@ final readonly class PermissionUpdated
         public array $after,
         public array $changed,
         public ?Model $actor = null,
+        public ?string $operation = null,
     ) {}
 }

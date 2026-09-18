@@ -24,5 +24,6 @@ final readonly class RevokingPermission
         public Model|string|null $entity,
         public int|string|null $scope,
         public bool $onlyOwned = false,
+        public ?string $operation = null,
     ) {}
 }

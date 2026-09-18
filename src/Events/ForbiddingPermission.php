@@ -9,7 +9,7 @@ use Illuminate\Foundation\Events\Dispatchable;
 
 /**
  * Cancellable pre-action (opt-in via warden.cancellable_events): a listener
- * returning false aborts the operation before anything is written.
+ * returning false aborts the prohibition before anything is written.
  */
 final readonly class ForbiddingPermission
 {
@@ -24,5 +24,6 @@ final readonly class ForbiddingPermission
         public Model|string|null $entity,
         public int|string|null $scope,
         public bool $onlyOwned = false,
+        public ?string $operation = null,
     ) {}
 }

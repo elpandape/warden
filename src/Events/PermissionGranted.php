@@ -27,5 +27,6 @@ final readonly class PermissionGranted
         public int|string|null $scope,
         public ?Model $actor = null,
         public array $grants = [],
+        public ?string $operation = null,
     ) {}
 }

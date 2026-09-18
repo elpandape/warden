@@ -29,5 +29,6 @@ final readonly class RoleAssigned
         public ?Model $restrictedTo = null,
         public ?Model $actor = null,
         public array $assignments = [],
+        public ?string $operation = null,
     ) {}
 }

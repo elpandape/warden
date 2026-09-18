@@ -40,10 +40,11 @@ final readonly class RoleDeleted
         public ?Model $actor = null,
         public array $heldGrants = [],
         public array $heldRoles = [],
+        public ?string $operation = null,
     ) {}
 
     /**
-     * @return array{role: Model, actor: ModelIdentifier|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>}
+     * @return array{role: Model, actor: ModelIdentifier|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>, operation: string|null}
      */
     public function __serialize(): array
     {
@@ -52,11 +53,12 @@ final readonly class RoleDeleted
             'actor' => $this->actorIdentifier($this->actor),
             'heldGrants' => $this->heldGrants,
             'heldRoles' => $this->heldRoles,
+            'operation' => $this->operation,
         ];
     }
 
     /**
-     * @param  array{role: Model, actor: ModelIdentifier|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>}  $values
+     * @param  array{role: Model, actor: ModelIdentifier|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>, operation?: string|null}  $values
      */
     public function __unserialize(array $values): void
     {
@@ -64,5 +66,6 @@ final readonly class RoleDeleted
         $this->actor = $this->restoreActor($values['actor']);
         $this->heldGrants = $values['heldGrants'];
         $this->heldRoles = $values['heldRoles'];
+        $this->operation = $values['operation'] ?? null;
     }
 }

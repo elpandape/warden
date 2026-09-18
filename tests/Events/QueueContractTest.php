@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToPermissions;
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToRoles;
@@ -44,7 +45,7 @@ it('restores a grant event queued under 3.0, without the entries 3.1 added', fun
 
     $this->warden->allow($this->user)->to('publish');
 
-    $restored = unserialize(payloadWithout(Event::dispatched(PermissionGranted::class)->sole()[0], 'grants'));
+    $restored = unserialize(payloadWithout(Event::dispatched(PermissionGranted::class)->sole()[0], 'grants', 'operation'));
 
     expect($restored)->toBeInstanceOf(PermissionGranted::class)
         ->and($restored->authority->is($this->user))->toBeTrue()
@@ -58,7 +59,7 @@ it('restores an assignment event queued under 3.0, without the entries 3.1 added
 
     $this->warden->assign('editor')->to($this->user);
 
-    $restored = unserialize(payloadWithout(Event::dispatched(RoleAssigned::class)->sole()[0], 'assignments'));
+    $restored = unserialize(payloadWithout(Event::dispatched(RoleAssigned::class)->sole()[0], 'assignments', 'operation'));
 
     expect($restored->roles->sole()->getAttribute('name'))->toBe('editor')
         ->and(fn (): array => $restored->assignments)->toThrow(Error::class, 'must not be accessed before initialization')
@@ -70,7 +71,7 @@ it('restores a catalog event queued under 3.0, without the actor 3.1 added', fun
 
     Role::query()->create(['name' => 'editor']);
 
-    $restored = unserialize(payloadWithout(Event::dispatched(RoleCreated::class)->sole()[0], 'actor'));
+    $restored = unserialize(payloadWithout(Event::dispatched(RoleCreated::class)->sole()[0], 'actor', 'operation'));
 
     expect($restored->role->getAttribute('name'))->toBe('editor')
         ->and(fn (): ?Model => $restored->actor)->toThrow(Error::class, 'must not be accessed before initialization')
@@ -208,7 +209,61 @@ it('restores a queued catalog edit whose row was trashed since, in the trash', f
 it('refuses to strip from a queue payload a key the event does not serialize', function (): void {
     $event = new RoleCreated(Role::query()->create(['name' => 'editor']));
 
-    expect(fn (): string => payloadWithout($event, 'actor', 'operation', 'grants'))
-        ->toThrow(LogicException::class, 'The queue payload of '.RoleCreated::class.' has no operation, grants.')
+    expect(fn (): string => payloadWithout($event, 'actor', 'assignments', 'grants'))
+        ->toThrow(LogicException::class, 'The queue payload of '.RoleCreated::class.' has no assignments, grants.')
         ->and(payloadWithout($event))->toBe(serialize($event));
+});
+
+it('keeps the operation of a queued event, whichever way the event serializes', function (): void {
+    $role = Role::query()->create(['name' => 'editor']);
+    $permission = Permission::query()->create(['name' => 'publish']);
+    $operation = (string) Str::ulid();
+
+    expect(unserialize(serialize(new RoleDeleted($role, operation: $operation)))->operation)->toBe($operation)
+        ->and(unserialize(serialize(new PermissionDeleted($permission, operation: $operation)))->operation)->toBe($operation)
+        ->and(unserialize(serialize(new RoleCreated($role, operation: $operation)))->operation)->toBe($operation);
+});
+
+it('restores a RoleDeleted and a PermissionDeleted queued by 3.1 with no operation', function (): void {
+    $role = Role::query()->create(['name' => 'editor']);
+    $permission = Permission::query()->create(['name' => 'publish']);
+    $operation = (string) Str::ulid();
+
+    $roleDeleted = unserialize(payloadWithout(new RoleDeleted($role, operation: $operation), 'operation'));
+    $permissionDeleted = unserialize(payloadWithout(new PermissionDeleted($permission, operation: $operation), 'operation'));
+
+    expect($roleDeleted)->toBeInstanceOf(RoleDeleted::class)
+        ->and($roleDeleted->operation)->toBeNull()
+        ->and($roleDeleted->role->getAttribute('name'))->toBe('editor')
+        ->and($permissionDeleted)->toBeInstanceOf(PermissionDeleted::class)
+        ->and($permissionDeleted->operation)->toBeNull()
+        ->and($permissionDeleted->permission->getAttribute('name'))->toBe('publish');
+});
+
+it('leaves the operation of a generic event queued by 3.1 unset, which ?? reads as null', function (): void {
+    $role = Role::query()->create(['name' => 'editor']);
+
+    $restored = unserialize(payloadWithout(new RoleCreated($role, operation: (string) Str::ulid()), 'operation'));
+
+    expect($restored->role->is($role))->toBeTrue()
+        ->and(fn (): ?string => $restored->operation)->toThrow(Error::class, 'must not be accessed before initialization')
+        ->and($restored->operation ?? null)->toBeNull();
+});
+
+it('restores a payload that carries a key this version does not know', function (): void {
+    $role = Role::query()->create(['name' => 'editor']);
+    $permission = Permission::query()->create(['name' => 'publish']);
+    $operation = (string) Str::ulid();
+    $later = ['arrivedInALaterMinor' => true];
+
+    $roleDeleted = unserialize(payloadOf(RoleDeleted::class, [...new RoleDeleted($role, operation: $operation)->__serialize(), ...$later]));
+    $permissionDeleted = unserialize(payloadOf(PermissionDeleted::class, [...new PermissionDeleted($permission, operation: $operation)->__serialize(), ...$later]));
+    $roleCreated = unserialize(payloadOf(RoleCreated::class, [...new RoleCreated($role, operation: $operation)->__serialize(), ...$later]));
+
+    expect($roleDeleted->role->getAttribute('name'))->toBe('editor')
+        ->and($roleDeleted->operation)->toBe($operation)
+        ->and($permissionDeleted->permission->getAttribute('name'))->toBe('publish')
+        ->and($permissionDeleted->operation)->toBe($operation)
+        ->and($roleCreated->role->is($role))->toBeTrue()
+        ->and($roleCreated->operation)->toBe($operation);
 });

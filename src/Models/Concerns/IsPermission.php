@@ -14,6 +14,7 @@ use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Support\PermissionIdentity;
 use ElPandaPe\Warden\Support\Snapshots\PermissionSnapshot;
 use ElPandaPe\Warden\Support\Titles\PermissionTitle;
@@ -101,7 +102,7 @@ trait IsPermission
 
         // Lifecycle events fire at the model layer: every creation path counts.
         static::created(function (Model $permission): void {
-            Announcer::announce(fn (): PermissionCreated => new PermissionCreated($permission, actor: app(ActorResolver::class)->resolve()));
+            Announcer::announce(fn (): PermissionCreated => new PermissionCreated($permission, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
         });
 
         /** @var WeakMap<Model, array<mixed>> $stored */
@@ -144,7 +145,7 @@ trait IsPermission
             ));
 
             if ($changed !== []) {
-                Announcer::announce(fn (): PermissionUpdated => new PermissionUpdated($permission, $before, $after, $changed, actor: app(ActorResolver::class)->resolve()));
+                Announcer::announce(fn (): PermissionUpdated => new PermissionUpdated($permission, $before, $after, $changed, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
             }
         });
 
@@ -152,7 +153,7 @@ trait IsPermission
             $invalidations = app(CacheInvalidations::class);
 
             $invalidations->settleCascade($permission);
-            Announcer::announce(fn (): PermissionDeleted => new PermissionDeleted($permission, actor: app(ActorResolver::class)->resolve()));
+            Announcer::announce(fn (): PermissionDeleted => new PermissionDeleted($permission, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
             $invalidations->announceCascade($permission);
         });
     }

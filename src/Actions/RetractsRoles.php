@@ -100,7 +100,7 @@ class RetractsRoles
 
             $targets = $this->normalizeAuthorities($authorities, removing: true);
 
-            if (! $this->eventPermits(fn (): RetractingRole => new RetractingRole($this->roles, $targets, $scope, $this->restrictedTo))) {
+            if (! $this->eventPermits(fn (): RetractingRole => new RetractingRole($this->roles, $targets, $scope, $this->restrictedTo, operation: $this->operation()))) {
                 return $this;
             }
 
@@ -205,6 +205,7 @@ class RetractsRoles
                 $this->restrictedTo,
                 actor: $actor(),
                 assignments: $assignments,
+                operation: $this->operation(),
             ));
         }
     }

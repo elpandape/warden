@@ -19,5 +19,6 @@ final readonly class RoleCreated
     public function __construct(
         public Model $role,
         public ?Model $actor = null,
+        public ?string $operation = null,
     ) {}
 }

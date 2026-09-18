@@ -4,13 +4,28 @@ declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\AssigningRole;
+use ElPandaPe\Warden\Events\ForbiddingPermission;
+use ElPandaPe\Warden\Events\GrantingPermission;
 use ElPandaPe\Warden\Events\GrantRemoval;
 use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
+use ElPandaPe\Warden\Events\PermissionForbidden;
+use ElPandaPe\Warden\Events\PermissionGranted;
 use ElPandaPe\Warden\Events\PermissionRevoked;
+use ElPandaPe\Warden\Events\PermissionsSynced;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
+use ElPandaPe\Warden\Events\PermissionUpdated;
+use ElPandaPe\Warden\Events\RetractingRole;
+use ElPandaPe\Warden\Events\RevokingPermission;
+use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
+use ElPandaPe\Warden\Events\RoleRetracted;
+use ElPandaPe\Warden\Events\RolesSynced;
+use ElPandaPe\Warden\Events\RoleUpdated;
+use ElPandaPe\Warden\Events\SyncResult;
+use ElPandaPe\Warden\Events\UnforbiddingPermission;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
@@ -91,6 +106,39 @@ it('still builds catalog events without an actor', function (): void {
         ->and($deleted->actor)->toBeNull()
         ->and($deleted->heldGrants)->toBeEmpty()
         ->and($deleted->heldRoles)->toBeEmpty();
+});
+
+it('still builds every event without an operation', function (): void {
+    $role = Role::query()->create(['name' => 'editor']);
+    $permission = Permission::query()->create(['name' => 'publish']);
+    $roles = collect([$role]);
+    $permissions = collect([$permission]);
+    $changes = new SyncResult(collect(), collect(), collect());
+
+    $events = $this->warden->operation(fn (): array => [
+        new AssigningRole(['editor'], [$this->user], null),
+        new RetractingRole(['editor'], [$this->user], null),
+        new GrantingPermission($this->user, ['publish'], null, null),
+        new ForbiddingPermission($this->user, ['publish'], null, null),
+        new RevokingPermission($this->user, ['publish'], null, null),
+        new UnforbiddingPermission($this->user, ['publish'], null, null),
+        new RoleAssigned($this->user, $roles, null),
+        new RoleRetracted($this->user, $roles, null),
+        new PermissionGranted($this->user, $permissions, null),
+        new PermissionForbidden($this->user, $permissions, null),
+        new PermissionRevoked($this->user, $permissions, null),
+        new PermissionUnforbidden($this->user, $permissions, null),
+        new RolesSynced($this->user, $changes, null),
+        new PermissionsSynced($this->user, $changes, null, false),
+        new RoleCreated($role),
+        new RoleUpdated($role, $role->snapshot(), $role->snapshot(), []),
+        new RoleDeleted($role),
+        new PermissionCreated($permission),
+        new PermissionUpdated($permission, $permission->snapshot(), $permission->snapshot(), []),
+        new PermissionDeleted($permission),
+    ]);
+
+    expect(array_map(fn (object $event): ?string => $event->operation, $events))->toBe(array_fill(0, 20, null));
 });
 
 it('restores a deleted role and its actor from a queued RoleDeleted', function (): void {

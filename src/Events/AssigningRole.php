@@ -24,5 +24,6 @@ final readonly class AssigningRole
         public array $authorities,
         public int|string|null $scope,
         public ?Model $restrictedTo = null,
+        public ?string $operation = null,
     ) {}
 }

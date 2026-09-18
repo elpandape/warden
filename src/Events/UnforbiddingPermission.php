@@ -24,5 +24,6 @@ final readonly class UnforbiddingPermission
         public Model|string|null $entity,
         public int|string|null $scope,
         public bool $onlyOwned = false,
+        public ?string $operation = null,
     ) {}
 }

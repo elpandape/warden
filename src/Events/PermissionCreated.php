@@ -19,5 +19,6 @@ final readonly class PermissionCreated
     public function __construct(
         public Model $permission,
         public ?Model $actor = null,
+        public ?string $operation = null,
     ) {}
 }

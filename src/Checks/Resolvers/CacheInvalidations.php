@@ -16,6 +16,7 @@ use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Config;
 use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Support\MorphHydrator;
+use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Support\Snapshots\PermissionSnapshot;
 use ElPandaPe\Warden\Support\Snapshots\RoleSnapshot;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -280,8 +281,8 @@ final class CacheInvalidations
             $removed = [new GrantRemoval(permission: $model, expiresAt: $expiresAt)];
 
             Announcer::announce(fn (): PermissionUnforbidden|PermissionRevoked => $forbidden
-                ? new PermissionUnforbidden($authority, $permissions, $scope, actor: $actor(), grants: $removed)
-                : new PermissionRevoked($authority, $permissions, $scope, actor: $actor(), grants: $removed));
+                ? new PermissionUnforbidden($authority, $permissions, $scope, actor: $actor(), grants: $removed, operation: app(Operations::class)->current())
+                : new PermissionRevoked($authority, $permissions, $scope, actor: $actor(), grants: $removed, operation: app(Operations::class)->current()));
         }
     }
 
@@ -545,6 +546,7 @@ final class CacheInvalidations
                 $scopes[$group],
                 actor: $actor(),
                 assignments: $assignments,
+                operation: app(Operations::class)->current(),
             ));
         }
     }

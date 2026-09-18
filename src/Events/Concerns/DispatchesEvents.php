@@ -8,6 +8,7 @@ use Closure;
 use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\Operations;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
 
@@ -57,5 +58,10 @@ trait DispatchesEvents
     private function actor(): ?Model
     {
         return app(ActorResolver::class)->resolve();
+    }
+
+    private function operation(): ?string
+    {
+        return app(Operations::class)->current();
     }
 }

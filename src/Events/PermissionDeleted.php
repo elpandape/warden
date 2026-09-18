@@ -25,25 +25,28 @@ final readonly class PermissionDeleted
     public function __construct(
         public Model $permission,
         public ?Model $actor = null,
+        public ?string $operation = null,
     ) {}
 
     /**
-     * @return array{permission: Model, actor: ModelIdentifier|null}
+     * @return array{permission: Model, actor: ModelIdentifier|null, operation: string|null}
      */
     public function __serialize(): array
     {
         return [
             'permission' => $this->permission->withoutRelations(),
             'actor' => $this->actorIdentifier($this->actor),
+            'operation' => $this->operation,
         ];
     }
 
     /**
-     * @param  array{permission: Model, actor: ModelIdentifier|null}  $values
+     * @param  array{permission: Model, actor: ModelIdentifier|null, operation?: string|null}  $values
      */
     public function __unserialize(array $values): void
     {
         $this->permission = $values['permission'];
         $this->actor = $this->restoreActor($values['actor']);
+        $this->operation = $values['operation'] ?? null;
     }
 }

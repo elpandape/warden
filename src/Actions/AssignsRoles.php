@@ -107,7 +107,7 @@ class AssignsRoles
             // Assignments live in the exact current scope: lookup and creation agree.
             $scope = app(Tenancy::class)->writeScope();
 
-            if (! $this->eventPermits(fn (): AssigningRole => new AssigningRole($this->roles, $targets, $scope, $this->restrictedTo))) {
+            if (! $this->eventPermits(fn (): AssigningRole => new AssigningRole($this->roles, $targets, $scope, $this->restrictedTo, operation: $this->operation()))) {
                 return $this;
             }
 
@@ -161,6 +161,7 @@ class AssignsRoles
                     $this->restrictedTo,
                     actor: $actor(),
                     assignments: $entries[$index],
+                    operation: $this->operation(),
                 ));
             }
 

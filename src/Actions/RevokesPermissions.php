@@ -83,8 +83,8 @@ class RevokesPermissions
         $names = $this->permissionNames($permissions);
 
         return $this->eventPermits(fn (): UnforbiddingPermission|RevokingPermission => $this->forbidden
-            ? new UnforbiddingPermission($this->authority, $names, $entity, $scope, $onlyOwned)
-            : new RevokingPermission($this->authority, $names, $entity, $scope, $onlyOwned));
+            ? new UnforbiddingPermission($this->authority, $names, $entity, $scope, $onlyOwned, operation: $this->operation())
+            : new RevokingPermission($this->authority, $names, $entity, $scope, $onlyOwned, operation: $this->operation()));
     }
 
     /**
@@ -153,8 +153,8 @@ class RevokesPermissions
             $lost = collect($grants)->map(fn (GrantRemoval $grant): Model => $grant->permission)->uniqueStrict()->values();
 
             $this->dispatchWardenEvent(fn (): PermissionUnforbidden|PermissionRevoked => $this->forbidden
-                ? new PermissionUnforbidden($authority, $lost, $scope, actor: $this->actor(), grants: $grants)
-                : new PermissionRevoked($authority, $lost, $scope, actor: $this->actor(), grants: $grants));
+                ? new PermissionUnforbidden($authority, $lost, $scope, actor: $this->actor(), grants: $grants, operation: $this->operation())
+                : new PermissionRevoked($authority, $lost, $scope, actor: $this->actor(), grants: $grants, operation: $this->operation()));
 
             return $this;
         });

@@ -252,8 +252,8 @@ class GrantsPermissions
             $written = new Collection(array_map(fn (GrantChange $entry): Model => $entry->permission, $entries));
 
             $this->dispatchWardenEvent(fn (): PermissionForbidden|PermissionGranted => $this->forbidding
-                ? new PermissionForbidden($authority, $written, $scope, actor: $this->actor(), grants: $entries)
-                : new PermissionGranted($authority, $written, $scope, actor: $this->actor(), grants: $entries));
+                ? new PermissionForbidden($authority, $written, $scope, actor: $this->actor(), grants: $entries, operation: $this->operation())
+                : new PermissionGranted($authority, $written, $scope, actor: $this->actor(), grants: $entries, operation: $this->operation()));
         });
     }
 
@@ -297,8 +297,8 @@ class GrantsPermissions
         $names = $this->permissionNames($permissions);
 
         return $this->eventPermits(fn (): ForbiddingPermission|GrantingPermission => $this->forbidding
-            ? new ForbiddingPermission($this->authority, $names, $entity, $scope, $onlyOwned)
-            : new GrantingPermission($this->authority, $names, $entity, $scope, $onlyOwned));
+            ? new ForbiddingPermission($this->authority, $names, $entity, $scope, $onlyOwned, operation: $this->operation())
+            : new GrantingPermission($this->authority, $names, $entity, $scope, $onlyOwned, operation: $this->operation()));
     }
 
     private function builder(): Builder
@@ -484,16 +484,16 @@ class GrantsPermissions
             $permissions = new Collection(array_map(static fn (GrantRemoval $removal): Model => $removal->permission, $removals));
 
             $this->dispatchWardenEvent(fn (): PermissionUnforbidden|PermissionRevoked => $this->forbidding
-                ? new PermissionUnforbidden($this->lastAuthority, $permissions, $this->lastScope, actor: $actor(), grants: $removals)
-                : new PermissionRevoked($this->lastAuthority, $permissions, $this->lastScope, actor: $actor(), grants: $removals));
+                ? new PermissionUnforbidden($this->lastAuthority, $permissions, $this->lastScope, actor: $actor(), grants: $removals, operation: $this->operation())
+                : new PermissionRevoked($this->lastAuthority, $permissions, $this->lastScope, actor: $actor(), grants: $removals, operation: $this->operation()));
         }
 
         if ($changes !== []) {
             $permissions = new Collection(array_map(static fn (GrantChange $change): Model => $change->permission, $changes));
 
             $this->dispatchWardenEvent(fn (): PermissionForbidden|PermissionGranted => $this->forbidding
-                ? new PermissionForbidden($this->lastAuthority, $permissions, $this->lastScope, actor: $actor(), grants: $changes)
-                : new PermissionGranted($this->lastAuthority, $permissions, $this->lastScope, actor: $actor(), grants: $changes));
+                ? new PermissionForbidden($this->lastAuthority, $permissions, $this->lastScope, actor: $actor(), grants: $changes, operation: $this->operation())
+                : new PermissionGranted($this->lastAuthority, $permissions, $this->lastScope, actor: $actor(), grants: $changes, operation: $this->operation()));
         }
     }
 

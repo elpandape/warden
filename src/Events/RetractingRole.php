@@ -27,5 +27,6 @@ final readonly class RetractingRole
         public array $authorities,
         public int|string|null $scope,
         public ?Model $restrictedTo = null,
+        public ?string $operation = null,
     ) {}
 }

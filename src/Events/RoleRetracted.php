@@ -30,5 +30,6 @@ final readonly class RoleRetracted
         public ?Model $restrictedTo = null,
         public ?Model $actor = null,
         public array $assignments = [],
+        public ?string $operation = null,
     ) {}
 }

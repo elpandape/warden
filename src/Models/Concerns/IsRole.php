@@ -15,6 +15,7 @@ use ElPandaPe\Warden\Models\Relations\ReadOnlyBelongsToMany;
 use ElPandaPe\Warden\Models\Relations\ReadOnlyPivot;
 use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Support\Snapshots\RoleSnapshot;
 use ElPandaPe\Warden\Support\Titles\RoleTitle;
 use ElPandaPe\Warden\Tenancy\BelongsToTenant;
@@ -82,7 +83,7 @@ trait IsRole
 
         // Lifecycle events fire at the model layer: every creation path counts.
         static::created(function (Model $role): void {
-            Announcer::announce(fn (): RoleCreated => new RoleCreated($role, actor: app(ActorResolver::class)->resolve()));
+            Announcer::announce(fn (): RoleCreated => new RoleCreated($role, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
         });
 
         /** @var WeakMap<Model, array<mixed>> $stored */
@@ -121,7 +122,7 @@ trait IsRole
             ));
 
             if ($changed !== []) {
-                Announcer::announce(fn (): RoleUpdated => new RoleUpdated($role, $before, $after, $changed, actor: app(ActorResolver::class)->resolve()));
+                Announcer::announce(fn (): RoleUpdated => new RoleUpdated($role, $before, $after, $changed, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
             }
         });
 
@@ -136,6 +137,7 @@ trait IsRole
                 actor: app(ActorResolver::class)->resolve(),
                 heldGrants: $held['grants'],
                 heldRoles: $held['roles'],
+                operation: app(Operations::class)->current(),
             ));
             $invalidations->announceCascade($role);
         });
