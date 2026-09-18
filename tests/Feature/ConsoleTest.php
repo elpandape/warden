@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
@@ -9,11 +10,13 @@ use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\RemoteTextKeyUser;
 use ElPandaPe\Warden\Tests\Fixtures\RemoteUser;
+use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingPermission;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 
+use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToPermissions;
 use function ElPandaPe\Warden\Tests\Database\migrateRemoteUsers;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
@@ -164,6 +167,67 @@ it('resolves duplicate catalog rows and re-points their grants', function (): vo
 
     expect(Permission::query()->count())->toBe(1)
         ->and(Grant::query()->where('permission_id', $keeper->getKey())->count())->toBe(2);
+});
+
+it('keeps the live row when the lowest duplicate is in the trash', function (): void {
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    $ana = User::query()->create(['name' => 'Ana']);
+
+    $this->warden->allow($ana)->to('view');
+    $trashed = SoftDeletingPermission::query()->sole();
+    $trashed->delete();
+
+    plantDuplicateViewGrant($this->user);
+
+    $this->artisan('warden:clean', ['--duplicates' => true])
+        ->expectsOutputToContain('Collapsed 0 duplicate catalog row(s).')
+        ->assertSuccessful();
+
+    expect(Gate::forUser($this->user)->allows('view'))->toBeTrue()
+        ->and(Gate::forUser($ana)->allows('view'))->toBeFalse()
+        ->and(SoftDeletingPermission::query()->sole()->is($trashed))->toBeFalse()
+        ->and(Grant::query()->where('permission_id', $trashed->getKey())->count())->toBe(1);
+});
+
+it('never hands the live row the grants of a duplicate in the trash', function (): void {
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    $ana = User::query()->create(['name' => 'Ana']);
+
+    $this->warden->allow($this->user)->to('view');
+    plantDuplicateViewGrant($ana);
+    $trashed = SoftDeletingPermission::query()->where('identity_key', 'stale')->sole();
+    $trashed->delete();
+
+    $this->artisan('warden:clean', ['--duplicates' => true])
+        ->expectsOutputToContain('Collapsed 0 duplicate catalog row(s).')
+        ->assertSuccessful();
+
+    expect(Gate::forUser($ana)->allows('view'))->toBeFalse()
+        ->and(Gate::forUser($this->user)->allows('view'))->toBeTrue()
+        ->and(Grant::query()->where('permission_id', $trashed->getKey())->count())->toBe(1);
+});
+
+it('still collapses a rule whose rows are all in the trash', function (): void {
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    $ana = User::query()->create(['name' => 'Ana']);
+
+    $this->warden->allow($ana)->to('view');
+    $keeper = SoftDeletingPermission::query()->sole();
+    plantDuplicateViewGrant($this->user);
+    SoftDeletingPermission::query()->get()->each->delete();
+
+    $this->artisan('warden:clean', ['--duplicates' => true])
+        ->expectsOutputToContain('Collapsed 1 duplicate catalog row(s).')
+        ->assertSuccessful();
+
+    $keeper->refresh()->restore();
+
+    expect(Grant::query()->where('permission_id', $keeper->getKey())->count())->toBe(2)
+        ->and(Gate::forUser($this->user)->allows('view'))->toBeTrue()
+        ->and(Gate::forUser($ana)->allows('view'))->toBeTrue();
 });
 
 it('refuses to collapse a catalog row whose stored options do not decode', function (): void {

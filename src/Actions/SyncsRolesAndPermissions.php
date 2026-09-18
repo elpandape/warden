@@ -12,9 +12,11 @@ use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\PermissionsSynced;
 use ElPandaPe\Warden\Events\RolesSynced;
 use ElPandaPe\Warden\Events\SyncResult;
+use ElPandaPe\Warden\Support\LiveRoles;
 use ElPandaPe\Warden\Support\Operations;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Collection;
@@ -81,6 +83,7 @@ class SyncsRolesAndPermissions
             ->all();
 
         // Sync is per-scope: rows in other tenants and global rows stay untouched.
+        // It declares the live set: a trashed role's assignment stays for restore().
         $assignedRole::query()
             ->withoutGlobalScope(TenantScope::class)
             ->where('entity_type', $authority->getMorphClass())
@@ -89,6 +92,9 @@ class SyncsRolesAndPermissions
             ->whereNull('restricted_to_type')
             ->whereNull('restricted_to_id')
             ->whereNotIn('role_id', $keys)
+            ->tap(static function (Builder $query): void {
+                LiveRoles::only($query, 'role_id');
+            })
             ->delete();
 
         $this->bumpCacheVersion($scope);
@@ -130,16 +136,23 @@ class SyncsRolesAndPermissions
             forRoleGrant: $authority instanceof ($context->roleClass()),
         );
 
-        $permissionTable = (new ($context->permissionClass()))->getTable();
+        $permission = new ($context->permissionClass());
+        $permissionTable = $permission->getTable();
+        $trash = $this->trashColumn($permission);
 
         // A name resolves to the plain row only, so the sweep reaches only
         // what this call could have declared. An entity-scoped rule is not
-        // absent from the declaration: it was never expressible in it.
-        $plainRows = function (QueryBuilder $query) use ($permissionTable): void {
+        // absent from the declaration: it was never expressible in it, and a
+        // trashed one is not absent either: a sync declares the live set.
+        $plainRows = function (QueryBuilder $query) use ($permissionTable, $trash): void {
             $query->select('id')->from($permissionTable)
                 ->whereNull('entity_type')
                 ->whereNull('options')
                 ->where('only_owned', false);
+
+            if ($trash !== null) {
+                $query->whereNull($trash);
+            }
         };
 
         // The same reach plus any rule the call named as a model, so detached

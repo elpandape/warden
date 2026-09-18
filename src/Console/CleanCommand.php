@@ -8,6 +8,7 @@ use ElPandaPe\Warden\Constraints\ConstraintSerializer;
 use ElPandaPe\Warden\Constraints\Group;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Support\Operations;
+use ElPandaPe\Warden\Support\Trash;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
@@ -251,6 +252,9 @@ final class CleanCommand extends Command
      * ConstraintSerializer and no database can reproduce it. The lowest id wins;
      * the losers' grants are re-pointed at it. One that would collide with a
      * grant the keeper already has is dropped, its end date folded into it.
+     * While a rule has a live row, its rows in the trash sit out: a trashed
+     * keeper would take the live grants out of every check, and a trashed
+     * loser would hand the keeper grants its trashing had ended.
      */
     private function collapseDuplicates(Context $context): int
     {
@@ -272,6 +276,9 @@ final class CleanCommand extends Command
 
         foreach ($groups as $group) {
             foreach ($this->sameRuleClusters($group->all()) as $cluster) {
+                $live = array_values(array_filter($cluster, fn (Model $row): bool => ! Trash::holds($row)));
+                $cluster = $live === [] ? $cluster : $live;
+
                 if (count($cluster) < 2) {
                     continue;
                 }

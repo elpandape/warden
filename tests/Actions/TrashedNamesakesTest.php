@@ -3,7 +3,10 @@
 declare(strict_types=1);
 
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\PermissionsSynced;
+use ElPandaPe\Warden\Events\RolesSynced;
 use ElPandaPe\Warden\Exceptions\TrashedCatalogRow;
+use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingPermission;
@@ -11,6 +14,8 @@ use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingRole;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToPermissions;
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToRoles;
@@ -139,4 +144,62 @@ it('reads each catalog table once before minting rows the default models cannot 
 
     expect($reads('roles'))->toBe(1)
         ->and($reads('permissions'))->toBe(1);
+});
+
+it('lets a trashed role take writes that only count once it is restored', function (): void {
+    addSoftDeletesToRoles();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    $editor = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $editor->delete();
+
+    $this->warden->allow($editor)->to('publish');
+    $this->warden->assign($editor)->to($this->user);
+
+    expect(Gate::forUser($this->user)->allows('publish'))->toBeFalse();
+
+    $editor->restore();
+
+    expect(Gate::forUser($this->user)->allows('publish'))->toBeTrue();
+});
+
+it('leaves a trashed role assigned when a sync declares the live set', function (): void {
+    addSoftDeletesToRoles();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    $this->warden->assign(['editor', 'writer'])->to($this->user);
+    $editor = SoftDeletingRole::query()->where('name', 'editor')->sole();
+    $editor->delete();
+
+    Event::fake([RolesSynced::class]);
+
+    $this->warden->sync($this->user)->roles(['writer']);
+
+    Event::assertDispatched(RolesSynced::class, fn (RolesSynced $event): bool => $event->changes->detached->isEmpty()
+        && $event->changes->attached->isEmpty()
+        && $event->changes->kept->pluck('name')->all() === ['writer']);
+    expect(AssignedRole::query()->withoutGlobalScopes()->where('role_id', $editor->getKey())->exists())->toBeTrue();
+
+    $editor->restore();
+
+    expect($this->user->fresh()?->isA('editor'))->toBeTrue();
+});
+
+it('leaves a trashed permission granted when a sync declares the live set', function (): void {
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    $this->warden->allow($this->user)->to(['view', 'publish']);
+    $publish = SoftDeletingPermission::query()->where('name', 'publish')->sole();
+    $publish->delete();
+
+    Event::fake([PermissionsSynced::class]);
+
+    $this->warden->sync($this->user)->permissions(['view']);
+
+    Event::assertDispatched(PermissionsSynced::class, fn (PermissionsSynced $event): bool => $event->changes->detached->isEmpty()
+        && $event->changes->attached->isEmpty()
+        && $event->changes->kept->pluck('name')->all() === ['view']);
+    expect(Grant::query()->withoutGlobalScopes()->where('permission_id', $publish->getKey())->exists())->toBeTrue();
+
+    $publish->restore();
+
+    expect(Gate::forUser($this->user)->allows('publish'))->toBeTrue();
 });
