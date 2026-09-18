@@ -13,6 +13,8 @@ use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\CustomRole;
 use ElPandaPe\Warden\Tests\Fixtures\KeylessPermission;
 use ElPandaPe\Warden\Tests\Fixtures\KeylessRole;
+use Illuminate\Database\Eloquent\MissingAttributeException;
+use Illuminate\Database\Eloquent\Model;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -242,4 +244,33 @@ it('answers the same through the model and the support class, custom models incl
         ->and($keylessRole->snapshot())->toBe(['v' => 1, 'key' => null, 'name' => 'auditor', 'title' => 'Auditor', 'scope' => null])
         ->and($keylessPermission->snapshot())->toBe(PermissionSnapshot::of($keylessPermission))
         ->and($keylessPermission->snapshot())->toBe(['v' => 1, 'key' => null, 'name' => 'audit', 'title' => 'Audit', 'entity_type' => null, 'entity_id' => null, 'only_owned' => false, 'scope' => null, 'conditions' => null]);
+});
+
+it('photographs a column a partial select left out as its default, and throws on it in strict mode', function (): void {
+    Permission::query()->forceCreate([
+        'id' => 41,
+        'name' => 'edit',
+        'title' => 'Edit live accounts',
+        'entity_type' => Account::class,
+        'entity_id' => 7,
+        'only_owned' => true,
+        'scope' => 3,
+        'options' => ConstraintSerializer::serialize(new Builder()->where('status', 'live')->group()),
+    ]);
+    Role::query()->forceCreate(['id' => 7, 'name' => 'editor', 'title' => 'Editor', 'scope' => 3]);
+
+    $permission = Permission::query()->select(['id', 'title'])->sole();
+    $role = Role::query()->select(['id', 'title'])->sole();
+
+    expect(PermissionSnapshot::of($permission))->toBe(['v' => 1, 'key' => 41, 'name' => '', 'title' => 'Edit live accounts', 'entity_type' => null, 'entity_id' => null, 'only_owned' => false, 'scope' => null, 'conditions' => null])
+        ->and(RoleSnapshot::of($role))->toBe(['v' => 1, 'key' => 7, 'name' => '', 'title' => 'Editor', 'scope' => null]);
+
+    Model::preventAccessingMissingAttributes();
+
+    try {
+        expect(fn (): array => PermissionSnapshot::of($permission))->toThrow(MissingAttributeException::class)
+            ->and(fn (): array => RoleSnapshot::of($role))->toThrow(MissingAttributeException::class);
+    } finally {
+        Model::preventAccessingMissingAttributes(false);
+    }
 });
