@@ -6,7 +6,6 @@ namespace ElPandaPe\Warden\Checks\Resolvers;
 
 use Carbon\CarbonImmutable;
 use ElPandaPe\Warden\Context;
-use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Events\AssignmentRemoval;
 use ElPandaPe\Warden\Events\GrantRemoval;
 use ElPandaPe\Warden\Events\PermissionRevoked;
@@ -263,7 +262,7 @@ final class CacheInvalidations
             return;
         }
 
-        $actor = app(ActorResolver::class)->resolve();
+        $actor = Announcer::actorOnce();
         $permissions = new Collection([$model]);
         $authorities = $this->authoritiesOf($grants);
 
@@ -280,9 +279,9 @@ final class CacheInvalidations
 
             $removed = [new GrantRemoval(permission: $model, expiresAt: $expiresAt)];
 
-            Announcer::announce($forbidden
-                ? new PermissionUnforbidden($authority, $permissions, $scope, actor: $actor, grants: $removed)
-                : new PermissionRevoked($authority, $permissions, $scope, actor: $actor, grants: $removed));
+            Announcer::announce(fn (): PermissionUnforbidden|PermissionRevoked => $forbidden
+                ? new PermissionUnforbidden($authority, $permissions, $scope, actor: $actor(), grants: $removed)
+                : new PermissionRevoked($authority, $permissions, $scope, actor: $actor(), grants: $removed));
         }
     }
 
@@ -537,14 +536,14 @@ final class CacheInvalidations
             $removals[$group][] = new AssignmentRemoval($role, $restrictedTo, $expiresAt);
         }
 
-        $actor = app(ActorResolver::class)->resolve();
+        $actor = Announcer::actorOnce();
 
         foreach ($removals as $group => $assignments) {
-            Announcer::announce(new RoleRetracted(
+            Announcer::announce(fn (): RoleRetracted => new RoleRetracted(
                 $authorities[$group],
                 new Collection([$role]),
                 $scopes[$group],
-                actor: $actor,
+                actor: $actor(),
                 assignments: $assignments,
             ));
         }

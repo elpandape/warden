@@ -13,6 +13,7 @@ use ElPandaPe\Warden\Events\AssignmentChange;
 use ElPandaPe\Warden\Events\Concerns\DispatchesEvents;
 use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
+use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
@@ -106,7 +107,7 @@ class AssignsRoles
             // Assignments live in the exact current scope: lookup and creation agree.
             $scope = app(Tenancy::class)->writeScope();
 
-            if (! $this->eventPermits(new AssigningRole($this->roles, $targets, $scope, $this->restrictedTo))) {
+            if (! $this->eventPermits(fn (): AssigningRole => new AssigningRole($this->roles, $targets, $scope, $this->restrictedTo))) {
                 return $this;
             }
 
@@ -145,7 +146,7 @@ class AssignsRoles
 
             $this->bumpCacheVersion($scope);
 
-            $actor = $this->actor();
+            $actor = Announcer::actorOnce();
 
             // Each authority hears only what its own rows became, in the order asked.
             foreach ($targets as $index => $authority) {
@@ -153,12 +154,12 @@ class AssignsRoles
                     continue;
                 }
 
-                $this->dispatchWardenEvent(new RoleAssigned(
+                $this->dispatchWardenEvent(fn (): RoleAssigned => new RoleAssigned(
                     $authority,
                     new Collection(array_map(fn (AssignmentChange $entry): Model => $entry->role, $entries[$index])),
                     $scope,
                     $this->restrictedTo,
-                    actor: $actor,
+                    actor: $actor(),
                     assignments: $entries[$index],
                 ));
             }

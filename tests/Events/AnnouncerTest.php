@@ -100,10 +100,47 @@ it('announces nothing and applies nothing while events are off', function (): vo
         $invalidations->mark(null);
         $held = $versioner->segment();
 
-        Announcer::announce(new RoleCreated(new Role));
+        Announcer::announce(fn (): RoleCreated => new RoleCreated(new Role));
 
         expect($versioner->segment())->toBe($held);
     });
 
     Event::assertNotDispatched(RoleCreated::class);
+});
+
+it('builds no event while events are off', function (): void {
+    config()->set('warden.events_enabled', false);
+    $built = 0;
+
+    Announcer::announce(function () use (&$built): RoleCreated {
+        $built++;
+
+        return new RoleCreated(new Role);
+    });
+
+    expect($built)->toBe(0);
+});
+
+it('builds the event after applying what the open boundary holds', function (): void {
+    Event::fake([RoleCreated::class]);
+
+    $invalidations = app(CacheInvalidations::class);
+    $versioner = app(CacheKeyVersioner::class);
+
+    $invalidations->during(function () use ($invalidations, $versioner): void {
+        $held = $versioner->segment();
+        $invalidations->mark(null);
+        $atBuild = null;
+
+        Announcer::announce(function () use ($versioner, &$atBuild): RoleCreated {
+            $atBuild = $versioner->segment();
+
+            return new RoleCreated(new Role);
+        });
+
+        expect($atBuild)->toBe($versioner->segment())
+            ->and($atBuild)->not->toBe($held);
+    });
+
+    Event::assertDispatched(RoleCreated::class);
 });

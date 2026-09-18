@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElPandaPe\Warden\Events\Concerns;
 
+use Closure;
 use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Config;
@@ -18,26 +19,36 @@ trait DispatchesEvents
      */
     protected bool $silentEvents = false;
 
-    private function dispatchWardenEvent(object $event): void
+    /**
+     * @param  Closure(): object  $build
+     */
+    private function dispatchWardenEvent(Closure $build): void
     {
-        if (! $this->silentEvents) {
-            Announcer::announce($event);
+        if ($this->announces()) {
+            Announcer::announce($build);
         }
     }
 
     /**
      * Cancellable pre-action gate: false from any listener aborts the write.
+     *
+     * @param  Closure(): object  $build
      */
-    private function eventPermits(object $event): bool
+    private function eventPermits(Closure $build): bool
     {
-        if (! Config::eventsEnabled() || ! Config::cancellableEvents() || $this->silentEvents) {
+        if (! $this->announces() || ! Config::cancellableEvents()) {
             return true;
         }
 
         // The stub types until() as array|null, but a listener's literal
         // false does come through at runtime: that is the whole contract.
         /** @phpstan-ignore notIdentical.alwaysTrue */
-        return app(Dispatcher::class)->until($event) !== false;
+        return app(Dispatcher::class)->until($build()) !== false;
+    }
+
+    private function announces(): bool
+    {
+        return ! $this->silentEvents && Config::eventsEnabled();
     }
 
     /**

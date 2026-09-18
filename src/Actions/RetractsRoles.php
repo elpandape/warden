@@ -14,7 +14,7 @@ use ElPandaPe\Warden\Events\RetractingRole;
 use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Models\AssignedRole;
-use ElPandaPe\Warden\Support\Config;
+use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Support\MorphHydrator;
 use ElPandaPe\Warden\Tenancy\Tenancy;
@@ -100,7 +100,7 @@ class RetractsRoles
 
             $targets = $this->normalizeAuthorities($authorities, removing: true);
 
-            if (! $this->eventPermits(new RetractingRole($this->roles, $targets, $scope, $this->restrictedTo))) {
+            if (! $this->eventPermits(fn (): RetractingRole => new RetractingRole($this->roles, $targets, $scope, $this->restrictedTo))) {
                 return $this;
             }
 
@@ -123,7 +123,8 @@ class RetractsRoles
 
             $this->bumpCacheVersion($scope);
 
-            if (Config::eventsEnabled()) {
+            // Naming the contexts reads rows: only for events that will go out.
+            if ($this->announces()) {
                 $this->announceRemovals($lost, $roles, $scope);
             }
 
@@ -188,7 +189,7 @@ class RetractsRoles
         // An entry travels by value: the relations the caller loaded stay behind.
         $named = $this->restrictedTo?->withoutRelations();
         $contexts = $named instanceof Model ? [] : MorphHydrator::many($this->restrictionsOf($lost));
-        $actor = $this->actor();
+        $actor = Announcer::actorOnce();
 
         foreach ($lost as [$authority, $rows]) {
             $assignments = $this->removals($rows, $roles, $named, $contexts);
@@ -197,12 +198,12 @@ class RetractsRoles
                 continue;
             }
 
-            $this->dispatchWardenEvent(new RoleRetracted(
+            $this->dispatchWardenEvent(fn (): RoleRetracted => new RoleRetracted(
                 $authority,
                 collect($assignments)->map(fn (AssignmentRemoval $assignment): Model => $assignment->role)->uniqueStrict()->values(),
                 $scope,
                 $this->restrictedTo,
-                actor: $actor,
+                actor: $actor(),
                 assignments: $assignments,
             ));
         }

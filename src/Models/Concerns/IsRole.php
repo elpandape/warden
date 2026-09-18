@@ -82,7 +82,7 @@ trait IsRole
 
         // Lifecycle events fire at the model layer: every creation path counts.
         static::created(function (Model $role): void {
-            Announcer::announce(new RoleCreated($role, actor: app(ActorResolver::class)->resolve()));
+            Announcer::announce(fn (): RoleCreated => new RoleCreated($role, actor: app(ActorResolver::class)->resolve()));
         });
 
         /** @var WeakMap<Model, array<mixed>> $stored */
@@ -121,7 +121,7 @@ trait IsRole
             ));
 
             if ($changed !== []) {
-                Announcer::announce(new RoleUpdated($role, $before, $after, $changed, actor: app(ActorResolver::class)->resolve()));
+                Announcer::announce(fn (): RoleUpdated => new RoleUpdated($role, $before, $after, $changed, actor: app(ActorResolver::class)->resolve()));
             }
         });
 
@@ -131,7 +131,7 @@ trait IsRole
             $invalidations->settleCascade($role);
             $held = $invalidations->pullHeld($role);
 
-            Announcer::announce(new RoleDeleted(
+            Announcer::announce(fn (): RoleDeleted => new RoleDeleted(
                 $role,
                 actor: app(ActorResolver::class)->resolve(),
                 heldGrants: $held['grants'],

@@ -101,7 +101,7 @@ trait IsPermission
 
         // Lifecycle events fire at the model layer: every creation path counts.
         static::created(function (Model $permission): void {
-            Announcer::announce(new PermissionCreated($permission, actor: app(ActorResolver::class)->resolve()));
+            Announcer::announce(fn (): PermissionCreated => new PermissionCreated($permission, actor: app(ActorResolver::class)->resolve()));
         });
 
         /** @var WeakMap<Model, array<mixed>> $stored */
@@ -144,7 +144,7 @@ trait IsPermission
             ));
 
             if ($changed !== []) {
-                Announcer::announce(new PermissionUpdated($permission, $before, $after, $changed, actor: app(ActorResolver::class)->resolve()));
+                Announcer::announce(fn (): PermissionUpdated => new PermissionUpdated($permission, $before, $after, $changed, actor: app(ActorResolver::class)->resolve()));
             }
         });
 
@@ -152,7 +152,7 @@ trait IsPermission
             $invalidations = app(CacheInvalidations::class);
 
             $invalidations->settleCascade($permission);
-            Announcer::announce(new PermissionDeleted($permission, actor: app(ActorResolver::class)->resolve()));
+            Announcer::announce(fn (): PermissionDeleted => new PermissionDeleted($permission, actor: app(ActorResolver::class)->resolve()));
             $invalidations->announceCascade($permission);
         });
     }

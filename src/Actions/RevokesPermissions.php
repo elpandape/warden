@@ -82,7 +82,7 @@ class RevokesPermissions
         $scope = app(Tenancy::class)->writeScope(forRoleGrant: $roleAuthority);
         $names = $this->permissionNames($permissions);
 
-        return $this->eventPermits($this->forbidden
+        return $this->eventPermits(fn (): UnforbiddingPermission|RevokingPermission => $this->forbidden
             ? new UnforbiddingPermission($this->authority, $names, $entity, $scope, $onlyOwned)
             : new RevokingPermission($this->authority, $names, $entity, $scope, $onlyOwned));
     }
@@ -152,7 +152,7 @@ class RevokesPermissions
 
             $lost = collect($grants)->map(fn (GrantRemoval $grant): Model => $grant->permission)->uniqueStrict()->values();
 
-            $this->dispatchWardenEvent($this->forbidden
+            $this->dispatchWardenEvent(fn (): PermissionUnforbidden|PermissionRevoked => $this->forbidden
                 ? new PermissionUnforbidden($authority, $lost, $scope, actor: $this->actor(), grants: $grants)
                 : new PermissionRevoked($authority, $lost, $scope, actor: $this->actor(), grants: $grants));
 

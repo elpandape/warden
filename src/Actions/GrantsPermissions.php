@@ -24,6 +24,7 @@ use ElPandaPe\Warden\Events\PermissionGranted;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
+use ElPandaPe\Warden\Support\Announcer;
 use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
@@ -250,7 +251,7 @@ class GrantsPermissions
 
             $written = new Collection(array_map(fn (GrantChange $entry): Model => $entry->permission, $entries));
 
-            $this->dispatchWardenEvent($this->forbidding
+            $this->dispatchWardenEvent(fn (): PermissionForbidden|PermissionGranted => $this->forbidding
                 ? new PermissionForbidden($authority, $written, $scope, actor: $this->actor(), grants: $entries)
                 : new PermissionGranted($authority, $written, $scope, actor: $this->actor(), grants: $entries));
         });
@@ -295,7 +296,7 @@ class GrantsPermissions
         $scope = app(Tenancy::class)->writeScope(forRoleGrant: $roleAuthority);
         $names = $this->permissionNames($permissions);
 
-        return $this->eventPermits($this->forbidding
+        return $this->eventPermits(fn (): ForbiddingPermission|GrantingPermission => $this->forbidding
             ? new ForbiddingPermission($this->authority, $names, $entity, $scope, $onlyOwned)
             : new GrantingPermission($this->authority, $names, $entity, $scope, $onlyOwned));
     }
@@ -474,7 +475,7 @@ class GrantsPermissions
             return;
         }
 
-        $actor = $this->actor();
+        $actor = Announcer::actorOnce();
 
         if ($removals !== []) {
             // A delete by key fires no model hook; the twin's own save marks itself.
@@ -482,17 +483,17 @@ class GrantsPermissions
 
             $permissions = new Collection(array_map(static fn (GrantRemoval $removal): Model => $removal->permission, $removals));
 
-            $this->dispatchWardenEvent($this->forbidding
-                ? new PermissionUnforbidden($this->lastAuthority, $permissions, $this->lastScope, actor: $actor, grants: $removals)
-                : new PermissionRevoked($this->lastAuthority, $permissions, $this->lastScope, actor: $actor, grants: $removals));
+            $this->dispatchWardenEvent(fn (): PermissionUnforbidden|PermissionRevoked => $this->forbidding
+                ? new PermissionUnforbidden($this->lastAuthority, $permissions, $this->lastScope, actor: $actor(), grants: $removals)
+                : new PermissionRevoked($this->lastAuthority, $permissions, $this->lastScope, actor: $actor(), grants: $removals));
         }
 
         if ($changes !== []) {
             $permissions = new Collection(array_map(static fn (GrantChange $change): Model => $change->permission, $changes));
 
-            $this->dispatchWardenEvent($this->forbidding
-                ? new PermissionForbidden($this->lastAuthority, $permissions, $this->lastScope, actor: $actor, grants: $changes)
-                : new PermissionGranted($this->lastAuthority, $permissions, $this->lastScope, actor: $actor, grants: $changes));
+            $this->dispatchWardenEvent(fn (): PermissionForbidden|PermissionGranted => $this->forbidding
+                ? new PermissionForbidden($this->lastAuthority, $permissions, $this->lastScope, actor: $actor(), grants: $changes)
+                : new PermissionGranted($this->lastAuthority, $permissions, $this->lastScope, actor: $actor(), grants: $changes));
         }
     }
 
