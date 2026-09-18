@@ -749,3 +749,25 @@ it('invalidates a permission hard-deleted inside a deferred event batch', functi
 
     expect(Gate::forUser($this->user)->allows('publish'))->toBeFalse();
 });
+
+it('invalidates a deleted permission even when a deleting listener halts the event', function (Closure $configure): void {
+    withForeignKeys();
+    $permission = $configure();
+    config()->set('warden.cache.enabled', true);
+    $this->warden->allow($this->user)->to('publish');
+    $permission::deleting(fn (): bool => true);
+
+    expect(Gate::forUser($this->user)->allows('publish'))->toBeTrue();
+
+    $permission::query()->where('name', 'publish')->sole()->delete();
+
+    expect(Gate::forUser($this->user)->allows('publish'))->toBeFalse();
+})->with([
+    'a hard delete' => [fn (): string => Permission::class],
+    'a soft delete' => [function (): string {
+        addSoftDeletesToPermissions();
+        Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+        return SoftDeletingPermission::class;
+    }],
+]);

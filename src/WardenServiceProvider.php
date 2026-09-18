@@ -133,8 +133,9 @@ final class WardenServiceProvider extends ServiceProvider
                 return;
             }
 
-            // A permission's own hooks mark its edits and deletes, its row's
-            // scope included: marking here too would bump that scope twice.
+            // A permission's own updated and deleted hooks mark its row's
+            // scope, even on a delete this listener never prepared: marking
+            // here too would bump that scope twice.
             if (! str_starts_with($event, 'eloquent.created:') && $model::class === Context::resolve()->permissionClass()) {
                 return;
             }

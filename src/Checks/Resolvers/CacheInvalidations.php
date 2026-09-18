@@ -221,14 +221,15 @@ final class CacheInvalidations
 
     /**
      * The delete has landed: sweep what no foreign key covers and mark the
-     * scopes prepareCascade() read. The catalog model calls this from its own
-     * deleted hook, ahead of every listener of its event, so a listener that
-     * throws cannot leave the cache granting what the delete removed.
+     * scopes prepareCascade() read, or a permission's own scope when it read
+     * nothing. The catalog model calls this from its own deleted hook, ahead
+     * of every listener of its event, so a listener that throws cannot leave
+     * the cache granting what the delete removed.
      */
     public function settleCascade(Model $model): void
     {
         $object = spl_object_id($model);
-        $scopes = $this->cascading[$object] ?? [];
+        $scopes = $this->cascading[$object] ?? null;
         unset($this->cascading[$object]);
 
         $context = Context::resolve();
@@ -239,12 +240,18 @@ final class CacheInvalidations
             return;
         }
 
+        // A deleting listener that returns a value halts the dispatch before
+        // the wildcard prepares anything, yet the row's own scope is known.
+        if ($scopes === null && $model::class === $context->permissionClass()) {
+            $scopes = [$this->scalar($model->getAttributes()['scope'] ?? null)];
+        }
+
         // A cache store that fails must not leave the rows behind, nor a
         // sweep that fails the cache granting them.
         try {
             $this->sweepHoldings($model);
         } finally {
-            foreach ($scopes as $scope) {
+            foreach ($scopes ?? [] as $scope) {
                 $this->mark($scope);
             }
         }
