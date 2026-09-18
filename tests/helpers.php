@@ -167,8 +167,7 @@ function plantDuplicateViewGrant(User $holder, ?DateTimeInterface $expiresAt = n
 }
 
 /**
- * By query, so no model event fires, and pivots before the catalog, as the
- * foreign keys demand.
+ * By query, so no model event fires.
  */
 function deleteWardenRows(): void
 {
