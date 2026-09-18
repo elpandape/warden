@@ -43,7 +43,7 @@ trait ResolvesPermissions
                 'options' => null,
             ];
 
-            $found[] = $this->constrainCatalogLookup($model::query())->firstOrCreate($attributes);
+            $found[] = $this->firstOrCreateLive($this->constrainCatalogLookup($model::query()), $attributes);
         }
 
         return $found;

@@ -31,6 +31,7 @@ use ElPandaPe\Warden\Tenancy\Tenancy;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -577,24 +578,28 @@ class GrantsPermissions
     }
 
     /**
-     * Every catalog row of this permission's shape, conditions aside, by key.
+     * Every catalog row of this permission's shape, conditions aside, by key:
+     * the live ones, or, given the column the trash is kept in, the trashed ones.
      *
      * @return array<int|string, Model>
      */
-    private function siblingsOf(Model $permission): array
+    private function siblingsOf(Model $permission, ?string $trashedAt = null): array
     {
-        $rows = Context::resolve()->permissionClass()::query()
+        $query = Context::resolve()->permissionClass()::query()
             ->withoutGlobalScope(TenantScope::class)
             ->where('name', $permission->getAttribute('name'))
             ->where('entity_type', $permission->getAttribute('entity_type'))
             ->where('entity_id', $permission->getAttribute('entity_id'))
             ->where('only_owned', $permission->getAttribute('only_owned'))
-            ->where('scope', $permission->getAttribute('scope'))
-            ->get();
+            ->where('scope', $permission->getAttribute('scope'));
+
+        if ($trashedAt !== null) {
+            $query->withoutGlobalScope(SoftDeletingScope::class)->whereNotNull($trashedAt);
+        }
 
         $siblings = [];
 
-        foreach ($rows as $sibling) {
+        foreach ($query->get() as $sibling) {
             $siblings[$this->modelKey($sibling)] = $sibling;
         }
 
@@ -611,6 +616,17 @@ class GrantsPermissions
         foreach ($siblings as $sibling) {
             if (ConstraintSerializer::sameRule($sibling->getAttribute('options'), $options)) {
                 return $sibling;
+            }
+        }
+
+        $trash = $this->trashColumn($base);
+
+        // A trashed twin is this same rule: a new one would collide with it.
+        if ($trash !== null) {
+            foreach ($this->siblingsOf($base, trashedAt: $trash) as $trashed) {
+                if (ConstraintSerializer::sameRule($trashed->getAttribute('options'), $options)) {
+                    throw $this->trashedNamesake($base, $trashed->getAttributes());
+                }
             }
         }
 

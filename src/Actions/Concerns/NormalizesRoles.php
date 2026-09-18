@@ -53,7 +53,7 @@ trait NormalizesRoles
         foreach ($roles as $role) {
             $models[] = $role instanceof Model
                 ? $this->assertModelOf($role, $roleClass, 'role')
-                : $this->constrainCatalogLookup($roleClass::query())->firstOrCreate(['name' => $role]);
+                : $this->firstOrCreateLive($this->constrainCatalogLookup($roleClass::query()), ['name' => $role]);
         }
 
         return $models;

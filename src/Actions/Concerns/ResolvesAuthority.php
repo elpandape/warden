@@ -30,7 +30,7 @@ trait ResolvesAuthority
         $role = Context::resolve()->roleClass();
 
         if ($createRole) {
-            return $this->constrainCatalogLookup($role::query())->firstOrCreate(['name' => $authority]);
+            return $this->firstOrCreateLive($this->constrainCatalogLookup($role::query()), ['name' => $authority]);
         }
 
         return $role::query()->where('name', $authority)->first()
