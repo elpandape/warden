@@ -11,7 +11,6 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Support\Name;
 use ElPandaPe\Warden\Tenancy\TenantScope;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -24,11 +23,12 @@ final readonly class Explainer
 
     public function explain(Model $authority, string|BackedEnum $permission, Model|string|null $entity = null): AuthorizationExplanation
     {
-        // One read of assigned_roles for the whole diagnosis: the resolver and
-        // the blame step below are the only two consumers, and they agree.
+        // One read of assigned_roles for the whole diagnosis: the resolver walks
+        // the closure from it, and the blame step below reuses that walk.
         $assignments = DatabaseResolver::readAssignments($this->context, $authority);
+        $resolver = new DatabaseResolver($this->context, $assignments);
 
-        $verdict = new DatabaseResolver($this->context, $assignments)->resolve($authority, Name::of($permission), $entity);
+        $verdict = $resolver->resolve($authority, Name::of($permission), $entity);
 
         if ($verdict->isAbstained()) {
             $applicable = ! is_string($entity)
@@ -51,7 +51,7 @@ final readonly class Explainer
         // Re-reading it by key would return the row it already matched.
         $decisive = $verdict->permission;
 
-        [$cause, $role] = $this->source($authority, $verdict, $entity, $assignments);
+        [$cause, $role] = $this->source($authority, $verdict, $entity, $resolver->closure() ?? []);
 
         return new AuthorizationExplanation($verdict, $cause, $decisive, $role);
     }
@@ -60,10 +60,10 @@ final readonly class Explainer
      * How the decisive permission reaches the authority: directly, through a
      * role, or as an everyone-grant — reported most-specific first.
      *
-     * @param  Collection<int, Model>  $assignments
+     * @param  array<int|string, list<array{string|null, int|string|null, int|null}>>  $closure
      * @return array{0: Cause, 1: Model|null}
      */
-    private function source(Model $authority, Verdict $verdict, Model|string|null $entity, Collection $assignments): array
+    private function source(Model $authority, Verdict $verdict, Model|string|null $entity, array $closure): array
     {
         $forbidden = $verdict->isForbidden();
         $roleMorph = (new ($this->context->roleClass()))->getMorphClass();
@@ -83,34 +83,38 @@ final readonly class Explainer
             return [$forbidden ? Cause::ForbiddenDirectly : Cause::GrantedDirectly, null];
         }
 
-        // Only the assignments the resolver itself would use for this check:
-        // a restricted role outside its context must not be blamed.
+        // Only the roles the resolver itself used for this check, nested ones
+        // included: a restricted role outside its context must not be blamed.
         $roleKeys = [];
 
-        foreach ($assignments as $assignment) {
-            $contextType = $assignment->getAttribute('restricted_to_type');
-            $contextId = $assignment->getAttribute('restricted_to_id');
+        foreach ($closure as $roleKey => $restrictions) {
+            foreach ($restrictions as [$contextType, $contextId]) {
+                if ($contextType === null && $contextId === null) {
+                    $roleKeys[] = $this->stringable($roleKey);
 
-            if ($contextType === null && $contextId === null) {
-                $roleKeys[] = self::stringable($assignment->getAttribute('role_id'));
+                    continue;
+                }
 
-                continue;
-            }
+                $usable = $entity instanceof Model
+                    && $contextType !== null
+                    && $contextId !== null
+                    && $this->context->belongsToContext($entity, $contextType, $contextId);
 
-            $usable = $entity instanceof Model
-                && is_string($contextType)
-                && (is_int($contextId) || is_string($contextId))
-                && $this->context->belongsToContext($entity, $contextType, $contextId);
-
-            if ($usable) {
-                $roleKeys[] = self::stringable($assignment->getAttribute('role_id'));
+                if ($usable) {
+                    $roleKeys[] = $this->stringable($roleKey);
+                }
             }
         }
 
-        $viaRole = $grants->first(
-            fn (Model $grant): bool => $grant->getAttribute('entity_type') === $roleMorph
-                && in_array($this->stringable($grant->getAttribute('entity_id')), $roleKeys, true),
-        );
+        // The closure lists the roles held directly first: blame the nearest.
+        $viaRole = null;
+
+        foreach ($roleKeys as $roleKey) {
+            $viaRole ??= $grants->first(
+                fn (Model $grant): bool => $grant->getAttribute('entity_type') === $roleMorph
+                    && $this->stringable($grant->getAttribute('entity_id')) === $roleKey,
+            );
+        }
 
         if ($viaRole !== null) {
             $role = $this->context->roleClass()::query()

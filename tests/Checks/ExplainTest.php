@@ -3,12 +3,16 @@
 declare(strict_types=1);
 
 use ElPandaPe\Warden\Checks\Explain\Cause;
+use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingRole;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Carbon;
 
+use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToRoles;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
+use function ElPandaPe\Warden\Tests\nestRole;
 
 beforeEach(function (): void {
     migrateWardenTables();
@@ -189,4 +193,122 @@ it('blames the role rather than a direct grant that already ended', function ():
 
     expect($why->cause)->toBe(Cause::GrantedViaRole)
         ->and($why->role?->getAttribute('name'))->toBe('editor');
+});
+
+it('blames the nested role that holds the grant', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    $this->warden->allow('auditor')->to('audit');
+    nestRole('auditor', 'manager');
+    $this->warden->assign('manager')->to($this->user);
+
+    $why = $this->warden->explain($this->user, 'audit');
+
+    expect($why->cause)->toBe(Cause::GrantedViaRole)
+        ->and($why->role?->getAttribute('name'))->toBe('auditor')
+        ->and((string) $why)->toBe('Granted by permission [audit] via role [auditor].');
+});
+
+it('blames the nested role that holds the forbid', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    $this->warden->allow($this->user)->to('publish');
+    $this->warden->forbid('banned')->to('publish');
+    nestRole('banned', 'suspended');
+    $this->warden->assign('suspended')->to($this->user);
+
+    $why = $this->warden->explain($this->user, 'publish');
+
+    expect($why->cause)->toBe(Cause::ForbiddenViaRole)
+        ->and($why->role?->getAttribute('name'))->toBe('banned');
+});
+
+it('never blames a nested role reached through a restricted assignment outside its context', function (): void {
+    config()->set('warden.roles.nested', true);
+    $org = Account::query()->create(['name' => 'Org'])->refresh();
+
+    $this->warden->allow($this->user)->to('publish');
+    $this->warden->forbidEveryone()->to('publish');
+    $this->warden->forbid('auditor')->to('publish');
+    nestRole('auditor', 'reviewer');
+    $this->warden->assign('reviewer')->on($org)->to($this->user);
+
+    expect($this->warden->explain($this->user, 'publish')->cause)->toBe(Cause::ForbiddenToEveryone);
+
+    $this->warden->allow($this->user)->to('edit', Account::class);
+    $this->warden->forbid('auditor')->to('edit', Account::class);
+
+    $why = $this->warden->explain($this->user, 'edit', $org);
+
+    expect($why->cause)->toBe(Cause::ForbiddenViaRole)
+        ->and($why->role?->getAttribute('name'))->toBe('auditor');
+});
+
+it('blames a nested role from the closure the resolver already walked', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    $this->warden->allow('auditor')->to('audit');
+    nestRole('auditor', 'manager');
+    $this->warden->assign('manager')->to($this->user);
+
+    Illuminate\Support\Facades\DB::flushQueryLog();
+    Illuminate\Support\Facades\DB::enableQueryLog();
+
+    $why = $this->warden->explain($this->user, 'audit');
+
+    $log = Illuminate\Support\Facades\DB::getQueryLog();
+    $assignments = array_filter(
+        $log,
+        fn (array $entry): bool => str_contains((string) $entry['query'], 'assigned_roles'),
+    );
+
+    expect($why->role?->getAttribute('name'))->toBe('auditor')
+        ->and($assignments)->toHaveCount(3)
+        ->and($log)->toHaveCount(7);
+});
+
+it('blames a role held directly before a nested one that also holds the grant', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    $this->warden->allow('auditor')->to('audit');
+    $this->warden->allow('manager')->to('audit');
+    nestRole('auditor', 'manager');
+    $this->warden->assign('manager')->to($this->user);
+
+    $why = $this->warden->explain($this->user, 'audit');
+
+    expect($why->cause)->toBe(Cause::GrantedViaRole)
+        ->and($why->role?->getAttribute('name'))->toBe('manager');
+});
+
+it('passes over a trashed role to the next cause', function (): void {
+    addSoftDeletesToRoles();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->allowEveryone()->to('publish');
+    $this->warden->assign('editor')->to($this->user);
+    SoftDeletingRole::query()->where('name', 'editor')->sole()->delete();
+
+    $why = $this->warden->explain($this->user, 'publish');
+
+    expect($why->cause)->toBe(Cause::GrantedToEveryone)
+        ->and($why->role)->toBeNull();
+});
+
+it('passes over a trashed nested role to the next cause', function (): void {
+    config()->set('warden.roles.nested', true);
+    addSoftDeletesToRoles();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->allowEveryone()->to('publish');
+    $this->warden->assign('editor')->to(SoftDeletingRole::query()->create(['name' => 'manager']));
+    $this->warden->assign('manager')->to($this->user);
+    SoftDeletingRole::query()->where('name', 'editor')->sole()->delete();
+
+    $why = $this->warden->explain($this->user, 'publish');
+
+    expect($why->cause)->toBe(Cause::GrantedToEveryone)
+        ->and($why->role)->toBeNull();
 });

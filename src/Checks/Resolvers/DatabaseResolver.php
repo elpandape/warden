@@ -16,14 +16,17 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
-final readonly class DatabaseResolver implements Resolver
+final class DatabaseResolver implements Resolver
 {
+    /** @var array<int|string, list<array{string|null, int|string|null, int|null}>>|null */
+    private ?array $closure = null;
+
     /**
      * @param  Collection<int, Model>|null  $assignments  Pre-read assignments for
      *                                                    this authority, so a caller that
      *                                                    needs them too reads the table once.
      */
-    public function __construct(private Context $context, private ?Collection $assignments = null) {}
+    public function __construct(private readonly Context $context, private readonly ?Collection $assignments = null) {}
 
     public function resolve(
         Model $authority,
@@ -71,6 +74,19 @@ final readonly class DatabaseResolver implements Resolver
 
         /** @var Collection<int, Model> */
         return $assignments->get();
+    }
+
+    /**
+     * The closure of the last check that walked one, or null before any, so
+     * explain() can blame the role that holds a grant without walking it again.
+     *
+     * @internal
+     *
+     * @return array<int|string, list<array{string|null, int|string|null, int|null}>>|null
+     */
+    public function closure(): ?array
+    {
+        return $this->closure;
     }
 
     /**
@@ -171,7 +187,9 @@ final readonly class DatabaseResolver implements Resolver
     {
         $keys = [];
 
-        foreach (RoleClosure::for($authority, $this->assignments) as $roleKey => $restrictions) {
+        $this->closure = RoleClosure::for($authority, $this->assignments);
+
+        foreach ($this->closure as $roleKey => $restrictions) {
             foreach ($restrictions as [$contextType, $contextId]) {
                 if ($contextType === null && $contextId === null) {
                     $keys[] = $roleKey;
