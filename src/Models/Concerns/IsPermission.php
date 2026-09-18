@@ -9,6 +9,7 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
+use ElPandaPe\Warden\Events\PermissionRestored;
 use ElPandaPe\Warden\Events\PermissionUpdated;
 use ElPandaPe\Warden\Exceptions\ConfigurationException;
 use ElPandaPe\Warden\Models\Grant;
@@ -169,6 +170,33 @@ trait IsPermission
                     operation: app(Operations::class)->current(),
                 ));
                 $invalidations->announceCascade($permission);
+            });
+        });
+
+        /** @var WeakMap<Model, bool> $wasTrashed */
+        $wasTrashed = new WeakMap;
+
+        // By hand: only SoftDeletes defines static::restoring() and restored().
+        // Eloquent fires restored after save() has run the updated hook's cache
+        // marks, and also for a row that was not in the trash: restoring notes it.
+        static::registerModelEvent('restoring', function (Model $permission) use ($wasTrashed): void {
+            $wasTrashed[$permission] = method_exists($permission, 'trashed') && $permission->trashed() === true;
+        });
+
+        static::registerModelEvent('restored', function (Model $permission) use ($wasTrashed): void {
+            $fromTrash = $wasTrashed[$permission] ?? false;
+            unset($wasTrashed[$permission]);
+
+            if (! $fromTrash) {
+                return;
+            }
+
+            app(Operations::class)->during(function () use ($permission): void {
+                Announcer::announce(fn (): PermissionRestored => new PermissionRestored(
+                    $permission,
+                    actor: app(ActorResolver::class)->resolve(),
+                    operation: app(Operations::class)->current(),
+                ));
             });
         });
     }

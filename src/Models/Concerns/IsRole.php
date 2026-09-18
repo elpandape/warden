@@ -10,6 +10,7 @@ use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
+use ElPandaPe\Warden\Events\RoleRestored;
 use ElPandaPe\Warden\Events\RoleUpdated;
 use ElPandaPe\Warden\Models\Relations\ReadOnlyBelongsToMany;
 use ElPandaPe\Warden\Models\Relations\ReadOnlyPivot;
@@ -149,6 +150,33 @@ trait IsRole
                     operation: app(Operations::class)->current(),
                 ));
                 $invalidations->announceCascade($role);
+            });
+        });
+
+        /** @var WeakMap<Model, bool> $wasTrashed */
+        $wasTrashed = new WeakMap;
+
+        // By hand: only SoftDeletes defines static::restoring() and restored().
+        // Eloquent fires restored after save() has run the updated hook's cache
+        // marks, and also for a row that was not in the trash: restoring notes it.
+        static::registerModelEvent('restoring', function (Model $role) use ($wasTrashed): void {
+            $wasTrashed[$role] = method_exists($role, 'trashed') && $role->trashed() === true;
+        });
+
+        static::registerModelEvent('restored', function (Model $role) use ($wasTrashed): void {
+            $fromTrash = $wasTrashed[$role] ?? false;
+            unset($wasTrashed[$role]);
+
+            if (! $fromTrash) {
+                return;
+            }
+
+            app(Operations::class)->during(function () use ($role): void {
+                Announcer::announce(fn (): RoleRestored => new RoleRestored(
+                    $role,
+                    actor: app(ActorResolver::class)->resolve(),
+                    operation: app(Operations::class)->current(),
+                ));
             });
         });
     }

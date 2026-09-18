@@ -29,6 +29,13 @@ arch('post-write events leave through one door')
     ->and('ElPandaPe\Warden\Models')->not->toUse(Event::class)
     ->and('ElPandaPe\Warden\Console')->not->toUse(Event::class);
 
+arch('events are final and readonly')
+    ->expect('ElPandaPe\Warden\Events')
+    ->classes()
+    ->toBeFinal()
+    ->toBeReadonly()
+    ->ignoring(['ElPandaPe\Warden\Events\Actors', 'ElPandaPe\Warden\Events\Concerns']);
+
 arch('per-row event values travel by value')
     ->expect([GrantChange::class, AssignmentChange::class, GrantRemoval::class, AssignmentRemoval::class])
     ->toBeFinal()

@@ -14,6 +14,7 @@ use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
 use ElPandaPe\Warden\Events\PermissionForbidden;
 use ElPandaPe\Warden\Events\PermissionGranted;
+use ElPandaPe\Warden\Events\PermissionRestored;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\PermissionsSynced;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
@@ -23,6 +24,7 @@ use ElPandaPe\Warden\Events\RevokingPermission;
 use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
+use ElPandaPe\Warden\Events\RoleRestored;
 use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Events\RolesSynced;
 use ElPandaPe\Warden\Events\RoleUpdated;
@@ -57,6 +59,7 @@ const WARDEN_EVENTS = [
     RoleCreated::class, RoleDeleted::class,
     PermissionCreated::class, PermissionDeleted::class,
     RoleUpdated::class, PermissionUpdated::class,
+    RoleRestored::class, PermissionRestored::class,
 ];
 
 beforeEach(function (): void {

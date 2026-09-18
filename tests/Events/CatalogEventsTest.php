@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Contracts\ActorResolver;
 use ElPandaPe\Warden\Events\AssigningRole;
 use ElPandaPe\Warden\Events\ForbiddingPermission;
 use ElPandaPe\Warden\Events\GrantingPermission;
@@ -12,6 +13,7 @@ use ElPandaPe\Warden\Events\PermissionCreated;
 use ElPandaPe\Warden\Events\PermissionDeleted;
 use ElPandaPe\Warden\Events\PermissionForbidden;
 use ElPandaPe\Warden\Events\PermissionGranted;
+use ElPandaPe\Warden\Events\PermissionRestored;
 use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\PermissionsSynced;
 use ElPandaPe\Warden\Events\PermissionUnforbidden;
@@ -21,6 +23,7 @@ use ElPandaPe\Warden\Events\RevokingPermission;
 use ElPandaPe\Warden\Events\RoleAssigned;
 use ElPandaPe\Warden\Events\RoleCreated;
 use ElPandaPe\Warden\Events\RoleDeleted;
+use ElPandaPe\Warden\Events\RoleRestored;
 use ElPandaPe\Warden\Events\RoleRetracted;
 use ElPandaPe\Warden\Events\RolesSynced;
 use ElPandaPe\Warden\Events\RoleUpdated;
@@ -29,18 +32,23 @@ use ElPandaPe\Warden\Events\UnforbiddingPermission;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Models\Role;
+use ElPandaPe\Warden\Tests\Fixtures\CountingActorResolver;
 use ElPandaPe\Warden\Tests\Fixtures\FixedActorResolver;
 use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingPermission;
+use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingRole;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToPermissions;
+use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToRoles;
 use function ElPandaPe\Warden\Tests\Database\migrateRemoteUsers;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
@@ -138,9 +146,11 @@ it('still builds every event without an operation', function (): void {
         new PermissionCreated($permission),
         new PermissionUpdated($permission, $permission->snapshot(), $permission->snapshot(), []),
         new PermissionDeleted($permission),
+        new RoleRestored($role),
+        new PermissionRestored($permission),
     ]);
 
-    expect(array_map(fn (object $event): ?string => $event->operation, $events))->toBe(array_fill(0, 20, null));
+    expect(array_map(fn (object $event): ?string => $event->operation, $events))->toBe(array_fill(0, 22, null));
 });
 
 it('restores a deleted role and its actor from a queued RoleDeleted', function (): void {
@@ -791,4 +801,245 @@ it('carries whether a deleted row went to the trash across a queue', function ()
         ->and(unserialize(serialize(new PermissionDeleted($permission, softDeleted: true)))->softDeleted)->toBeTrue()
         ->and(unserialize(serialize(new RoleDeleted($role)))->softDeleted)->toBeFalse()
         ->and(unserialize(serialize(new PermissionDeleted($permission)))->softDeleted)->toBeFalse();
+});
+
+it('announces a restored role and a restored permission with the actor and an operation of their own', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $admin = User::query()->create(['name' => 'Admin']);
+    $this->actingAs($admin);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    Event::fake([RoleRestored::class, PermissionRestored::class]);
+
+    $role->restore();
+    $permission->restore();
+
+    $roleRestored = Event::dispatched(RoleRestored::class)->sole()[0];
+    $permissionRestored = Event::dispatched(PermissionRestored::class)->sole()[0];
+
+    expect($roleRestored->role)->toBe($role)
+        ->and($roleRestored->actor?->is($admin))->toBeTrue()
+        ->and(Str::isUlid((string) $roleRestored->operation))->toBeTrue()
+        ->and($permissionRestored->permission)->toBe($permission)
+        ->and($permissionRestored->actor?->is($admin))->toBeTrue()
+        ->and(Str::isUlid((string) $permissionRestored->operation))->toBeTrue()
+        ->and($permissionRestored->operation)->not->toBe($roleRestored->operation);
+});
+
+it('stamps a restore with the operation it runs in', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    Event::fake([RoleRestored::class, PermissionRestored::class]);
+
+    $operation = $this->warden->operation(function (string $operation) use ($role, $permission): string {
+        $role->restore();
+        $permission->restore();
+
+        return $operation;
+    });
+
+    Event::assertDispatched(RoleRestored::class, fn (RoleRestored $event): bool => $event->operation === $operation);
+    Event::assertDispatched(PermissionRestored::class, fn (PermissionRestored $event): bool => $event->operation === $operation);
+});
+
+it('lets a listener of a restore already see the access it brings back', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    config()->set('warden.cache.enabled', true);
+
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->assign('editor')->to($this->user);
+    $this->warden->allow($this->user)->to('archive');
+
+    $editor = SoftDeletingRole::query()->where('name', 'editor')->sole();
+    $archive = SoftDeletingPermission::query()->where('name', 'archive')->sole();
+    $editor->delete();
+    $archive->delete();
+
+    expect(Gate::forUser($this->user)->allows('publish'))->toBeFalse()
+        ->and(Gate::forUser($this->user)->allows('archive'))->toBeFalse();
+
+    $seen = [];
+    Event::listen(RoleRestored::class, function () use (&$seen): void {
+        $seen['publish'] = Gate::forUser($this->user)->allows('publish');
+    });
+    Event::listen(PermissionRestored::class, function () use (&$seen): void {
+        $seen['archive'] = Gate::forUser($this->user)->allows('archive');
+    });
+
+    $editor->restore();
+    $archive->restore();
+
+    expect($seen)->toBe(['publish' => true, 'archive' => true]);
+});
+
+it('announces a restore as a restore, never as an update', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    Event::fake([RoleUpdated::class, PermissionUpdated::class, RoleRestored::class, PermissionRestored::class]);
+
+    $role->restore();
+    $permission->restore();
+
+    Event::assertDispatchedTimes(RoleRestored::class, 1);
+    Event::assertDispatchedTimes(PermissionRestored::class, 1);
+    Event::assertNotDispatched(RoleUpdated::class);
+    Event::assertNotDispatched(PermissionUpdated::class);
+});
+
+it('announces no restore for a row that was not in the trash', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    SoftDeletingRole::query()->create(['name' => 'editor']);
+    $author = SoftDeletingRole::query()->create(['name' => 'author']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $author->delete();
+    $permission->delete();
+
+    Event::fake([RoleRestored::class, PermissionRestored::class]);
+
+    SoftDeletingRole::withTrashed()->get()->each->restore();
+    $permission->restore();
+    $permission->restore();
+
+    Event::assertDispatchedTimes(RoleRestored::class, 1);
+    Event::assertDispatched(RoleRestored::class, fn (RoleRestored $event): bool => $event->role->is($author));
+    Event::assertDispatchedTimes(PermissionRestored::class, 1);
+});
+
+it('announces nothing for a quiet restore', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    Event::fake([RoleRestored::class, PermissionRestored::class]);
+
+    $role->restoreQuietly();
+    $permission->restoreQuietly();
+
+    Event::assertNotDispatched(RoleRestored::class);
+    Event::assertNotDispatched(PermissionRestored::class);
+    expect(SoftDeletingRole::query()->whereKey($role->getKey())->exists())->toBeTrue()
+        ->and(SoftDeletingPermission::query()->whereKey($permission->getKey())->exists())->toBeTrue();
+});
+
+it('announces no restore and asks for no actor while events are off', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    config()->set('warden.events_enabled', false);
+    $resolver = new CountingActorResolver;
+    app()->instance(ActorResolver::class, $resolver);
+    Event::fake([RoleRestored::class, PermissionRestored::class]);
+
+    $role->restore();
+    $permission->restore();
+
+    Event::assertNotDispatched(RoleRestored::class);
+    Event::assertNotDispatched(PermissionRestored::class);
+    expect($resolver->calls)->toBe(0)
+        ->and(SoftDeletingRole::query()->whereKey($role->getKey())->exists())->toBeTrue()
+        ->and(SoftDeletingPermission::query()->whereKey($permission->getKey())->exists())->toBeTrue();
+});
+
+it('fails a queued restore whose row was force-deleted since', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    $queued = [];
+    Event::listen([RoleRestored::class, PermissionRestored::class], function (object $event) use (&$queued): void {
+        $queued[] = serialize($event);
+    });
+
+    $role->restore();
+    $permission->restore();
+    $role->forceDelete();
+    $permission->forceDelete();
+
+    expect($queued)->toHaveCount(2)
+        ->and(fn (): mixed => unserialize($queued[0]))->toThrow(ModelNotFoundException::class)
+        ->and(fn (): mixed => unserialize($queued[1]))->toThrow(ModelNotFoundException::class);
+});
+
+it('brings a queued restore back in the trash when its row went back there', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    $queued = [];
+    Event::listen([RoleRestored::class, PermissionRestored::class], function (object $event) use (&$queued): void {
+        $queued[] = serialize($event);
+    });
+
+    $role->restore();
+    $permission->restore();
+    $role->delete();
+    $permission->delete();
+
+    expect($queued)->toHaveCount(2);
+
+    $restoredRole = unserialize($queued[0])->role;
+    $restoredPermission = unserialize($queued[1])->permission;
+
+    expect($restoredRole)->toBeInstanceOf(SoftDeletingRole::class)
+        ->and($restoredRole->is($role))->toBeTrue()
+        ->and($restoredRole->trashed())->toBeTrue()
+        ->and($restoredPermission)->toBeInstanceOf(SoftDeletingPermission::class)
+        ->and($restoredPermission->is($permission))->toBeTrue()
+        ->and($restoredPermission->trashed())->toBeTrue();
 });
