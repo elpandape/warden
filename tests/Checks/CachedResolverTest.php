@@ -560,6 +560,25 @@ it('ends a cached nesting edge whose model reads its end date back as text', fun
     $this->travelBack();
 });
 
+it('never widens a grant whose model reads its conditions back as something other than text, cached or not', function (): void {
+    $globex = Account::query()->create(['name' => 'Globex'])->refresh();
+    $this->warden->allow($this->user)->to('edit', Account::class)->where('name', 'Acme');
+
+    Permission::retrieved(function (Permission $permission): void {
+        $row = $permission->getAttributes();
+        $row['options'] = json_decode((string) $row['options'], true);
+        $permission->setRawAttributes($row, true);
+    });
+
+    $cached = Gate::forUser($this->user)->allows('edit', $globex);
+
+    config()->set('warden.cache.enabled', false);
+    $uncached = Gate::forUser($this->user)->allows('edit', $globex);
+
+    expect($cached)->toBeFalse()
+        ->and($uncached)->toBeFalse();
+});
+
 it('invalidates cached checks when a catalog row is edited by the model', function (): void {
     $this->warden->allow($this->user)->to('edit-site');
 

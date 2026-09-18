@@ -222,11 +222,11 @@ final class CachedResolver implements Resolver
 
             $restrictions = $viaRole ? $restrictionsByRole[$grant->entity_id] : [[null, null, null]];
 
-            /** @var DateTimeInterface|string|null $grantEnds */
+            /** @var DateTimeInterface|string|int|null $grantEnds */
             $grantEnds = $grant->getAttribute('expires_at');
 
             if ($grantEnds !== null) {
-                // A grant model swapped in without warden's datetime cast reads back the stored text.
+                // A grant model swapped in without warden's datetime cast reads back text or a timestamp.
                 $grantEnds = ($grantEnds instanceof DateTimeInterface ? $grantEnds : Carbon::parse($grantEnds))->getTimestamp();
             }
 
@@ -282,7 +282,9 @@ final class CachedResolver implements Resolver
                 'entity_id' => $permission->entity_id,
                 'only_owned' => (bool) $permission->only_owned,
                 'forbidden' => $forbidden,
-                'options' => is_string($rawOptions) ? $rawOptions : null,
+                // A stored value that is not text cannot travel in the payload. As
+                // unreadable text it fails closed, where null would read as no conditions.
+                'options' => $rawOptions === null || is_string($rawOptions) ? $rawOptions : '',
                 'restricted_to_type' => $contextType,
                 'restricted_to_id' => $contextId,
                 'expires_at' => $ends,

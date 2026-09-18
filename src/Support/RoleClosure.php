@@ -192,11 +192,11 @@ final class RoleClosure
                 continue;
             }
 
-            /** @var DateTimeInterface|string|null $ends */
+            /** @var DateTimeInterface|string|int|null $ends */
             $ends = $assignment->getAttribute('expires_at');
 
             if ($ends !== null) {
-                // An assignment model swapped in without warden's datetime cast reads back the stored text.
+                // An assignment model swapped in without warden's datetime cast reads back text or a timestamp.
                 $ends = ($ends instanceof DateTimeInterface ? $ends : Carbon::parse($ends))->getTimestamp();
             }
 
