@@ -127,3 +127,10 @@ function addSoftDeletesToPermissions(): void
         $blueprint->softDeletes();
     });
 }
+
+function addSoftDeletesToUsers(): void
+{
+    Schema::table('users', function (Blueprint $blueprint): void {
+        $blueprint->softDeletes();
+    });
+}

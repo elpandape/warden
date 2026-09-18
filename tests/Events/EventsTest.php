@@ -713,14 +713,16 @@ it('warns about a cascaded holder type no class maps and announces nothing for i
     );
 });
 
-it('announces nothing for a cascaded row that names a holder type but no key', function (): void {
+it('announces nothing for a cascaded row that names only half of its holder', function (?string $type, ?int $key): void {
+    withForeignKeys();
+
     $this->warden->allow($this->user)->to('publish');
     $permission = Permission::query()->where('name', 'publish')->sole();
 
     DB::table('grants')->insert([
         'permission_id' => $permission->getKey(),
-        'entity_type' => $this->user->getMorphClass(),
-        'entity_id' => null,
+        'entity_type' => $type,
+        'entity_id' => $key,
         'forbidden' => false,
     ]);
 
@@ -730,7 +732,10 @@ it('announces nothing for a cascaded row that names a holder type but no key', f
 
     Event::assertDispatchedTimes(PermissionRevoked::class, 1);
     Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($this->user) === true);
-});
+})->with([
+    'a type and no key' => fn (): array => [$this->user->getMorphClass(), null],
+    'a key and no type' => fn (): array => [null, $this->user->getKey()],
+]);
 
 it('announces only the permissions a grant wrote', function (): void {
     $this->warden->allow($this->user)->to('view', Account::class);

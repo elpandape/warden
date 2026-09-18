@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElPandaPe\Warden\Checks\Resolvers\CacheInvalidations;
 use ElPandaPe\Warden\Context;
 use ElPandaPe\Warden\Events\AssignmentRemoval;
+use ElPandaPe\Warden\Events\PermissionRevoked;
 use ElPandaPe\Warden\Events\RetractingRole;
 use ElPandaPe\Warden\Events\RoleDeleted;
 use ElPandaPe\Warden\Events\RoleRetracted;
@@ -17,6 +18,7 @@ use ElPandaPe\Warden\Support\Snapshots\RoleSnapshot;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\FailingIncrementCacheStore;
 use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingRole;
+use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingUser;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Contracts\Cache\Repository;
@@ -30,6 +32,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToRoles;
+use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToUsers;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
 use function ElPandaPe\Warden\Tests\nestRole;
@@ -551,4 +554,28 @@ it('bumps what a deleted role reached even when its sweep fails', function (): v
 
     expect(fn () => $editor->delete())->toThrow(RuntimeException::class, 'The sweep failed.')
         ->and(Cache::store('array')->get('warden:v:a'))->toBe(41);
+});
+
+it('names a trashed holder in the retraction and the revoke a catalog delete announces', function (): void {
+    addSoftDeletesToUsers();
+    $eva = SoftDeletingUser::query()->create(['name' => 'Eva']);
+    $this->warden->assign('editor')->to($eva);
+    $this->warden->allow($eva)->to('publish');
+    $eva->delete();
+
+    Event::fake([RoleRetracted::class, PermissionRevoked::class]);
+
+    Role::query()->where('name', 'editor')->sole()->delete();
+    Permission::query()->where('name', 'publish')->sole()->delete();
+
+    $retracted = ($this->retractions)()->sole()->authority;
+    $revoked = Event::dispatched(PermissionRevoked::class)->sole()[0]->authority;
+
+    expect(SoftDeletingUser::query()->whereKey($eva->getKey())->exists())->toBeFalse()
+        ->and($retracted)->toBeInstanceOf(SoftDeletingUser::class)
+        ->and($retracted->is($eva))->toBeTrue()
+        ->and($retracted->trashed())->toBeTrue()
+        ->and($revoked)->toBeInstanceOf(SoftDeletingUser::class)
+        ->and($revoked->is($eva))->toBeTrue()
+        ->and($revoked->trashed())->toBeTrue();
 });
