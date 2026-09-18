@@ -232,18 +232,20 @@ it('keeps the operation of a queued event, whichever way the event serializes', 
         ->and(unserialize(serialize(new RoleCreated($role, operation: $operation)))->operation)->toBe($operation);
 });
 
-it('restores a RoleDeleted and a PermissionDeleted queued by 3.1 with no operation', function (): void {
+it('restores a RoleDeleted and a PermissionDeleted queued by 3.1 as neither trashed nor part of an operation', function (): void {
     $role = Role::query()->create(['name' => 'editor']);
     $permission = Permission::query()->create(['name' => 'publish']);
     $operation = (string) Str::ulid();
 
-    $roleDeleted = unserialize(payloadWithout(new RoleDeleted($role, operation: $operation), 'operation'));
-    $permissionDeleted = unserialize(payloadWithout(new PermissionDeleted($permission, operation: $operation), 'operation'));
+    $roleDeleted = unserialize(payloadWithout(new RoleDeleted($role, softDeleted: true, operation: $operation), 'softDeleted', 'operation'));
+    $permissionDeleted = unserialize(payloadWithout(new PermissionDeleted($permission, softDeleted: true, operation: $operation), 'softDeleted', 'operation'));
 
     expect($roleDeleted)->toBeInstanceOf(RoleDeleted::class)
+        ->and($roleDeleted->softDeleted)->toBeFalse()
         ->and($roleDeleted->operation)->toBeNull()
         ->and($roleDeleted->role->getAttribute('name'))->toBe('editor')
         ->and($permissionDeleted)->toBeInstanceOf(PermissionDeleted::class)
+        ->and($permissionDeleted->softDeleted)->toBeFalse()
         ->and($permissionDeleted->operation)->toBeNull()
         ->and($permissionDeleted->permission->getAttribute('name'))->toBe('publish');
 });

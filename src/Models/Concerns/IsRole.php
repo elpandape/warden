@@ -145,6 +145,7 @@ trait IsRole
                     actor: app(ActorResolver::class)->resolve(),
                     heldGrants: $held['grants'],
                     heldRoles: $held['roles'],
+                    softDeleted: method_exists($role, 'isForceDeleting') && $role->isForceDeleting() === false,
                     operation: app(Operations::class)->current(),
                 ));
                 $invalidations->announceCascade($role);

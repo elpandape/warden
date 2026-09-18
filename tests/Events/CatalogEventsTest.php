@@ -549,6 +549,7 @@ it('cascades and announces what a trashed permission still granted once it is fo
     SoftDeletingPermission::withTrashed()->whereKey($permission->getKey())->sole()->forceDelete();
 
     Event::assertDispatchedTimes(PermissionDeleted::class, 2);
+    expect(Event::dispatched(PermissionDeleted::class)->map(fn (array $arguments): bool => $arguments[0]->softDeleted)->values()->all())->toBe([true, false]);
     Event::assertDispatched(PermissionRevoked::class, fn (PermissionRevoked $event): bool => $event->authority?->is($this->user) === true
         && count($event->grants) === 1
         && $event->grants[0]->permission->is($permission));
@@ -771,3 +772,23 @@ it('invalidates a deleted permission even when a deleting listener halts the eve
         return SoftDeletingPermission::class;
     }],
 ]);
+
+it('says a catalog row without soft deletes was destroyed, not trashed', function (): void {
+    Event::fake([RoleDeleted::class, PermissionDeleted::class]);
+
+    Role::query()->create(['name' => 'editor'])->delete();
+    Permission::query()->create(['name' => 'publish'])->delete();
+
+    Event::assertDispatched(RoleDeleted::class, fn (RoleDeleted $event): bool => $event->softDeleted === false);
+    Event::assertDispatched(PermissionDeleted::class, fn (PermissionDeleted $event): bool => $event->softDeleted === false);
+});
+
+it('carries whether a deleted row went to the trash across a queue', function (): void {
+    $role = Role::query()->create(['name' => 'editor']);
+    $permission = Permission::query()->create(['name' => 'publish']);
+
+    expect(unserialize(serialize(new RoleDeleted($role, softDeleted: true)))->softDeleted)->toBeTrue()
+        ->and(unserialize(serialize(new PermissionDeleted($permission, softDeleted: true)))->softDeleted)->toBeTrue()
+        ->and(unserialize(serialize(new RoleDeleted($role)))->softDeleted)->toBeFalse()
+        ->and(unserialize(serialize(new PermissionDeleted($permission)))->softDeleted)->toBeFalse();
+});

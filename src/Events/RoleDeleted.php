@@ -14,9 +14,10 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Catalog lifecycle: a role row was deleted.
+ * Catalog lifecycle: a role row was deleted. $softDeleted says it went to the
+ * trash; a force delete, out of the trash included, destroyed it.
  *
- * The row is gone before any queued listener runs, so it travels by value,
+ * The row may be gone before any queued listener runs, so it travels by value,
  * without its relations; the actor travels as an identifier.
  *
  * @phpstan-import-type PermissionShape from PermissionSnapshot
@@ -40,11 +41,12 @@ final readonly class RoleDeleted
         public ?Model $actor = null,
         public array $heldGrants = [],
         public array $heldRoles = [],
+        public bool $softDeleted = false,
         public ?string $operation = null,
     ) {}
 
     /**
-     * @return array{role: Model, actor: ModelIdentifier|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>, operation: string|null}
+     * @return array{role: Model, actor: ModelIdentifier|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>, softDeleted: bool, operation: string|null}
      */
     public function __serialize(): array
     {
@@ -53,12 +55,13 @@ final readonly class RoleDeleted
             'actor' => $this->actorIdentifier($this->actor),
             'heldGrants' => $this->heldGrants,
             'heldRoles' => $this->heldRoles,
+            'softDeleted' => $this->softDeleted,
             'operation' => $this->operation,
         ];
     }
 
     /**
-     * @param  array{role: Model, actor: ModelIdentifier|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>, operation?: string|null}  $values
+     * @param  array{role: Model, actor: ModelIdentifier|null, heldGrants: list<HeldGrant>, heldRoles: list<HeldRole>, softDeleted?: bool, operation?: string|null}  $values
      */
     public function __unserialize(array $values): void
     {
@@ -66,6 +69,7 @@ final readonly class RoleDeleted
         $this->actor = $this->restoreActor($values['actor']);
         $this->heldGrants = $values['heldGrants'];
         $this->heldRoles = $values['heldRoles'];
+        $this->softDeleted = $values['softDeleted'] ?? false;
         $this->operation = $values['operation'] ?? null;
     }
 }

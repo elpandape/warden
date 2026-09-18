@@ -162,7 +162,12 @@ trait IsPermission
                 $invalidations = app(CacheInvalidations::class);
 
                 $invalidations->settleCascade($permission);
-                Announcer::announce(fn (): PermissionDeleted => new PermissionDeleted($permission, actor: app(ActorResolver::class)->resolve(), operation: app(Operations::class)->current()));
+                Announcer::announce(fn (): PermissionDeleted => new PermissionDeleted(
+                    $permission,
+                    actor: app(ActorResolver::class)->resolve(),
+                    softDeleted: method_exists($permission, 'isForceDeleting') && $permission->isForceDeleting() === false,
+                    operation: app(Operations::class)->current(),
+                ));
                 $invalidations->announceCascade($permission);
             });
         });

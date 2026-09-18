@@ -442,7 +442,9 @@ it('announces what a trashed role still held once it is force-deleted', function
     $deletions = Event::dispatched(RoleDeleted::class)->map(fn (array $arguments): RoleDeleted => $arguments[0])->values();
 
     expect($deletions)->toHaveCount(2)
+        ->and($deletions[0]->softDeleted)->toBeTrue()
         ->and($deletions[0]->heldGrants)->toBeEmpty()
+        ->and($deletions[1]->softDeleted)->toBeFalse()
         ->and($deletions[1]->heldGrants)->toHaveCount(1)
         ->and($deletions[1]->heldGrants[0]['permission']['name'])->toBe('publish')
         ->and(($this->retractions)()->sole()->authority->is($this->ana))->toBeTrue()
