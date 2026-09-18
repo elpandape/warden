@@ -3,6 +3,186 @@
 All notable changes to `elpandape/warden` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Pre-1.0, minor versions may break the API.
 
+## v3.2.0 — One call, one operation (unreleased)
+
+Built for the same audit log as 3.1. Every event now names the operation that dispatched
+it, so a log can show one act — a grid save, a narrowing chain, a delete and its cascade —
+as one entry instead of several; and a role in the trash stops counting, as a permission
+in the trash already did. No schema change, no migration and no new configuration; one
+new dependency, `symfony/uid`, which every Laravel 13 application already has. Access does
+change: a role in the trash grants and forbids nothing from the moment 3.2 runs.
+**Changed** and [UPGRADE.md](UPGRADE.md#from-31-to-32) say how.
+
+**Upgrading:** before deploying, list the roles in the trash whose prohibitions lift at
+deploy, and those whose holders lose access — the upgrade guide has both queries and
+the conditions to run them under. Cached payloads move to version 6, so the cache starts
+cold once. A job 3.1 queued restores without `$operation`: read it with `??` until those
+queues drain.
+
+### Added
+
+- **Every event names its operation.** All 22 events end with `?string $operation`, a
+  ULID — 26 upper-case characters, ordered by time — shared by everything one public call
+  dispatches: its pre-action event, the roles and permissions it creates by name, and its
+  write events. A `to()->where()` chain is one operation, a catalog delete shares one with
+  its cascade, a catalog write through the model outside any call is one of its own, and
+  so is a whole `warden:clean` run. Every event warden builds carries one; an event you
+  build yourself carries `null` unless you pass it.
+- **`Warden::operation()`.** Runs a callback as one operation and hands it the id, so
+  several calls — a permission grid saving each changed cell — share one; the callback's
+  return value comes back. Nested, it joins the outer one, and so does a listener that
+  writes through warden. It opens no transaction and holds nothing back: events go out as
+  each write finishes, as they do without it.
+- **`RoleRestored` and `PermissionRestored`.** `restore()` on a role or a permission in the
+  trash dispatches one, with `?Model $actor`, once the cache is invalidated. A restore
+  gives access back, and until now it went unannounced: the snapshot has no deleted-at
+  column, so no `RoleUpdated` or `PermissionUpdated` came either. A `restore()` on a row
+  that was not in the trash announces no restore, having restored nothing; nor do
+  `restoreQuietly()` or a `restore()` inside `Event::defer()`. A `restore()` that also
+  saves another changed column dispatches that edit's `RoleUpdated` or
+  `PermissionUpdated` first, under an operation of its own: wrap the call in
+  `Warden::operation()` to join the two.
+- **`RoleDeleted` and `PermissionDeleted` say whether the row went to the trash.**
+  `bool $softDeleted` is `true` for a soft delete and `false` when the row was destroyed,
+  a `forceDelete()` from the trash included — which `trashed()` cannot tell apart, since
+  it still answers `true` on that model.
+- **`Exceptions\TrashedCatalogRow`,** a `ConfigurationException` thrown where a name
+  matches only a row in the trash: see **Changed**.
+
+### Changed
+
+- **A role in the trash neither grants nor forbids.** 3.1 kept a soft-deleted role lending
+  its grants, and holding its holders to its forbids, until `forceDelete()`, while `isA()`
+  and `whereIs()` already ignored it — and, with nesting on, disagreed with each other
+  about the roles reached through it. Every check now ignores it: `can()`, the Gate,
+  `@can`, `authorize()`, both middlewares, `whereCan()`, `isA()` and its variants,
+  `whereIs()` and its variants, `getPermissions()`, `explain()` and the cached checks,
+  nested roles included. Its prohibitions lift, which can widen access where a broader
+  grant stands. Nothing is swept: `restore()` brings it all back, and the cache of every
+  scope the role reaches is invalidated on the soft delete and on the restore. Without
+  `SoftDeletes` on the role model, no check gains the trash filter. Events still describe
+  rows: the soft delete dispatches `RoleDeleted` with empty held lists and no
+  `RoleRetracted`, and a later `forceDelete()` dispatches those. This reverses the 3.1.0
+  entry *A soft-deleted role keeps lending its grants until it is force-deleted*.
+- **Cached payloads move to version 6.** A payload 3.1 cached would keep counting a role
+  in the trash, so none is read again: every install starts cold once after deploying.
+- **A name that matches only a row in the trash throws `TrashedCatalogRow`.**
+  `assign('editor')`, a `sync()` naming it, and the `allow('editor')` or `forbid('editor')`
+  that creates it made a second `editor` beside the one in the trash — and a later
+  `restore()` left two live roles with one name — or failed on the unique index under a
+  tenant; `allow()->to('publish')` and the twin of a `where()` always failed on it.
+  Restore the row or force-delete it first. Finding a name is unchanged: `findRole()` and
+  the verbs that remove still look past the trash, and a model in the trash handed to a
+  verb is accepted, its rows inert until `restore()`. Only warden's verbs check — a
+  `Role::create()` of your own does not — and a `where()` twin is refused after `to()`
+  wrote its unconstrained grant, as every refusal of `where()` is. `warden:clean` still
+  sends the unused permissions of a catalog with `SoftDeletes` to the trash, so after a
+  run the next write of such a name throws until the row is restored or force-deleted.
+- **`getPermissions()` and `getForbiddenPermissions()` follow nested roles.** With
+  `warden.roles.nested` on, a permission reached only through a nested role passed `can()`
+  and was missing from the list. They now read roles the way the checks do, through
+  unrestricted assignments; with nesting off they run as many statements as before.
+- **Queued write events carry no relations.** The eight write events queue `$roles`,
+  `$permissions`, a sync's `$changes` and every entry as copies without the relations
+  your models had loaded — one copy per model, so `$roles[0] === $assignments[0]->role`
+  still holds after the queue — where 3.1 queued them as you had them, the hidden columns
+  of every loaded relation included. Synchronous listeners still get your instances; a
+  queued listener that walks such a relation loads it again.
+- **The grant or assignment a verb creates is inserted with its end date, unguarded.**
+  Warden creates the row inside `Model::unguarded()`, as `forceCreate()` does, with its
+  end date in the one `INSERT`. That covers `allow()` and `forbid()` with `to()` or
+  `toOwn()` — and `everything()`, `toManage()` and `toOwnEverything()`, built on them —
+  the grant a `where()` moves onto its twin, and `assign()->to()`, `sync()->roles()`
+  included. 3.1 inserted the date only when the grant or assignment model accepted
+  `expires_at` by mass assignment, and otherwise dated the row in a second write (see
+  **Fixed**). Whatever runs during that insert now runs without mass-assignment
+  protection. The grants that `sync()->permissions()` and `sync()->forbiddenPermissions()`
+  create carry no end date, and still go through the model's mass-assignment rules.
+- **Each write bumps each cache scope once.** Editing or deleting a permission through its
+  model, or deleting a role, could bump one scope twice in the same write; each scope now
+  moves once per write.
+- **`symfony/uid` is a declared dependency,** `^7.4 || ^8.0`, the range
+  `laravel/framework` 13 already requires, for the ULID of an operation.
+
+### Fixed
+
+- **Editing a permission that carries a scope left other tenants' caches stale.** With a
+  global catalog (`onlyRelations()`) and a permission row that carries a scope, restoring
+  it, sending it to the trash through `save()`, renaming it, or changing its conditions,
+  the class or the record it applies to, or whether it is owned-only invalidated only the
+  permission's own scope, so every other tenant its grants live in kept its cached answer
+  until the TTL: a restored grant stayed denied, while a restored prohibition, a
+  permission trashed through `save()` and one an edit narrowed kept allowing. Such an edit
+  now invalidates every scope its grants live in, for one `SELECT DISTINCT`; a permission
+  with no scope pays nothing.
+- **The cached engine dropped conditions it could not store.** A permission model
+  whose raw `options` are not text — decoded by a `retrieved` hook, say — made the cached
+  engine store no conditions, so a constrained grant allowed every record of its class.
+  The cache now keeps such conditions unreadable, and they fail closed: the grant allows
+  nothing, and a prohibition stays in force. Laravel's database drivers return the column
+  as text, so warden's own models never met it.
+- **`explain()` blamed the wrong source.** A direct grant past its end date took the blame
+  for access a role gave; with nesting on, a row held by a nested role was reported as
+  `GrantedToEveryone` or `ForbiddenToEveryone`, with no role; and a role in the trash came
+  back as `GrantedViaRole` with a `null` role. `explain()` now reads live rows only and
+  names the role that holds the row, among the roles the check itself counted, so it no
+  longer asks `restrictedVia()` about them a second time. It reads no extra assignments
+  or grants. Naming a nested role costs the one role read that naming a direct role
+  always cost: a statement more than 3.1, only in the case 3.1 got wrong.
+- **A guarded pivot could make a temporary grant permanent.** With a grant or assignment
+  model that does not accept `expires_at` by mass assignment, `until()` inserted the row
+  and then dated it in a second write; if that write failed or was vetoed, the row stayed
+  with no end date and authorized for good. It is now inserted with its date.
+- **A vetoed re-date was announced.** When an `updating` or `saving` listener stopped the
+  save of a new end date on an existing row, the call still dispatched the date the row
+  never took, and bumped the cache. It now announces nothing, and the row keeps its date.
+- **A cache outage during a role delete left its grants behind.** The delete invalidated
+  the cache before sweeping the role's grants and nested edges, so a cache store that
+  threw left those rows for `warden:clean --stranded` to find. The sweep now runs first,
+  and the invalidation still runs if it throws.
+- **A custom actor resolver was asked when no event went out.** With events off, and for
+  the writes `sync()` silences, it was still called — twice for a `sync()->roles()` that
+  dispatches one event. It is now asked only while building an event that goes out.
+- **`sync()` removed rows in the trash without naming them.** A roles sync deleted the
+  assignments of a role in the trash, and a permissions sync the grants of a permission
+  in the trash, although neither appeared in `detached`, so `restore()` no longer brought
+  them back. A sync now leaves them untouched: it declares what is live.
+- **`warden:clean --duplicates` mixed live rows with rows in the trash.** It kept the
+  lowest key of each group even when that row was trashed: it moved the live grants onto
+  it, where no check sees them, and sent the live row to the trash. And with the live row
+  lowest, it moved a trashed duplicate's grants onto it, reviving access the trash had
+  ended. Rows in the trash now stay out of the collapse while the rule has a live row.
+- **A narrowing chain sent the rows it orphaned to the trash.** With `SoftDeletes` on the
+  permission model, the plain row the first `where()` on a rule created and left unused,
+  and a twin it created that a second `where()` left unused, went to the trash instead of
+  away, so the next write of that rule failed on the unique index. The chain now
+  force-deletes them, and their `PermissionDeleted` says `softDeleted: false`; a catalog
+  without `SoftDeletes` sees no change.
+
+### Documentation
+
+- **`Event::defer()` defeats warden.** Laravel holds back model events inside it too, so a
+  pre-action veto comes too late, a role or permission created there is stored without
+  its title and tenant stamp — a permission without its identity key too — a catalog
+  delete loses its cascade's events, and a `forceDelete()` passes for a soft delete,
+  leaving a role's grants unswept. None of that is new; 3.2 adds two more of the same
+  kind: that `forceDelete()` reports `softDeleted: true`, and a `restore()` there
+  announces nothing. The README now says so, under *When an event is dispatched*.
+- **Operations, per queue driver.** A queued listener always receives `$operation`; its
+  own writes join the open operation on the `sync` driver and open their own on a worker.
+- **A trip to the trash without model events** — `deleteQuietly()`, `restoreQuietly()`,
+  a query's `delete()` or `restore()` — leaves cached checks answering as before, and one
+  through `save()` announces nothing: the README lists both, with `Warden::refresh()` and
+  `warden:cache-reset` as the way out.
+- **A `deleting` listener that halts the dispatch.** One that returns anything but `null`
+  or `false` stops Eloquent's dispatch before warden reads what the delete reaches. A
+  role's grants are still swept, a permission still invalidates its own scope, and a role
+  going to the trash every scope it reaches; but a role's hard delete invalidates nothing,
+  as in 3.1, and no cascade event goes out.
+- **A snapshot needs a whole row.** Taken from a partial `select()`, it prints the missing
+  columns as defaults without a word, or throws in strict mode — except a permission's
+  conditions, which read as none either way.
+
 ## v3.1.0 — Events that say what changed (2026-09-13)
 
 Built for an audit log. An event used to repeat what the call asked for; it now lists the
