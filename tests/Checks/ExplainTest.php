@@ -6,6 +6,7 @@ use ElPandaPe\Warden\Checks\Explain\Cause;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Support\Carbon;
 
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 
@@ -177,4 +178,15 @@ it('reads assigned_roles once when blaming a role, not once per consumer', funct
     expect($why->cause)->toBe(Cause::GrantedViaRole)
         ->and($assignments)->toHaveCount(1)
         ->and($log)->toHaveCount(5);
+});
+
+it('blames the role rather than a direct grant that already ended', function (): void {
+    $this->warden->allow($this->user)->until(Carbon::now()->subHour())->to('publish');
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->assign('editor')->to($this->user);
+
+    $why = $this->warden->explain($this->user, 'publish');
+
+    expect($why->cause)->toBe(Cause::GrantedViaRole)
+        ->and($why->role?->getAttribute('name'))->toBe('editor');
 });

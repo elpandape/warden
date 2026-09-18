@@ -8,6 +8,7 @@ use BackedEnum;
 use ElPandaPe\Warden\Checks\Resolvers\DatabaseResolver;
 use ElPandaPe\Warden\Checks\Verdict;
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Support\Expiry;
 use ElPandaPe\Warden\Support\Name;
 use ElPandaPe\Warden\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Collection;
@@ -70,6 +71,7 @@ final readonly class Explainer
         $grants = $this->context->grantClass()::query()
             ->where('permission_id', $verdict->permissionKey)
             ->where('forbidden', $forbidden)
+            ->tap(Expiry::live(...))
             ->get();
 
         $direct = $grants->first(
