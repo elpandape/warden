@@ -1043,3 +1043,112 @@ it('brings a queued restore back in the trash when its row went back there', fun
         ->and($restoredPermission->is($permission))->toBeTrue()
         ->and($restoredPermission->trashed())->toBeTrue();
 });
+
+it('announces the restore of a trashed row read without its deleted-at column', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    $partialRole = SoftDeletingRole::withTrashed()->select([$role->getKeyName(), 'name'])->findOrFail($role->getKey());
+    $partialPermission = SoftDeletingPermission::withTrashed()->select([$permission->getKeyName(), 'name'])->findOrFail($permission->getKey());
+
+    Event::fake([RoleRestored::class, PermissionRestored::class]);
+
+    $partialRole->restore();
+    $partialPermission->restore();
+
+    Event::assertDispatchedTimes(RoleRestored::class, 1);
+    Event::assertDispatched(RoleRestored::class, fn (RoleRestored $event): bool => $event->role === $partialRole);
+    Event::assertDispatchedTimes(PermissionRestored::class, 1);
+    Event::assertDispatched(PermissionRestored::class, fn (PermissionRestored $event): bool => $event->permission === $partialPermission);
+    expect(SoftDeletingRole::query()->whereKey($role->getKey())->exists())->toBeTrue()
+        ->and(SoftDeletingPermission::query()->whereKey($permission->getKey())->exists())->toBeTrue();
+});
+
+it('announces no restore for an instance whose row was force-deleted out of the trash', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+    $role->forceDelete();
+    $permission->forceDelete();
+
+    Event::fake([RoleRestored::class, PermissionRestored::class]);
+
+    $role->restore();
+    $permission->restore();
+
+    Event::assertNotDispatched(RoleRestored::class);
+    Event::assertNotDispatched(PermissionRestored::class);
+    expect(SoftDeletingRole::withTrashed()->whereKey($role->getKey())->exists())->toBeFalse()
+        ->and(SoftDeletingPermission::withTrashed()->whereKey($permission->getKey())->exists())->toBeFalse();
+});
+
+it('announces a restore once after a vetoed one, and none for the row once live', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    $roleVeto = collect([false]);
+    $permissionVeto = collect([false]);
+    SoftDeletingRole::restoring(fn (): ?bool => $roleVeto->shift());
+    SoftDeletingPermission::restoring(fn (): ?bool => $permissionVeto->shift());
+
+    Event::fake([RoleRestored::class, PermissionRestored::class]);
+
+    $vetoedRestores = [$role->restore(), $permission->restore()];
+    $role->restore();
+    $permission->restore();
+    $role->restore();
+    $permission->restore();
+
+    expect($vetoedRestores)->toBe([false, false]);
+    Event::assertDispatchedTimes(RoleRestored::class, 1);
+    Event::assertDispatchedTimes(PermissionRestored::class, 1);
+});
+
+it('announces no restore for a live row whose earlier restore was vetoed', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    $roleVeto = collect([false]);
+    $permissionVeto = collect([false]);
+    SoftDeletingRole::restoring(fn (): ?bool => $roleVeto->shift());
+    SoftDeletingPermission::restoring(fn (): ?bool => $permissionVeto->shift());
+
+    Event::fake([RoleRestored::class, PermissionRestored::class]);
+
+    $vetoedRestores = [$role->restore(), $permission->restore()];
+    $role->restoreQuietly();
+    $permission->restoreQuietly();
+    $role->restore();
+    $permission->restore();
+
+    expect($vetoedRestores)->toBe([false, false]);
+    Event::assertNotDispatched(RoleRestored::class);
+    Event::assertNotDispatched(PermissionRestored::class);
+});

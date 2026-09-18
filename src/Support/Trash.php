@@ -24,4 +24,24 @@ final class Trash
     {
         return method_exists($model, 'isForceDeleting') && $model->isForceDeleting() === false;
     }
+
+    /**
+     * Whether the stored row sits in the trash. A model read without its
+     * deleted-at column would say no, so the row itself is asked; a model
+     * that no longer exists holds nothing, whatever it still carries.
+     */
+    public static function holds(Model $model): bool
+    {
+        $column = method_exists($model, 'getDeletedAtColumn') ? $model->getDeletedAtColumn() : null;
+
+        if (! $model->exists || ! is_string($column)) {
+            return false;
+        }
+
+        if (array_key_exists($column, $model->getAttributes())) {
+            return method_exists($model, 'trashed') && $model->trashed() === true;
+        }
+
+        return $model->newQueryWithoutScopes()->whereKey($model->getKey())->whereNotNull($model->qualifyColumn($column))->exists();
+    }
 }

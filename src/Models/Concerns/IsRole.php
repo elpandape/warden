@@ -159,9 +159,10 @@ trait IsRole
 
         // By hand: only SoftDeletes defines static::restoring() and restored().
         // Eloquent fires restored after save() has run the updated hook's cache
-        // marks, and also for a row that was not in the trash: restoring notes it.
+        // marks, and also for a row that was not in the trash: restoring notes
+        // whether it was, every time, so a vetoed restore() leaves no stale note.
         static::registerModelEvent('restoring', function (Model $role) use ($wasTrashed): void {
-            $wasTrashed[$role] = method_exists($role, 'trashed') && $role->trashed() === true;
+            $wasTrashed[$role] = Trash::holds($role);
         });
 
         static::registerModelEvent('restored', function (Model $role) use ($wasTrashed): void {
