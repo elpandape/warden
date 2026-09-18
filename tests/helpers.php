@@ -18,6 +18,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
@@ -193,5 +194,13 @@ function payloadOf(string $class, array $values): string
  */
 function payloadWithout(object $event, string ...$keys): string
 {
-    return payloadOf($event::class, array_diff_key($event->__serialize(), array_flip($keys)));
+    $values = $event->__serialize();
+    $stripped = array_flip($keys);
+    $missing = array_keys(array_diff_key($stripped, $values));
+
+    if ($missing !== []) {
+        throw new LogicException('The queue payload of '.$event::class.' has no '.implode(', ', $missing).'.');
+    }
+
+    return payloadOf($event::class, array_diff_key($values, $stripped));
 }

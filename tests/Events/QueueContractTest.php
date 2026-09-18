@@ -204,3 +204,11 @@ it('restores a queued catalog edit whose row was trashed since, in the trash', f
         ->and($restoredPermission->trashed())->toBeTrue()
         ->and($restoredPermission->getAttribute('title'))->toBe('Publish it');
 });
+
+it('refuses to strip from a queue payload a key the event does not serialize', function (): void {
+    $event = new RoleCreated(Role::query()->create(['name' => 'editor']));
+
+    expect(fn (): string => payloadWithout($event, 'actor', 'operation', 'grants'))
+        ->toThrow(LogicException::class, 'The queue payload of '.RoleCreated::class.' has no operation, grants.')
+        ->and(payloadWithout($event))->toBe(serialize($event));
+});
