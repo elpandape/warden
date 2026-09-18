@@ -422,10 +422,15 @@ class GrantsPermissions
      */
     private function repoint(array $targets): array
     {
-        $grantClass = Context::resolve()->grantClass();
-        $keyName = (new $grantClass)->getKeyName();
+        if ($targets === []) {
+            return [[], []];
+        }
 
-        return (new $grantClass)->getConnection()->transaction(function () use ($targets, $grantClass, $keyName): array {
+        $grantClass = Context::resolve()->grantClass();
+        $grantModel = new $grantClass;
+        $keyName = $grantModel->getKeyName();
+
+        return $grantModel->getConnection()->transaction(function () use ($targets, $grantClass, $keyName): array {
             $removals = [];
             $changes = [];
 

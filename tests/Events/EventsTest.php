@@ -37,6 +37,7 @@ use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\CountingActorResolver;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -464,6 +465,19 @@ it('keeps a plain grant beside the twin when where() restates its condition', fu
 
     expect($grants)->toHaveCount(2)
         ->and(Grant::query()->orderBy('id')->pluck('id')->all())->toBe($grants);
+});
+
+it('opens no transaction when where() restates the condition of the twin it was given', function (): void {
+    $this->warden->allow($this->user)->to('view', Account::class)->where('name', 'Acme');
+    $twin = Permission::query()->whereNotNull('options')->sole();
+    $transactions = 0;
+    Event::listen(TransactionBeginning::class, function () use (&$transactions): void {
+        $transactions++;
+    });
+
+    $this->warden->allow($this->user)->to($twin)->where('name', 'Acme');
+
+    expect($transactions)->toBe(0);
 });
 
 it('leaves the twin a throwing creation listener was told about', function (): void {
