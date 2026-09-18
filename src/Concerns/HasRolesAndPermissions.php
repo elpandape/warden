@@ -139,8 +139,9 @@ trait HasRolesAndPermissions
     }
 
     /**
-     * Every permission granted to this authority — directly, through an
-     * unrestricted role, or to everyone — under the current filters.
+     * Every permission granted to this authority — directly, through a role
+     * it reaches unrestricted (nested ones too, with nesting on), or to
+     * everyone — under the current filters.
      * The silber/bouncer getAbilities() equivalent, for migrators.
      *
      * @return \Illuminate\Database\Eloquent\Collection<int, Model>
@@ -218,15 +219,19 @@ trait HasRolesAndPermissions
         $context = Context::resolve();
         $roleMorph = (new ($context->roleClass()))->getMorphClass();
 
-        $roleKeys = $context->assignedRoleClass()::query()
-            ->where('entity_type', $this->getMorphClass())
-            ->where('entity_id', $this->getKey())
-            ->whereNull('restricted_to_type')
-            ->whereNull('restricted_to_id')
-            ->tap(Expiry::live(...))
-            ->toBase()
-            ->pluck('role_id')
-            ->all();
+        // A restricted path counts only for an entity of its context, and a
+        // listing names none. Each edge on a path was already read live.
+        $roleKeys = [];
+
+        foreach (RoleClosure::for($this) as $roleKey => $paths) {
+            foreach ($paths as [$type, $id]) {
+                if ($type === null && $id === null) {
+                    $roleKeys[] = $roleKey;
+
+                    break;
+                }
+            }
+        }
 
         // getPermissions() filters expiry like the resolver does. A listing that
         // hands back an expired permission paints a menu can() then denies.

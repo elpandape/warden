@@ -353,3 +353,90 @@ it('nests and unnests through assign() and retract() as before', function (): vo
         ->and($editor->nestedRoles()->pluck('name')->all())->toBeEmpty()
         ->and($this->warden->is($this->user)->an('auditor'))->toBeFalse();
 });
+
+it('lists what a nested role grants and forbids, however deep', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->forbid('editor')->to('delete');
+    $this->warden->allow('auditor')->to('view');
+    nestRole('editor', 'manager');
+    nestRole('auditor', 'editor');
+    $this->warden->assign('manager')->to($this->user);
+
+    expect($this->user->getPermissions()->pluck('name')->sort()->values()->all())->toBe(['publish', 'view'])
+        ->and($this->user->getForbiddenPermissions()->pluck('name')->all())->toBe(['delete']);
+});
+
+it('lists nothing a restricted assignment reaches through nesting', function (): void {
+    config()->set('warden.roles.nested', true);
+
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->forbid('editor')->to('delete');
+    nestRole('editor', 'manager');
+    $this->warden->assign('manager')->on($this->account)->to($this->user);
+
+    expect($this->user->getPermissions())->toBeEmpty()
+        ->and($this->user->getForbiddenPermissions())->toBeEmpty();
+});
+
+it('lists a nested role once any path to it is unrestricted', function (bool $restrictedFirst): void {
+    config()->set('warden.roles.nested', true);
+
+    $this->warden->allow('editor')->to('publish');
+    nestRole('editor', 'manager');
+    nestRole('editor', 'lead');
+
+    if ($restrictedFirst) {
+        $this->warden->assign('manager')->on($this->account)->to($this->user);
+        $this->warden->assign('lead')->to($this->user);
+    } else {
+        $this->warden->assign('lead')->to($this->user);
+        $this->warden->assign('manager')->on($this->account)->to($this->user);
+    }
+
+    expect($this->user->getPermissions()->pluck('name')->all())->toBe(['publish']);
+})->with([
+    'the restricted path read first' => true,
+    'the unrestricted path read first' => false,
+]);
+
+it('lists a nested role until the instant its dated edge ends', function (): void {
+    config()->set('warden.roles.nested', true);
+    Carbon::setTestNow(Carbon::parse('2026-07-01 00:00:00'));
+
+    $this->warden->allow('editor')->to('publish');
+    $manager = Role::query()->firstOrCreate(['name' => 'manager']);
+    $this->warden->assign('editor')->until(Carbon::parse('2027-01-01 00:00:00'))->to($manager);
+    $this->warden->assign('manager')->to($this->user);
+
+    expect($this->user->getPermissions()->pluck('name')->all())->toBe(['publish']);
+
+    Carbon::setTestNow(Carbon::parse('2027-01-01 00:00:00'));
+
+    expect($this->user->getPermissions())->toBeEmpty();
+
+    Carbon::setTestNow();
+});
+
+it('lists no nested role while the feature is off, in the same three statements', function (): void {
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->allow('manager')->to('view');
+    nestRole('editor', 'manager');
+    $this->warden->assign('manager')->to($this->user);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $listed = $this->user->getPermissions()->pluck('name')->all();
+
+    $log = DB::getQueryLog();
+    $assignments = array_filter(
+        $log,
+        fn (array $entry): bool => str_contains((string) $entry['query'], 'assigned_roles'),
+    );
+
+    expect($listed)->toBe(['view'])
+        ->and($assignments)->toHaveCount(1)
+        ->and($log)->toHaveCount(3);
+});

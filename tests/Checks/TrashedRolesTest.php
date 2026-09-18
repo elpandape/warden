@@ -397,3 +397,56 @@ it('reads every role check in as many statements whether or not the role model s
         ->and($pivotReads($softDeleting))->toHaveCount($pivotReads($plain)->count())
         ->and($pivotReads($softDeleting))->not->toBeEmpty();
 });
+
+it('lists nothing a trashed role grants or forbids, and all of it again once restored', function (): void {
+    $this->warden->allow($this->ana)->to('view');
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->forbid('editor')->to('delete');
+    $this->warden->assign('editor')->to($this->ana);
+
+    $editor = SoftDeletingRole::query()->where('name', 'editor')->sole();
+    $editor->delete();
+
+    expect($this->ana->getPermissions()->pluck('name')->all())->toBe(['view'])
+        ->and($this->ana->getForbiddenPermissions())->toBeEmpty();
+
+    $editor->restore();
+
+    expect($this->ana->getPermissions()->pluck('name')->sort()->values()->all())->toBe(['publish', 'view'])
+        ->and($this->ana->getForbiddenPermissions()->pluck('name')->all())->toBe(['delete']);
+});
+
+it('lists nothing reached through a trashed role with nesting on', function (string $trashed, array $listed): void {
+    config()->set('warden.roles.nested', true);
+
+    $manager = SoftDeletingRole::query()->create(['name' => 'manager']);
+    $this->warden->allow('manager')->to('view');
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->assign('editor')->to($manager);
+    $this->warden->assign('manager')->to($this->ana);
+
+    SoftDeletingRole::query()->where('name', $trashed)->sole()->delete();
+
+    expect($this->ana->getPermissions()->pluck('name')->all())->toBe($listed);
+})->with([
+    'the outer role' => ['manager', []],
+    'the inner role' => ['editor', ['view']],
+]);
+
+it('lists in three statements with a soft-deleting role model, the trash filtered inside the assignment read', function (): void {
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->assign('editor')->to($this->ana);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $listed = $this->ana->getPermissions()->pluck('name')->all();
+
+    $log = collect(DB::getQueryLog())->pluck('query');
+    $assignments = $log->filter(fn (string $query): bool => str_contains($query, 'assigned_roles'));
+
+    expect($listed)->toBe(['publish'])
+        ->and($log)->toHaveCount(3)
+        ->and($assignments)->toHaveCount(1)
+        ->and($assignments->sole())->toContain('deleted_at');
+});
