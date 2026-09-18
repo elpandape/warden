@@ -15,9 +15,11 @@ use ElPandaPe\Warden\Models\Role;
 use ElPandaPe\Warden\Support\Snapshots\PermissionSnapshot;
 use ElPandaPe\Warden\Support\Snapshots\RoleSnapshot;
 use ElPandaPe\Warden\Tests\Fixtures\Account;
+use ElPandaPe\Warden\Tests\Fixtures\FailingIncrementCacheStore;
 use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingRole;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -518,4 +520,33 @@ it('bumps each scope a deleted role reached once', function (): void {
 
     expect(Cache::store('array')->get('warden:v:a'))->toBe(42)
         ->and(Cache::store('array')->get('warden:v:g'))->toBe(71);
+});
+
+it('sweeps what a deleted role held even when the cache store fails', function (): void {
+    $this->warden->allow('editor')->to('publish');
+    nestRole('auditor', 'editor');
+    $this->warden->assign('editor')->to($this->ana);
+    $editor = Role::query()->where('name', 'editor')->sole();
+    Cache::extend('failing', fn (): Repository => Cache::repository(new FailingIncrementCacheStore));
+    config()->set('cache.stores.failing', ['driver' => 'failing']);
+    config()->set('warden.cache.store', 'failing');
+
+    expect(fn () => $editor->delete())->toThrow(RuntimeException::class, 'The cache store is down.')
+        ->and(Role::query()->whereKey($editor->getKey())->exists())->toBeFalse()
+        ->and(Grant::query()->withoutGlobalScopes()->where('entity_type', $editor->getMorphClass())->exists())->toBeFalse()
+        ->and(AssignedRole::query()->withoutGlobalScopes()->exists())->toBeFalse();
+});
+
+it('bumps what a deleted role reached even when its sweep fails', function (): void {
+    $this->warden->allow('editor')->to('publish');
+    $editor = Role::query()->where('name', 'editor')->sole();
+    Cache::store('array')->put('warden:v:a', 40, 60);
+    DB::connection()->beforeExecuting(function (string $query): void {
+        if (str_starts_with(strtolower($query), 'delete') && str_contains($query, 'grants')) {
+            throw new RuntimeException('The sweep failed.');
+        }
+    });
+
+    expect(fn () => $editor->delete())->toThrow(RuntimeException::class, 'The sweep failed.')
+        ->and(Cache::store('array')->get('warden:v:a'))->toBe(41);
 });

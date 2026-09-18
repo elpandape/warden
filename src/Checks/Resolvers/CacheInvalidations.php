@@ -220,8 +220,8 @@ final class CacheInvalidations
     }
 
     /**
-     * The delete has landed: mark the scopes prepareCascade() read and sweep
-     * what no foreign key covers. The catalog model calls this from its own
+     * The delete has landed: sweep what no foreign key covers and mark the
+     * scopes prepareCascade() read. The catalog model calls this from its own
      * deleted hook, ahead of every listener of its event, so a listener that
      * throws cannot leave the cache granting what the delete removed.
      */
@@ -239,11 +239,15 @@ final class CacheInvalidations
             return;
         }
 
-        foreach ($scopes as $scope) {
-            $this->mark($scope);
+        // A cache store that fails must not leave the rows behind, nor a
+        // sweep that fails the cache granting them.
+        try {
+            $this->sweepHoldings($model);
+        } finally {
+            foreach ($scopes as $scope) {
+                $this->mark($scope);
+            }
         }
-
-        $this->sweepHoldings($model);
     }
 
     /**
