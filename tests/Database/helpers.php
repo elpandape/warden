@@ -104,6 +104,16 @@ function migrateRemoteUsers(?string $textKeyCollation = null): void
     });
 }
 
+/**
+ * The layout the migration stub offers for UUID and ULID authorities.
+ */
+function storeAuthorityKeysAsText(): void
+{
+    Schema::table('assigned_roles', function (Blueprint $blueprint): void {
+        $blueprint->string('entity_id', 36)->change();
+    });
+}
+
 function addSoftDeletesToRoles(): void
 {
     Schema::table('roles', function (Blueprint $blueprint): void {

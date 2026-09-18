@@ -109,6 +109,9 @@ trait IsRole
         });
 
         static::updated(function (Model $role) use ($stored): void {
+            // Before the early return below: a restore invalidates with events off too.
+            app(CacheInvalidations::class)->markCatalogEdit($role);
+
             app(Operations::class)->during(function () use ($role, $stored): void {
                 $row = $stored[$role] ?? null;
                 unset($stored[$role]);

@@ -114,13 +114,18 @@ final class RoleClosure
         $depth = Config::roleMaxDepth();
 
         while ($frontier !== [] && $depth-- > 0) {
-            $outer = $context->assignedRoleClass()::query()
+            $edges = $context->assignedRoleClass()::query()
                 ->where('entity_type', $roleMorph)
                 ->whereIn('role_id', $frontier)
-                ->tap(Expiry::live(...))
-                ->toBase()
-                ->pluck('entity_id')
-                ->all();
+                ->tap(Expiry::live(...));
+
+            // Nothing is climbed through a trashed role. The filter sits on
+            // role_id because entity_id may hold text keys, which Postgres will
+            // not compare with a numeric role key. A trashed outer role still
+            // comes back one step up; whereIs() drops it through the role model.
+            LiveRoles::only($edges, 'role_id');
+
+            $outer = $edges->toBase()->pluck('entity_id')->all();
 
             $frontier = [];
 
@@ -149,11 +154,16 @@ final class RoleClosure
      */
     private static function edgesFrom(Context $context, string $morph, mixed $key): array
     {
-        return self::edgesIn($context->assignedRoleClass()::query()
+        $edges = $context->assignedRoleClass()::query()
             ->where('entity_type', $morph)
             ->where('entity_id', $key)
-            ->tap(Expiry::live(...))
-            ->get());
+            ->tap(Expiry::live(...));
+
+        // Every hop starts from a role this admitted live, so filtering here
+        // covers the authority's own roles and each nested level.
+        LiveRoles::only($edges, 'role_id');
+
+        return self::edgesIn($edges->get());
     }
 
     /**

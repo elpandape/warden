@@ -10,6 +10,7 @@ use ElPandaPe\Warden\Contracts\Resolver;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
 use ElPandaPe\Warden\Support\Expiry;
+use ElPandaPe\Warden\Support\LiveRoles;
 use ElPandaPe\Warden\Support\RoleClosure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -60,12 +61,16 @@ final readonly class DatabaseResolver implements Resolver
      */
     public static function readAssignments(Context $context, Model $authority): Collection
     {
-        /** @var Collection<int, Model> */
-        return $context->assignedRoleClass()::query()
+        $assignments = $context->assignedRoleClass()::query()
             ->where('entity_type', $authority->getMorphClass())
             ->where('entity_id', $authority->getKey())
-            ->tap(Expiry::live(...))
-            ->get();
+            ->tap(Expiry::live(...));
+
+        // RoleClosure reads rows handed to it without I/O: the trash is left out here.
+        LiveRoles::only($assignments, 'role_id');
+
+        /** @var Collection<int, Model> */
+        return $assignments->get();
     }
 
     /**

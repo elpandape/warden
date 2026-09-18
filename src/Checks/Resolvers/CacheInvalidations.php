@@ -147,6 +147,19 @@ final class CacheInvalidations
     public function markCatalogEdit(Model $model): void
     {
         $trash = method_exists($model, 'getDeletedAtColumn') ? $model->getDeletedAtColumn() : null;
+
+        if ($model::class === Context::resolve()->roleClass()) {
+            // No column of a role is baked in, but leaving or entering the
+            // trash decides whether it counts at all.
+            if (is_string($trash) && $model->wasChanged($trash)) {
+                foreach ($this->catalogScopes($model) as $scope) {
+                    $this->mark($scope);
+                }
+            }
+
+            return;
+        }
+
         $baked = ['name', 'entity_type', 'entity_id', 'only_owned', 'options', ...(is_string($trash) ? [$trash] : [])];
 
         if ($model::class !== Context::resolve()->permissionClass() || ! $model->wasChanged($baked)) {
@@ -199,14 +212,16 @@ final class CacheInvalidations
             return;
         }
 
-        if ($model::class !== $context->roleClass() || $this->softDeleting($model)) {
+        if ($model::class !== $context->roleClass()) {
             return;
         }
 
+        // A trashed role stops counting at once, so a soft delete moves the
+        // same scopes. Only a hard delete cascades, and the rest is read only
+        // to announce that.
         $this->cascading[$id] = $this->catalogScopes($model);
 
-        // The rest is read only to be announced.
-        if (! Config::eventsEnabled()) {
+        if ($this->softDeleting($model) || ! Config::eventsEnabled()) {
             return;
         }
 
@@ -221,10 +236,10 @@ final class CacheInvalidations
 
     /**
      * The delete has landed: sweep what no foreign key covers and mark the
-     * scopes prepareCascade() read, or a permission's own scope when it read
-     * nothing. The catalog model calls this from its own deleted hook, ahead
-     * of every listener of its event, so a listener that throws cannot leave
-     * the cache granting what the delete removed.
+     * scopes prepareCascade() read or, when it read nothing, a permission's
+     * own scope or a trashed role's. The catalog model calls this from its
+     * own deleted hook, ahead of every listener of its event, so a listener
+     * that throws cannot leave the cache granting what the delete removed.
      */
     public function settleCascade(Model $model): void
     {
@@ -241,9 +256,14 @@ final class CacheInvalidations
         }
 
         // A deleting listener that returns a value halts the dispatch before
-        // the wildcard prepares anything, yet the row's own scope is known.
+        // the wildcard prepares anything, yet the row's own scope is known,
+        // and a trashed role keeps every row its scopes are read from.
         if ($scopes === null && $model::class === $context->permissionClass()) {
             $scopes = [$this->scalar($model->getAttributes()['scope'] ?? null)];
+        }
+
+        if ($scopes === null && $model::class === $context->roleClass() && $this->softDeleting($model)) {
+            $scopes = $this->catalogScopes($model);
         }
 
         // A cache store that fails must not leave the rows behind, nor a
