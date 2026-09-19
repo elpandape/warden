@@ -48,4 +48,17 @@ final class Trash
 
         return $model->newQueryWithoutScopes()->whereKey($model->getKey())->whereNotNull($model->qualifyColumn($column))->exists();
     }
+
+    /**
+     * Whether a restore's save actually reached the database. Eloquent nulls
+     * the deleted-at attribute before calling save(); a vetoed save leaves it
+     * dirty, because syncing the original only happens once save() succeeds.
+     * Laravel before 13.18 fires `restored` whatever save() returned.
+     */
+    public static function restoreWasSaved(Model $model): bool
+    {
+        $column = method_exists($model, 'getDeletedAtColumn') ? $model->getDeletedAtColumn() : null;
+
+        return is_string($column) && ! $model->isDirty($column);
+    }
 }

@@ -166,8 +166,19 @@ trait IsRole
         });
 
         static::registerModelEvent('restored', function (Model $role) use ($wasTrashed): void {
-            $fromTrash = $wasTrashed[$role] ?? false;
+            $noted = $wasTrashed[$role] ?? null;
             unset($wasTrashed[$role]);
+
+            // A saving/updating listener can veto the save that follows the
+            // note above, and Laravel before 13.18 still fires this event.
+            if (! Trash::restoreWasSaved($role)) {
+                return;
+            }
+
+            // An app restoring() listener registered before this one halts
+            // Eloquent's until() dispatch and leaves no note: whether the
+            // save just cleared the column says as much as the note would.
+            $fromTrash = $noted ?? (method_exists($role, 'getDeletedAtColumn') && $role->wasChanged($role->getDeletedAtColumn()));
 
             if (! $fromTrash) {
                 return;

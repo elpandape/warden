@@ -1203,3 +1203,52 @@ it('announces no restore for a live row whose soft delete failed', function (): 
 
     Event::assertNotDispatched(RoleRestored::class);
 });
+
+it('announces no restore when a saving listener vetoed its save, even if Eloquent still fires restored', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    SoftDeletingRole::saving(fn (): bool => false);
+    SoftDeletingPermission::saving(fn (): bool => false);
+
+    Event::fake([RoleRestored::class, PermissionRestored::class]);
+
+    expect([$role->restore(), $permission->restore()])->toBe([false, false]);
+
+    Event::dispatch('eloquent.restored: '.SoftDeletingRole::class, $role);
+    Event::dispatch('eloquent.restored: '.SoftDeletingPermission::class, $permission);
+
+    Event::assertNotDispatched(RoleRestored::class);
+    Event::assertNotDispatched(PermissionRestored::class);
+});
+
+it('announces a restore even when a restoring listener of the app halts the dispatch first', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    Model::clearBootedModels();
+    SoftDeletingRole::restoring(fn (SoftDeletingRole $role): string => $role->title = 'Restored editor');
+    SoftDeletingPermission::restoring(fn (SoftDeletingPermission $permission): string => $permission->title = 'Restored publish');
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    Event::fake([RoleRestored::class, PermissionRestored::class]);
+
+    $role->restore();
+    $permission->restore();
+
+    Event::assertDispatchedTimes(RoleRestored::class, 1);
+    Event::assertDispatchedTimes(PermissionRestored::class, 1);
+});

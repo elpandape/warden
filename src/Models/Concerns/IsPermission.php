@@ -186,8 +186,19 @@ trait IsPermission
         });
 
         static::registerModelEvent('restored', function (Model $permission) use ($wasTrashed): void {
-            $fromTrash = $wasTrashed[$permission] ?? false;
+            $noted = $wasTrashed[$permission] ?? null;
             unset($wasTrashed[$permission]);
+
+            // A saving/updating listener can veto the save that follows the
+            // note above, and Laravel before 13.18 still fires this event.
+            if (! Trash::restoreWasSaved($permission)) {
+                return;
+            }
+
+            // An app restoring() listener registered before this one halts
+            // Eloquent's until() dispatch and leaves no note: whether the
+            // save just cleared the column says as much as the note would.
+            $fromTrash = $noted ?? (method_exists($permission, 'getDeletedAtColumn') && $permission->wasChanged($permission->getDeletedAtColumn()));
 
             if (! $fromTrash) {
                 return;
