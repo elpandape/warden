@@ -12,6 +12,7 @@ use ElPandaPe\Warden\Support\Trash;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -37,9 +38,11 @@ final class CleanCommand extends Command
         $context = Context::resolve();
         $grantModel = new ($context->grantClass());
 
-        // Unused rows have no tenant: scan the whole catalog explicitly.
+        // Unused rows have no tenant: scan the whole catalog explicitly, but
+        // keep the trash out, or a row already there gets re-deleted on every
+        // run and its trashing date never stops moving.
         $unused = $context->permissionClass()::query()
-            ->withoutGlobalScopes()
+            ->withoutGlobalScopesExcept([SoftDeletingScope::class])
             ->whereNotExists(function (\Illuminate\Database\Query\Builder $query) use ($context, $grantModel): void {
                 $query->from($grantModel->getTable())
                     ->whereColumn(

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElPandaPe\Warden\Context;
+use ElPandaPe\Warden\Events\PermissionDeleted;
 use ElPandaPe\Warden\Models\AssignedRole;
 use ElPandaPe\Warden\Models\Grant;
 use ElPandaPe\Warden\Models\Permission;
@@ -14,6 +15,7 @@ use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingPermission;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 
 use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToPermissions;
@@ -29,6 +31,10 @@ beforeEach(function (): void {
 
     $this->warden = app(Warden::class);
     $this->user = User::query()->create(['name' => 'Joseph']);
+});
+
+afterEach(function (): void {
+    Carbon::setTestNow();
 });
 
 it('publishes config and migrations with warden:install', function (): void {
@@ -414,3 +420,27 @@ it('folds a colliding duplicate grant into the keeper\'s with the later end date
     'the loser ends later' => [1, 3, 3],
     'the keeper ends later' => [3, 1, 3],
 ]);
+
+it('does not re-trash an unused permission already in the trash', function (): void {
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    Carbon::setTestNow('2026-09-01 00:00:00');
+    SoftDeletingPermission::query()->create(['name' => 'orphan']);
+
+    $this->artisan('warden:clean')
+        ->expectsOutputToContain('Deleted 1')
+        ->assertExitCode(0);
+
+    $trashedAt = SoftDeletingPermission::withTrashed()->sole()->getAttribute('deleted_at');
+
+    Event::fake([PermissionDeleted::class]);
+    Carbon::setTestNow('2026-10-01 00:00:00');
+
+    $this->artisan('warden:clean')
+        ->expectsOutputToContain('Deleted 0')
+        ->assertExitCode(0);
+
+    Event::assertNotDispatched(PermissionDeleted::class);
+    expect(SoftDeletingPermission::withTrashed()->sole()->getAttribute('deleted_at'))->toEqual($trashedAt);
+});
