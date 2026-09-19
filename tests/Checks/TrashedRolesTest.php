@@ -11,6 +11,7 @@ use ElPandaPe\Warden\Tests\Fixtures\Account;
 use ElPandaPe\Warden\Tests\Fixtures\SoftDeletingRole;
 use ElPandaPe\Warden\Tests\Fixtures\User;
 use ElPandaPe\Warden\Warden;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -470,4 +471,17 @@ it('invalidates the global scope a trashed role is held in beside tenant 0', fun
 
     expect(Cache::store('array')->get('warden:v:g'))->toBe(41)
         ->and(Cache::store('array')->get('warden:v:t.0'))->toBe(71);
+});
+
+it('still counts a live role that an app global scope on the role model hides', function (): void {
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->assign('editor')->to($this->ana);
+
+    SoftDeletingRole::addGlobalScope('listed', fn (Illuminate\Database\Eloquent\Builder $query): Illuminate\Database\Eloquent\Builder => $query->where('name', '!=', 'editor'));
+    app(Warden::class)->refresh();
+
+    expect($this->ana->can('publish'))->toBeTrue()
+        ->and(Gate::forUser($this->ana)->allows('publish'))->toBeTrue();
+
+    Model::clearBootedModels();
 });
