@@ -198,7 +198,7 @@ trait IsPermission
             // An app restoring() listener registered before this one halts
             // Eloquent's until() dispatch and leaves no note: whether the
             // save just cleared the column says as much as the note would.
-            $fromTrash = $noted ?? (method_exists($permission, 'getDeletedAtColumn') && $permission->wasChanged($permission->getDeletedAtColumn()));
+            $fromTrash = $noted ?? Trash::wasRestored($permission);
 
             if (! $fromTrash) {
                 return;

@@ -178,7 +178,7 @@ trait IsRole
             // An app restoring() listener registered before this one halts
             // Eloquent's until() dispatch and leaves no note: whether the
             // save just cleared the column says as much as the note would.
-            $fromTrash = $noted ?? (method_exists($role, 'getDeletedAtColumn') && $role->wasChanged($role->getDeletedAtColumn()));
+            $fromTrash = $noted ?? Trash::wasRestored($role);
 
             if (! $fromTrash) {
                 return;

@@ -61,4 +61,15 @@ final class Trash
 
         return is_string($column) && ! $model->isDirty($column);
     }
+
+    /**
+     * Whether the last save cleared the deleted-at column: the fallback for a
+     * restore whose restoring note a halted dispatch never took.
+     */
+    public static function wasRestored(Model $model): bool
+    {
+        $column = method_exists($model, 'getDeletedAtColumn') ? $model->getDeletedAtColumn() : null;
+
+        return is_string($column) && $model->wasChanged($column);
+    }
 }
