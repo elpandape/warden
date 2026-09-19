@@ -485,3 +485,21 @@ it('still counts a live role that an app global scope on the role model hides', 
 
     Model::clearBootedModels();
 });
+
+it('bumps only the tenants of a soft-deleted role whose delete a deleting listener halts', function (): void {
+    config()->set('warden.cache.enabled', true);
+    $this->warden->tenant()->onlyRelations();
+    $this->warden->tenant()->onceTo(5, function (): void {
+        $this->warden->allow('editor')->to('publish');
+        $this->warden->assign('editor')->to($this->ana);
+    });
+    SoftDeletingRole::deleting(fn (): bool => true);
+
+    Cache::store('array')->put('warden:v:g', 40, 60);
+    Cache::store('array')->put('warden:v:t.5', 70, 60);
+
+    $this->warden->tenant()->onceTo(7, fn (): ?bool => SoftDeletingRole::query()->where('name', 'editor')->sole()->delete());
+
+    expect(Cache::store('array')->get('warden:v:g'))->toBe(40)
+        ->and(Cache::store('array')->get('warden:v:t.5'))->toBe(71);
+});

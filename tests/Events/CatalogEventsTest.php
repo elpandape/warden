@@ -1279,3 +1279,60 @@ it('invalidates the global grants of an edited permission beside a grant in tena
     expect(Gate::forUser($luis)->allows('report'))->toBeFalse()
         ->and(Gate::forUser($luis)->allows('audit'))->toBeTrue();
 });
+
+it('reads no grant scopes to retitle a permission of a tenant', function (): void {
+    $report = reportScopedApartFromItsGrant($this->user);
+    Cache::store('array')->put('warden:v:t.5', 70, 60);
+    Cache::store('array')->put('warden:v:t.7', 90, 60);
+
+    $report->update(['title' => 'Quarterly report']);
+
+    expect(Cache::store('array')->get('warden:v:t.5'))->toBe(71)
+        ->and(Cache::store('array')->get('warden:v:t.7'))->toBe(90);
+});
+
+it('reads no grant scopes to move a permission to or from the global scope', function (Closure $setup, ?int $moveTo): void {
+    $report = $setup($this->warden, $this->user);
+    Cache::store('array')->put('warden:v:t.7', 90, 60);
+
+    $report->update(['name' => 'audit', 'scope' => $moveTo]);
+
+    expect(Cache::store('array')->get('warden:v:t.7'))->toBe(90);
+})->with([
+    'moves from a tenant to the global scope' => [
+        function (Warden $warden, User $user): Permission {
+            $warden->tenant()->onlyRelations();
+            $created = Permission::query()->create(['name' => 'report']);
+            DB::table('permissions')->where('id', $created->getKey())->update(['scope' => 5]);
+            $warden->tenant()->to(7);
+            $warden->allow($user)->to($created);
+
+            return Permission::query()->whereKey($created->getKey())->sole();
+        },
+        null,
+    ],
+    'moves from the global scope to a tenant' => [
+        function (Warden $warden, User $user): Permission {
+            $warden->tenant()->onlyRelations();
+            $created = Permission::query()->create(['name' => 'report']);
+            $warden->tenant()->to(7);
+            $warden->allow($user)->to($created);
+
+            return Permission::query()->whereKey($created->getKey())->sole();
+        },
+        5,
+    ],
+]);
+
+it('invalidates only the tenant of a scoped permission whose delete a deleting listener halts', function (): void {
+    $permission = $this->warden->tenant()->onceTo(5, fn (): Permission => Permission::query()->create(['name' => 'report']));
+    Permission::deleting(fn (): bool => true);
+
+    Cache::store('array')->put('warden:v:g', 40, 60);
+    Cache::store('array')->put('warden:v:t.5', 70, 60);
+
+    Permission::query()->whereKey($permission->getKey())->sole()->delete();
+
+    expect(Cache::store('array')->get('warden:v:g'))->toBe(40)
+        ->and(Cache::store('array')->get('warden:v:t.5'))->toBe(71);
+});
