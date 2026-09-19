@@ -354,7 +354,7 @@ it('announces a catalog delete and every row its cascade removed under one id', 
     ],
 ]);
 
-it('gives the deletion of a trashed role an id', function (): void {
+it('gives the soft deletion of a role an id', function (): void {
     addSoftDeletesToRoles();
     Context::resolve()->setModelClass('role', SoftDeletingRole::class);
     $editor = SoftDeletingRole::query()->create(['name' => 'editor']);

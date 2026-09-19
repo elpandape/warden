@@ -212,7 +212,9 @@ function payloadWithout(object $event, string ...$keys): string
 }
 
 /**
- * Every warden event dispatched from here on, in the order it went out.
+ * Every warden event dispatched from here on, in the order a wildcard
+ * listener hears it: after the event's own listeners, so the events they
+ * dispatch come first.
  *
  * @return ArrayObject<int, object>
  */
