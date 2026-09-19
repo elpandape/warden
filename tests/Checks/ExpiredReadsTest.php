@@ -51,6 +51,8 @@ it('drops the permissions a role lent once the assignment expires', function ():
     $this->warden->allow('auditor')->to('view', Account::class);
     $this->warden->assign('auditor')->until($this->moment)->to($this->user);
 
+    Carbon::setTestNow($this->moment->copy()->subSecond());
+
     expect(Gate::forUser($this->user)->allows('view', $this->account))->toBeTrue();
 
     Carbon::setTestNow($this->moment->copy()->addSecond());
