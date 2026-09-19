@@ -535,3 +535,75 @@ it('reads the top-level models and an eloquent collection of a queued write agai
         ->and($queued->roles)->toBeInstanceOf(EloquentCollection::class)
         ->and($queued->roles->sole()->getAttribute('name'))->toBe('publisher');
 });
+
+it('keeps whether a queued grant entry is new and the end date it moved from', function (bool $redate): void {
+    $first = Carbon::parse('2030-01-01 00:00:00');
+    $second = Carbon::parse('2030-02-01 00:00:00');
+
+    if ($redate) {
+        $this->warden->allow($this->user)->until($first)->to('publish');
+    }
+
+    $heard = null;
+    Event::listen(PermissionGranted::class, function (PermissionGranted $event) use (&$heard): void {
+        $heard = $event;
+    });
+
+    $this->warden->allow($this->user)->until($second)->to('publish');
+
+    $entry = unserialize(serialize($heard))->grants[0];
+
+    expect($entry->created)->toBe(! $redate)
+        ->and($entry->expiresAt?->equalTo($second))->toBeTrue();
+
+    $redate
+        ? expect($entry->previousExpiresAt?->equalTo($first))->toBeTrue()
+        : expect($entry->previousExpiresAt)->toBeNull();
+})->with([
+    'a new grant' => [false],
+    're-dated' => [true],
+]);
+
+it('keeps whether a queued assignment entry is new and the end date it moved from', function (bool $redate): void {
+    $first = Carbon::parse('2030-01-01 00:00:00');
+    $second = Carbon::parse('2030-02-01 00:00:00');
+
+    if ($redate) {
+        $this->warden->assign('auditor')->until($first)->to($this->user);
+    }
+
+    $heard = null;
+    Event::listen(RoleAssigned::class, function (RoleAssigned $event) use (&$heard): void {
+        $heard = $event;
+    });
+
+    $this->warden->assign('auditor')->until($second)->to($this->user);
+
+    $entry = unserialize(serialize($heard))->assignments[0];
+
+    expect($entry->created)->toBe(! $redate)
+        ->and($entry->expiresAt?->equalTo($second))->toBeTrue();
+
+    $redate
+        ? expect($entry->previousExpiresAt?->equalTo($first))->toBeTrue()
+        : expect($entry->previousExpiresAt)->toBeNull();
+})->with([
+    'a new assignment' => [false],
+    're-dated' => [true],
+]);
+
+it('keeps the end date a queued retraction ended', function (): void {
+    $end = Carbon::parse('2030-01-01 00:00:00');
+    $this->warden->assign('auditor')->until($end)->to($this->user);
+
+    $heard = null;
+    Event::listen(RoleRetracted::class, function (RoleRetracted $event) use (&$heard): void {
+        $heard = $event;
+    });
+
+    $this->warden->retract('auditor')->from($this->user);
+
+    $queued = unserialize(serialize($heard));
+
+    expect($queued->assignments[0]->expiresAt?->equalTo($end))->toBeTrue();
+});
