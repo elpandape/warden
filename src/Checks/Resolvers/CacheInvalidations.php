@@ -728,9 +728,11 @@ final class CacheInvalidations
 
         $rows = $query->distinct()->pluck('scope');
 
+        // Not unique(): it compares loosely, and 0 == null, so a tenant 0
+        // scope beside the global one would drop whichever the engine reads
+        // second. catalogScopes() already dedups the union by scopeKey().
         /** @var list<int|string|null> $scopes */
         $scopes = $rows->map(fn (mixed $scope): int|string|null => is_int($scope) || is_string($scope) ? $scope : null)
-            ->unique()
             ->values()
             ->all();
 

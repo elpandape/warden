@@ -450,3 +450,24 @@ it('lists in three statements with a soft-deleting role model, the trash filtere
         ->and($assignments)->toHaveCount(1)
         ->and($assignments->sole())->toContain('deleted_at');
 });
+
+it('invalidates the global scope a trashed role is held in beside tenant 0', function (): void {
+    config()->set('warden.cache.enabled', true);
+    $this->warden->tenant()->onlyRelations();
+
+    $this->warden->tenant()->to(0);
+    $this->warden->allow('editor')->to('publish');
+    $this->warden->assign('editor')->to($this->ana);
+
+    $luis = User::query()->create(['name' => 'Luis']);
+    $this->warden->tenant()->remove();
+    $this->warden->assign('editor')->to($luis);
+
+    Cache::store('array')->put('warden:v:g', 40, 60);
+    Cache::store('array')->put('warden:v:t.0', 70, 60);
+
+    SoftDeletingRole::query()->where('name', 'editor')->sole()->delete();
+
+    expect(Cache::store('array')->get('warden:v:g'))->toBe(41)
+        ->and(Cache::store('array')->get('warden:v:t.0'))->toBe(71);
+});

@@ -1252,3 +1252,30 @@ it('announces a restore even when a restoring listener of the app halts the disp
     Event::assertDispatchedTimes(RoleRestored::class, 1);
     Event::assertDispatchedTimes(PermissionRestored::class, 1);
 });
+
+it('invalidates the global grants of an edited permission beside a grant in tenant 0', function (): void {
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    config()->set('warden.cache.enabled', true);
+    $this->warden->tenant()->onlyRelations();
+
+    $created = SoftDeletingPermission::query()->create(['name' => 'report']);
+    DB::table('permissions')->where('id', $created->getKey())->update(['scope' => 5]);
+    $report = SoftDeletingPermission::query()->whereKey($created->getKey())->sole();
+
+    $this->warden->tenant()->to(0);
+    $this->warden->allow($this->user)->to($report);
+
+    $luis = User::query()->create(['name' => 'Luis']);
+    $this->warden->tenant()->remove();
+    $this->warden->allow($luis)->to($report);
+
+    $this->warden->tenant()->to(7);
+
+    expect(Gate::forUser($luis)->allows('report'))->toBeTrue();
+
+    $report->update(['name' => 'audit']);
+
+    expect(Gate::forUser($luis)->allows('report'))->toBeFalse()
+        ->and(Gate::forUser($luis)->allows('audit'))->toBeTrue();
+});
