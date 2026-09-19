@@ -111,7 +111,7 @@ class SyncsRolesAndPermissions
             ->get()
             ->toBase();
 
-        $this->dispatchWardenEvent(fn (): RolesSynced => new RolesSynced($authority, $this->diff($models, $before), $scope, actor: $this->actor(), operation: $this->operation()));
+        $this->dispatchWardenEvent(fn (): RolesSynced => new RolesSynced($authority, $this->diff($models, $before, $beforeKeys), $scope, actor: $this->actor(), operation: $this->operation()));
 
         return $this;
     }
@@ -200,21 +200,25 @@ class SyncsRolesAndPermissions
             ->toBase();
 
         $this->dispatchWardenEvent(
-            fn (): PermissionsSynced => new PermissionsSynced($authority, $this->diff($permissionModels, $before), $scope, $forbidden, actor: $this->actor(), operation: $this->operation()),
+            fn (): PermissionsSynced => new PermissionsSynced($authority, $this->diff($permissionModels, $before, $beforeKeys), $scope, $forbidden, actor: $this->actor(), operation: $this->operation()),
         );
 
         return $this;
     }
 
     /**
-     * The diff against the pre-sync state, with hydrated models on every side.
+     * The diff against the pre-sync state, with hydrated models on every
+     * side. $rawBeforeKeys, read before hydration, still names a row a global
+     * scope on the model — the trash included — would otherwise hide from
+     * $before: such a row is already held, so it must not print as attached.
      *
      * @param  list<Model>  $target
      * @param  Collection<int, Model>  $before
+     * @param  array<array-key, mixed>  $rawBeforeKeys
      */
-    private function diff(array $target, Collection $before): SyncResult
+    private function diff(array $target, Collection $before, array $rawBeforeKeys): SyncResult
     {
-        $beforeKeys = $before->map(fn (Model $model): string => (string) $this->modelKey($model))->all();
+        $beforeKeys = array_map(fn (int|string $key): string => (string) $key, $this->usableKeys($rawBeforeKeys));
         $targetKeys = array_map(fn (Model $model): string => (string) $this->modelKey($model), $target);
 
         $attached = array_values(array_filter(

@@ -232,3 +232,35 @@ it('leaves no trashed twin behind a second where(), so its condition can be gran
         ->and(Gate::forUser($bob)->allows('view', $acme))->toBeTrue()
         ->and(Gate::forUser($bob)->allows('view', $other))->toBeFalse();
 });
+
+it('does not report an already-held trashed role as attached by a sync', function (): void {
+    addSoftDeletesToRoles();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    $this->warden->assign(['editor', 'reviewer'])->to($this->user);
+    $editor = SoftDeletingRole::query()->where('name', 'editor')->sole();
+    $editor->delete();
+
+    Event::fake([RolesSynced::class]);
+
+    $this->warden->sync($this->user)->roles([$editor, 'reviewer']);
+
+    Event::assertDispatched(RolesSynced::class, fn (RolesSynced $event): bool => $event->changes->attached->isEmpty()
+        && $event->changes->detached->isEmpty()
+        && $event->changes->kept->pluck('name')->all() === ['reviewer']);
+});
+
+it('does not report an already-held trashed permission as attached by a sync', function (): void {
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+    $this->warden->allow($this->user)->to(['publish', 'review']);
+    $publish = SoftDeletingPermission::query()->where('name', 'publish')->sole();
+    $publish->delete();
+
+    Event::fake([PermissionsSynced::class]);
+
+    $this->warden->sync($this->user)->permissions([$publish, 'review']);
+
+    Event::assertDispatched(PermissionsSynced::class, fn (PermissionsSynced $event): bool => $event->changes->attached->isEmpty()
+        && $event->changes->detached->isEmpty()
+        && $event->changes->kept->pluck('name')->all() === ['review']);
+});
