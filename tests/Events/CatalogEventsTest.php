@@ -1152,3 +1152,54 @@ it('announces no restore for a live row whose earlier restore was vetoed', funct
     Event::assertNotDispatched(RoleRestored::class);
     Event::assertNotDispatched(PermissionRestored::class);
 });
+
+it('announces a restore once after one whose save was vetoed', function (): void {
+    addSoftDeletesToRoles();
+    addSoftDeletesToPermissions();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+    Context::resolve()->setModelClass('permission', SoftDeletingPermission::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+    $permission = SoftDeletingPermission::query()->create(['name' => 'publish']);
+    $role->delete();
+    $permission->delete();
+
+    $roleVeto = collect([false]);
+    $permissionVeto = collect([false]);
+    SoftDeletingRole::updating(fn (): ?bool => $roleVeto->shift());
+    SoftDeletingPermission::updating(fn (): ?bool => $permissionVeto->shift());
+
+    Event::fake([RoleRestored::class, PermissionRestored::class]);
+
+    $vetoedRestores = [$role->restore(), $permission->restore()];
+    $role->restore();
+    $permission->restore();
+
+    expect($vetoedRestores)->toBe([false, false]);
+    Event::assertDispatchedTimes(RoleRestored::class, 1);
+    Event::assertDispatchedTimes(PermissionRestored::class, 1);
+});
+
+it('announces no restore for a live row whose soft delete failed', function (): void {
+    addSoftDeletesToRoles();
+    Context::resolve()->setModelClass('role', SoftDeletingRole::class);
+
+    $role = SoftDeletingRole::query()->create(['name' => 'editor']);
+
+    $failed = false;
+    DB::connection()->beforeExecuting(function (string $query) use (&$failed): void {
+        if (! $failed && str_starts_with(strtolower($query), 'update')) {
+            $failed = true;
+
+            throw new RuntimeException('The soft delete failed.');
+        }
+    });
+
+    expect(fn (): mixed => $role->delete())->toThrow(RuntimeException::class, 'The soft delete failed.');
+
+    Event::fake([RoleRestored::class]);
+
+    $role->restore();
+
+    Event::assertNotDispatched(RoleRestored::class);
+});

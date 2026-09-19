@@ -26,9 +26,11 @@ final class Trash
     }
 
     /**
-     * Whether the stored row sits in the trash. A model read without its
-     * deleted-at column would say no, so the row itself is asked; a model
-     * that no longer exists holds nothing, whatever it still carries.
+     * Whether the stored row sits in the trash. Read from the last value the
+     * model loaded or saved, not from its in-memory attribute: restore() nulls
+     * that attribute before save(), so a retry or a vetoed save would else
+     * read the outcome it is trying to reach. A model that no longer exists
+     * holds nothing, whatever it still carries.
      */
     public static function holds(Model $model): bool
     {
@@ -38,8 +40,10 @@ final class Trash
             return false;
         }
 
-        if (array_key_exists($column, $model->getAttributes())) {
-            return method_exists($model, 'trashed') && $model->trashed() === true;
+        $stored = $model->getRawOriginal();
+
+        if (array_key_exists($column, $stored)) {
+            return $stored[$column] !== null;
         }
 
         return $model->newQueryWithoutScopes()->whereKey($model->getKey())->whereNotNull($model->qualifyColumn($column))->exists();
