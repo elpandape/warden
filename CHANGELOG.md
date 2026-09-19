@@ -54,8 +54,8 @@ queues drain.
 - **A role in the trash neither grants nor forbids.** 3.1 kept a soft-deleted role lending
   its grants, and holding its holders to its forbids, until `forceDelete()`, while `isA()`
   and `whereIs()` already ignored it — and, with nesting on, disagreed with each other
-  about the roles reached through it. Every check now ignores it: `can()`, the Gate,
-  `@can`, `authorize()`, both middlewares, `whereCan()`, `isA()` and its variants,
+  about the roles reached through it. Every check now ignores it: `can()`, the Gate, `@can`,
+  `@forbidden`, `authorize()`, both middlewares, `whereCan()`, `isA()` and its variants,
   `whereIs()` and its variants, `getPermissions()`, `explain()` and the cached checks,
   nested roles included. Its prohibitions lift, which can widen access where a broader
   grant stands. Nothing is swept: `restore()` brings it all back, and the cache of every
@@ -95,9 +95,11 @@ queues drain.
   the grant a `where()` moves onto its twin, and `assign()->to()`, `sync()->roles()`
   included. 3.1 inserted the date only when the grant or assignment model accepted
   `expires_at` by mass assignment, and otherwise dated the row in a second write (see
-  **Fixed**). Whatever runs during that insert now runs without mass-assignment
-  protection. The grants that `sync()->permissions()` and `sync()->forbiddenPermissions()`
-  create carry no end date, and still go through the model's mass-assignment rules.
+  **Fixed**). Whatever runs while Warden looks the row up and, if it is missing, inserts it —
+  a `retrieved`, `saving`, `creating`, `created` or `saved` observer — now runs without
+  mass-assignment protection, `retrieved` included on a lookup that inserts nothing. The
+  grants that `sync()->permissions()` and `sync()->forbiddenPermissions()` create carry no end
+  date, and still go through the model's mass-assignment rules.
 - **Each write bumps each cache scope once.** Editing or deleting a permission through its
   model, or deleting a role, could bump one scope twice in the same write; each scope now
   moves once per write.
@@ -152,12 +154,12 @@ queues drain.
   it, where no check sees them, and sent the live row to the trash. And with the live row
   lowest, it moved a trashed duplicate's grants onto it, reviving access the trash had
   ended. Rows in the trash now stay out of the collapse while the rule has a live row.
-- **A narrowing chain sent the rows it orphaned to the trash.** With `SoftDeletes` on the
-  permission model, the plain row the first `where()` on a rule created and left unused,
-  and a twin it created that a second `where()` left unused, went to the trash instead of
-  away, so the next write of that rule failed on the unique index. The chain now
-  force-deletes them, and their `PermissionDeleted` says `softDeleted: false`; a catalog
-  without `SoftDeletes` sees no change.
+- **A narrowing chain sent the rows it orphaned to the trash.**
+  With `SoftDeletes` on the permission model, the plain row the chain itself created and a
+  first `where()` left unused, and a twin the chain created that a second `where()` left
+  unused, went to the trash instead of away, so the next write of that rule failed on the
+  unique index. The chain now force-deletes them, and their `PermissionDeleted` says
+  `softDeleted: false`; a catalog without `SoftDeletes` sees no change.
 
 ### Documentation
 
@@ -168,17 +170,27 @@ queues drain.
   leaving a role's grants unswept. None of that is new; 3.2 adds two more of the same
   kind: that `forceDelete()` reports `softDeleted: true`, and a `restore()` there
   announces nothing. The README now says so, under *When an event is dispatched*.
-- **Operations, per queue driver.** A queued listener always receives `$operation`; its
-  own writes join the open operation on the `sync` driver and open their own on a worker.
+- **Operations, per queue driver.**
+  A queued listener always receives `$operation`; its own writes join the open
+  operation on the `sync` driver, unless it waits for the commit
+  (`ShouldQueueAfterCommit`, `$afterCommit = true`, or a connection with `after_commit`)
+  and the transaction outlives the call, in which case it opens its own; a worker
+  always opens its own.
 - **A trip to the trash without model events** — `deleteQuietly()`, `restoreQuietly()`,
   a query's `delete()` or `restore()` — leaves cached checks answering as before, and one
   through `save()` announces nothing: the README lists both, with `Warden::refresh()` and
   `warden:cache-reset` as the way out.
-- **A `deleting` listener that halts the dispatch.** One that returns anything but `null`
-  or `false` stops Eloquent's dispatch before warden reads what the delete reaches. A
-  role's grants are still swept, a permission still invalidates its own scope, and a role
-  going to the trash every scope it reaches; but a role's hard delete invalidates nothing,
-  as in 3.1, and no cascade event goes out.
+- **A `deleting` listener that halts the dispatch.**
+  One that returns anything but `null` or `false` stops Eloquent's dispatch before warden
+  reads what the delete reaches. A role's grants are still swept, a permission still
+  invalidates its own scope, and a role going to the trash every scope it reaches; but a
+  role's hard delete invalidates nothing, as in 3.1, and no cascade event goes out. Follow
+  such a delete with `Warden::refresh()`, or holders keep its cached grants until the TTL.
+- **A `restoring` listener that halts the dispatch still gets its restore announced.**
+  One registered on the model before warden's own halts Eloquent's `until()` dispatch
+  before warden's `restoring` note is taken, the same way a `deleting` listener can, yet
+  `RoleRestored` or `PermissionRestored` still goes out from whether the save actually
+  cleared the deleted-at column; only a listener that also returns `false` cancels both.
 - **A snapshot needs a whole row.** Taken from a partial `select()`, it prints the missing
   columns as defaults without a word, or throws in strict mode — except a permission's
   conditions, which read as none either way.

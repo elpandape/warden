@@ -25,7 +25,8 @@ what a queued listener receives, and what every event carries. If your role mode
   App\Models\Role::onlyTrashed()
       ->where(fn ($query) => $query
           ->whereHas('permissions', fn ($query) => $query->where('grants.forbidden', true))
-          ->orWhereHas('nestedRoles'))
+          ->orWhereHas('nestedRoles')
+      )
       ->pluck('name');
   ```
 
@@ -48,9 +49,17 @@ what a queued listener receives, and what every event carries. If your role mode
 
   ```php
   App\Models\Role::onlyTrashed()
-      ->whereIn('id', DB::table('assigned_roles')->select('role_id'))
+      ->whereIn(
+          (new App\Models\Role)->getQualifiedKeyName(),
+          DB::connection(config('warden.connection'))
+              ->table('assigned_roles')->select('role_id'),
+      )
       ->pluck('name');
   ```
+
+  `DB::table()` alone reads the default connection, not `warden.connection`, and would
+  prefix the subquery with the wrong database if the two differ; the role model may also
+  key on something other than `id`.
 
   A role model without `SoftDeletes` has no trash, and nothing here applies to it.
 - **The cache starts cold once.** Cached payloads move to version 6, so every authority's
@@ -62,16 +71,23 @@ what a queued listener receives, and what every event carries. If your role mode
   `$event->operation ?? null` until those queues have drained. `RoleDeleted` and
   `PermissionDeleted` restore with `operation: null` and `softDeleted: false` — `false`
   even for a soft delete, which 3.1 did not record.
-- **Rolling back to 3.1 leaves the jobs 3.2 queued readable.** 3.1 ignores `$operation` and
-  `$softDeleted`; only a job for `RoleRestored` or `PermissionRestored`, which 3.1 lacks,
-  cannot run there.
+- **Rolling back to 3.1 does not leave every job 3.2 queued readable.**
+  3.1 ignores `$operation` and `$softDeleted` on the three events it already knew, but a job
+  for `RoleRestored`, `PermissionRestored`, or one of the six pre-action events —
+  `AssigningRole`, `RetractingRole`, `GrantingPermission`, `ForbiddingPermission`,
+  `RevokingPermission` or `UnforbiddingPermission` — fails there with an `Error`: 3.1's final
+  classes cannot take the `$operation` property 3.2 adds when they unserialize. Drain those
+  queues, or clear them, before rolling back.
 - **A queued listener gets the models of lists and entries without their relations.**
-  `$roles`, `$permissions`, a sync's `$changes` and every `$grants` and `$assignments`
-  entry of the write events are queued as copies without the relations your models had
-  loaded: a job that walks one loads it again, which under `Model::preventLazyLoading()`
-  can throw. Top-level models — `$authority`, `$restrictedTo`, `$actor` and a catalog
-  event's `$role` or `$permission` — are read again with theirs, as before, and a
-  synchronous listener still gets your instances as you had them.
+  `$roles`, `$permissions`, a sync's `$changes` and every `$grants` and `$assignments` entry
+  of the write events are queued as copies without the relations your models had loaded: a job
+  that walks one loads it again, which under `Model::preventLazyLoading()` can throw.
+  Top-level models — `$authority`, `$restrictedTo`, `$actor`, and a catalog event's `$role` or
+  `$permission` on `RoleCreated`, `RoleUpdated`, `RoleRestored`, `PermissionCreated`,
+  `PermissionUpdated` or `PermissionRestored` — are read again with theirs, as before.
+  `RoleDeleted` and `PermissionDeleted` still travel their row by value without relations, as
+  they have since 3.1, with only the actor read again. A synchronous listener still gets your
+  instances as you had them.
 
 ### What listeners see differently
 
@@ -127,14 +143,15 @@ what a queued listener receives, and what every event carries. If your role mode
   force-delete them.
 - **The grant or assignment a verb creates is inserted with its end date,** in one
   statement, also when your grant or assignment model does not accept `expires_at` by mass
-  assignment: no `updated` follows the `created` any more, as 3.1 still sent for such a
-  model. That covers `allow()` and `forbid()` with `to()` or `toOwn()` — and
-  `everything()`, `toManage()` and `toOwnEverything()`, built on them — the grant a
-  `where()` moves onto its twin, and `assign()->to()`, `sync()->roles()` included. The row
-  is created inside `Model::unguarded()`, so whatever an observer of that model does
-  during the insert runs without mass-assignment protection too. The grants
-  `sync()->permissions()` and `sync()->forbiddenPermissions()` create carry no date, and
-  still go through your model's mass-assignment rules.
+  assignment: no `updated` follows the `created` any more, as 3.1 still sent for a dated row
+  of such a model. That covers `allow()` and `forbid()` with `to()` or `toOwn()` — and
+  `everything()`, `toManage()` and `toOwnEverything()`, built on them — the grant a `where()`
+  moves onto its twin, and `assign()->to()`, `sync()->roles()` included. The lookup and, when
+  it is missing, the insert both run inside `Model::unguarded()`, so a `retrieved`, `saving`,
+  `creating`, `created` or `saved` observer of that model runs without mass-assignment
+  protection too, `retrieved` included on a lookup that finds the row already there and
+  inserts nothing. The grants `sync()->permissions()` and `sync()->forbiddenPermissions()`
+  create carry no date, and still go through your model's mass-assignment rules.
 - **Costs.** With `SoftDeletes` on your role model, the statements that read assignments
   carry a subquery for the live roles — no statement is added — and soft-deleting or
   restoring a role reads the scopes it reaches, as a hard delete always did. With
