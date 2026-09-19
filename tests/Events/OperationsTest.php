@@ -40,6 +40,7 @@ use function ElPandaPe\Warden\Tests\Database\addSoftDeletesToRoles;
 use function ElPandaPe\Warden\Tests\Database\migrateWardenTables;
 use function ElPandaPe\Warden\Tests\Database\withForeignKeys;
 use function ElPandaPe\Warden\Tests\heardWardenEvents;
+use function Illuminate\Events\queueable;
 
 beforeEach(function (): void {
     migrateWardenTables();
@@ -473,3 +474,19 @@ it('gives the calls the shared dataset leaves out one id each', function (Closur
         [PermissionCreated::class, PermissionsSynced::class],
     ],
 ]);
+
+it('lets a listener queued on the sync driver join the operation it hears', function (): void {
+    $seen = [];
+    Event::listen(queueable(function (PermissionGranted $event): void {
+        app(Warden::class)->assign('auditor')->to(User::query()->sole());
+    }));
+    Event::listen([PermissionGranted::class, RoleAssigned::class], function (object $event) use (&$seen): void {
+        $seen[] = $event->operation;
+    });
+
+    $this->warden->allow($this->user)->to('publish');
+
+    expect(config('queue.default'))->toBe('sync')
+        ->and($seen)->toHaveCount(2)
+        ->and(array_unique($seen))->toHaveCount(1);
+});

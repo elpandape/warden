@@ -666,3 +666,27 @@ it('carries the end date a retract removed, a lapsed one included', function ():
         $event->assignments,
     ) === ['2026-12-31 23:59:59', '2026-07-01 00:00:00', null]);
 });
+
+it('inserts a new grant row with mass assignment unguarded, and only then', function (): void {
+    $seen = [];
+    Event::listen('eloquent.creating: '.Grant::class, function () use (&$seen): void {
+        $seen[] = Model::isUnguarded();
+    });
+
+    $this->warden->allow($this->user)->to('publish');
+
+    expect($seen)->toBe([true])
+        ->and(Model::isUnguarded())->toBeFalse();
+});
+
+it('inserts a new assignment row with mass assignment unguarded, and only then', function (): void {
+    $seen = [];
+    Event::listen('eloquent.creating: '.AssignedRole::class, function () use (&$seen): void {
+        $seen[] = Model::isUnguarded();
+    });
+
+    $this->warden->assign('auditor')->to($this->user);
+
+    expect($seen)->toBe([true])
+        ->and(Model::isUnguarded())->toBeFalse();
+});
